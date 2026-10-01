@@ -1,6 +1,6 @@
 // api/config.ts
 export const API_CONFIG = {
-  baseURL: "http://localhost:8000/api",
+  baseURL: "https://ivory-narwhal-758437.hostingersite.com/api",
   timeout: 60000,
   endpoints: {
     auth: {
