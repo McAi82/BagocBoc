@@ -3,7 +3,6 @@
 
 namespace App\Mail;
 
-use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -15,22 +14,49 @@ class OtpMail extends Mailable
     use Queueable, SerializesModels;
 
     public string $otp;
-    public User $user;
     public string $purpose;
+    public string $email;
+    public string $userName;
 
     /**
-     * Create a new message instance.
+     * Accepts EITHER:
+     *   • an App\Models\User instance
+     *   • a stdClass with at least an `email` property
+     *   • an array with at least an `email` key
+     *   • a plain string email
+     *
+     * This keeps the existing login / password-reset callers
+     * working while supporting the new registration flow
+     * where no User exists yet.
      */
-    public function __construct(string $otp, User $user, string $purpose = 'login')
+    public function __construct(string $otp, $user, string $purpose = 'login')
     {
-        $this->otp = $otp;
-        $this->user = $user;
+        $this->otp     = $otp;
         $this->purpose = $purpose;
+
+        if ($user instanceof \App\Models\User) {
+            // ── Existing flow (login / password reset) ──
+            $this->email    = $user->email;
+            $this->userName = $user->resident?->first_name ?? $user->email;
+        } elseif (is_object($user)) {
+            // ── Registration flow (stdClass) ────────────
+            $this->email    = $user->email ?? 'Resident';
+            $this->userName = $user->resident?->first_name
+                ?? $user->first_name
+                ?? $user->name
+                ?? ($user->email ?? 'Resident');
+        } elseif (is_array($user)) {
+            $this->email    = $user['email'] ?? 'Resident';
+            $this->userName = $user['first_name']
+                ?? $user['name']
+                ?? ($user['email'] ?? 'Resident');
+        } else {
+            // ── Fallback: raw string ────────────────────
+            $this->email    = (string) $user;
+            $this->userName = (string) $user;
+        }
     }
 
-    /**
-     * Get the message envelope.
-     */
     public function envelope(): Envelope
     {
         $subject = match ($this->purpose) {
@@ -42,40 +68,19 @@ class OtpMail extends Mailable
         return new Envelope(subject: $subject);
     }
 
-    /**
-     * Get the message content definition.
-     */
     public function content(): Content
     {
         return new Content(
             view: 'emails.otp',
             with: [
                 'otp'      => $this->otp,
-                'userName' => $this->user->resident?->first_name
-                    ?? ($this->user->email ?? 'Resident'),
-                'email'    => $this->user->email,
+                'userName' => $this->userName,
+                'email'    => $this->email,
                 'purpose'  => $this->purpose,
             ],
         );
     }
 
-    // app/Mail/OtpMail.php
-    public function build()
-    {
-        $subjects = [
-            'is_first_login'  => 'Your Login Verification Code',
-            'password_reset'  => 'Your Password Reset Code',
-            'change_password' => 'Your Password Change Verification Code',
-            'registration'    => 'Your Registration Verification Code',
-        ];
-
-        return $this->subject($subjects[$this->purpose] ?? 'Your OTP Code')
-            ->view('emails.otp');
-    }
-
-    /**
-     * Get the attachments for the message.
-     */
     public function attachments(): array
     {
         return [];
