@@ -35,16 +35,16 @@ class ZoneController extends Controller
     {
         try {
             $stats = [
-                'pendingRequests' => $this->getPendingRequests(),
-                'pendingRegistrations' => $this->getPendingRegistrations(),
-                'totalResidents' => $this->getTotalResidents(),
-                'totalCompliance' => 0,
+                'pendingRequests'       => $this->getPendingRequests(),
+                'pendingRegistrations'  => $this->getPendingRegistrations(),
+                'totalResidents'        => $this->getTotalResidents(),
+                'totalCompliance'       => 0,
             ];
 
             return response()->json([
                 'success' => true,
                 'message' => 'Stats retrieved successfully',
-                'data' => $stats
+                'data'    => $stats,
             ], 200);
         } catch (\Exception $e) {
             Log::error('Zone stats error: ' . $e->getMessage());
@@ -52,12 +52,12 @@ class ZoneController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Stats retrieved with defaults',
-                'data' => [
-                    'pendingRequests' => 0,
+                'data'    => [
+                    'pendingRequests'      => 0,
                     'pendingRegistrations' => 0,
-                    'totalResidents' => Resident::count(),
-                    'totalCompliance' => 0,
-                ]
+                    'totalResidents'       => Resident::count(),
+                    'totalCompliance'      => 0,
+                ],
             ], 200);
         }
     }
@@ -86,19 +86,19 @@ class ZoneController extends Controller
     {
         try {
             $stats = [
-                'pendingRequests' => FrontDeskRequest::where('status', 'pending')->count(),
+                'pendingRequests'      => FrontDeskRequest::where('status', 'pending')->count(),
                 'pendingRegistrations' => AccountActivation::where('status', 'pending')->count(),
-                'totalResidents' => Resident::count(),
-                'totalCompliance' => 0,
+                'totalResidents'       => Resident::count(),
+                'totalCompliance'      => 0,
             ];
 
             return $this->respondSuccess($stats);
         } catch (\Exception $e) {
             return $this->respondSuccess([
-                'pendingRequests' => 0,
+                'pendingRequests'      => 0,
                 'pendingRegistrations' => 0,
-                'totalResidents' => Resident::count(),
-                'totalCompliance' => 0,
+                'totalResidents'       => Resident::count(),
+                'totalCompliance'      => 0,
             ]);
         }
     }
@@ -106,12 +106,12 @@ class ZoneController extends Controller
     public function storeCheckIn(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'zone_id' => 'required|exists:barangay_zones,id',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
-            'notes' => 'nullable|string',
-            'status' => 'required|in:clear,needs_attention,urgent',
-            'findings' => 'nullable|string',
+            'zone_id'     => 'required|exists:barangay_zones,id',
+            'latitude'    => 'nullable|numeric',
+            'longitude'   => 'nullable|numeric',
+            'notes'       => 'nullable|string',
+            'status'      => 'required|in:clear,needs_attention,urgent',
+            'findings'    => 'nullable|string',
             'attachments' => 'nullable|array',
         ]);
 
@@ -121,21 +121,21 @@ class ZoneController extends Controller
 
         $checkIn = ZoneCheckIn::create([
             'zone_leader_id' => Auth::id(),
-            'zone_id' => $request->zone_id,
-            'latitude' => $request->latitude,
-            'longitude' => $request->longitude,
-            'notes' => $request->notes,
-            'status' => $request->status,
-            'findings' => $request->findings,
-            'attachments' => $request->attachments,
-            'checked_in_at' => now(),
+            'zone_id'        => $request->zone_id,
+            'latitude'       => $request->latitude,
+            'longitude'      => $request->longitude,
+            'notes'          => $request->notes,
+            'status'         => $request->status,
+            'findings'       => $request->findings,
+            'attachments'    => $request->attachments,
+            'checked_in_at'  => now(),
         ]);
 
         if (in_array($request->status, ['needs_attention', 'urgent'])) {
             $zone = \App\Models\BarangayZone::find($request->zone_id);
             $zoneName = $zone ? $zone->name : "Zone #{$request->zone_id}";
 
-            $emoji = $request->status === 'urgent' ? '🚨' : '⚠️';
+            $emoji    = $request->status === 'urgent' ? '🚨' : '⚠️';
             $priority = $request->status === 'urgent' ? 'high' : 'normal';
 
             $message = "{$zoneName}: " . ($request->findings ?: 'Needs attention');
@@ -189,11 +189,11 @@ class ZoneController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'resident_id' => 'required|exists:residents,id',
+                'resident_id'  => 'required|exists:residents,id',
                 'household_id' => 'required|exists:households,id',
-                'notes' => 'nullable|string',
-                'census_data' => 'nullable|array',
-                'geotag_data' => 'nullable|array',
+                'notes'        => 'nullable|string',
+                'census_data'  => 'nullable|array',
+                'geotag_data'  => 'nullable|array',
             ]);
 
             if ($validator->fails()) {
@@ -220,21 +220,21 @@ class ZoneController extends Controller
             }
 
             RecordActivityLog::create([
-                'encoded_by' => Auth::id(),
-                'record_id' => $resident->id,
-                'record_type' => Resident::class,
-                'action' => 'Submitted for Approval',
-                'data_status' => 'Pending',
-                'details' => "Resident registration submitted for Zone Leader approval by " . Auth::user()->email,
+                'encoded_by'   => Auth::id(),
+                'record_id'    => $resident->id,
+                'record_type'  => Resident::class,
+                'action'       => 'Submitted for Approval',
+                'data_status'  => 'Pending',
+                'details'      => "Resident registration submitted for Zone Leader approval by " . Auth::user()->email,
             ]);
 
             RecordActivityLog::create([
-                'encoded_by' => Auth::id(),
-                'record_id' => $household->id,
-                'record_type' => Household::class,
-                'action' => 'Submitted for Approval',
-                'data_status' => 'Pending',
-                'details' => "Household registration submitted for Zone Leader approval by " . Auth::user()->email,
+                'encoded_by'   => Auth::id(),
+                'record_id'    => $household->id,
+                'record_type'  => Household::class,
+                'action'       => 'Submitted for Approval',
+                'data_status'  => 'Pending',
+                'details'      => "Household registration submitted for Zone Leader approval by " . Auth::user()->email,
             ]);
 
             $this->notifyZoneLeaders($resident, $household, $request->notes);
@@ -242,11 +242,11 @@ class ZoneController extends Controller
             DB::commit();
 
             return $this->respondSuccess([
-                'resident_id' => $resident->id,
+                'resident_id'  => $resident->id,
                 'household_id' => $household->id,
-                'census_id' => $census->id ?? null,
-                'status' => 'pending',
-                'message' => 'Registration submitted for approval successfully',
+                'census_id'    => $census->id ?? null,
+                'status'       => 'pending',
+                'message'      => 'Registration submitted for approval successfully',
             ], 'Registration submitted for approval');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -280,35 +280,35 @@ class ZoneController extends Controller
 
             $data = $residents->map(function ($resident) {
                 $household = $resident->households->first();
-                $census = $household ? $household->censusRecords->first() : null;
-                $address = $household?->address;
-                $zone = $address?->barangayZone;
+                $census    = $household ? $household->censusRecords->first() : null;
+                $address   = $household?->address;
+                $zone      = $address?->barangayZone;
 
                 return [
-                    'id' => $resident->id,
-                    'resident_id' => $resident->id,
-                    'resident_name' => trim(
+                    'id'                         => $resident->id,
+                    'resident_id'                => $resident->id,
+                    'resident_name'              => trim(
                         ($resident->first_name ?? '') . ' ' .
                             ($resident->last_name ?? '')
                     ),
-                    'first_name' => $resident->first_name,
-                    'last_name' => $resident->last_name,
-                    'middle_name' => $resident->middle_name,
-                    'gender' => $resident->gender,
-                    'birth_date' => $resident->birth_date,
-                    'phone_number' => $resident->phone_number,
-                    'email' => $resident->email,
-                    'household_id' => $household?->id,
-                    'household_number' => $household?->household_number,
-                    'household_tracking_number' => $household?->household_tracking_number,
-                    'address' => $address?->street,
-                    'zone_name' => $zone?->name,
-                    'zone_id' => $address?->zone,
-                    'submitted_at' => $resident->created_at?->toISOString(),
-                    'status' => $resident->status,
-                    'notes' => $resident->remarks ?? null,
-                    'census_id' => $census?->id,
-                    'census_status' => $census?->data_status,
+                    'first_name'                 => $resident->first_name,
+                    'last_name'                  => $resident->last_name,
+                    'middle_name'                => $resident->middle_name,
+                    'gender'                     => $resident->gender,
+                    'birth_date'                 => $resident->birth_date,
+                    'phone_number'               => $resident->phone_number,
+                    'email'                      => $resident->email,
+                    'household_id'               => $household?->id,
+                    'household_number'           => $household?->household_number,
+                    'household_tracking_number'  => $household?->household_tracking_number,
+                    'address'                    => $address?->street,
+                    'zone_name'                  => $zone?->name,
+                    'zone_id'                    => $address?->zone,
+                    'submitted_at'               => $resident->created_at?->toISOString(),
+                    'status'                     => $resident->status,
+                    'notes'                      => $resident->remarks ?? null,
+                    'census_id'                  => $census?->id,
+                    'census_status'              => $census?->data_status,
                 ];
             });
 
@@ -362,14 +362,14 @@ class ZoneController extends Controller
                 ->whereIn('action', ['Approved', 'Rejected', 'Submitted for Approval'])
                 ->latest()->first();
 
-            $status = 'pending';
-            $reason = null;
+            $status     = 'pending';
+            $reason     = null;
             $approvedAt = null;
             $approvedBy = null;
 
             if ($latestLog) {
                 if ($latestLog->action === 'Approved') {
-                    $status = 'approved';
+                    $status     = 'approved';
                     $approvedAt = $latestLog->created_at;
                     $approvedBy = $latestLog->encoder->email ?? null;
                 } elseif ($latestLog->action === 'Rejected') {
@@ -378,31 +378,39 @@ class ZoneController extends Controller
                 }
             }
 
-            if ($resident->status === 'active') $status = 'approved';
+            if ($resident->status === 'active')   $status = 'approved';
             elseif ($resident->status === 'inactive') $status = 'rejected';
 
             $household = $resident->households->first();
-            $census = $household ? $household->censusRecords->first() : null;
+            $census    = $household ? $household->censusRecords->first() : null;
 
             return $this->respondSuccess([
-                'resident_id' => $residentId,
-                'resident_name' => $resident->first_name . ' ' . $resident->last_name,
-                'status' => $status,
-                'reason' => $reason,
-                'approved_at' => $approvedAt,
-                'approved_by' => $approvedBy,
-                'submitted_at' => $resident->created_at->toISOString(),
-                'is_owner' => $isOwner,
-                'census_id' => $census ? $census->id : null,
-                'census_status' => $census ? $census->data_status : null,
-                'household_id' => $household ? $household->id : null,
-                'household_status' => $household ? $household->status : null,
+                'resident_id'       => $residentId,
+                'resident_name'     => $resident->first_name . ' ' . $resident->last_name,
+                'status'            => $status,
+                'reason'            => $reason,
+                'approved_at'       => $approvedAt,
+                'approved_by'       => $approvedBy,
+                'submitted_at'      => $resident->created_at->toISOString(),
+                'is_owner'          => $isOwner,
+                'census_id'         => $census ? $census->id : null,
+                'census_status'     => $census ? $census->data_status : null,
+                'household_id'      => $household ? $household->id : null,
+                'household_status'  => $household ? $household->status : null,
             ], 'Status retrieved successfully');
         } catch (\Exception $e) {
             return $this->respondError('Failed to get status: ' . $e->getMessage(), null, 500);
         }
     }
 
+    /**
+     * Approve a pending resident registration.
+     *
+     * ⚠️ IMPORTANT: This method does NOT create a User account.
+     * The resident self-registers via the mobile app (OTP flow).
+     * Creating the User here would block that flow with a false
+     * "account already exists" error.
+     */
     public function approve($id)
     {
         try {
@@ -417,11 +425,14 @@ class ZoneController extends Controller
                 return $this->respondError('Only pending registrations can be approved', null, 422);
             }
 
+            // ── 1. Activate the resident ─────────────────────────
             $resident->status = 'active';
             $resident->save();
 
-            $household = $resident->households->first();
-            $censusRecord = null;
+            // ── 2. Activate the household + census record ────────
+            $household     = $resident->households->first();
+            $censusRecord  = null;
+
             if ($household) {
                 $household->status = 'active';
                 $household->save();
@@ -435,42 +446,48 @@ class ZoneController extends Controller
                 }
             }
 
-            $user = $this->createUserAccount($resident);
+            // ── 3. DO NOT create a User account here ─────────────
+            // The resident will register themselves via the mobile
+            // app and verify their email with an OTP. The User row
+            // is only created in AuthController::verifyRegistrationOtp().
+            $user = null;
 
+            // ── 4. Log the approval ──────────────────────────────
             RecordActivityLog::create([
-                'encoded_by' => Auth::id(),
-                'record_id' => $resident->id,
+                'encoded_by'  => Auth::id(),
+                'record_id'   => $resident->id,
                 'record_type' => Resident::class,
-                'action' => 'Approved',
+                'action'      => 'Approved',
                 'data_status' => 'Active',
-                'details' => "Registration approved by Zone Leader: " . Auth::user()->email,
+                'details'     => "Registration approved by Zone Leader: " . Auth::user()->email,
             ]);
 
             if ($censusRecord) {
                 RecordActivityLog::create([
-                    'encoded_by' => Auth::id(),
-                    'record_id' => $censusRecord->id,
+                    'encoded_by'  => Auth::id(),
+                    'record_id'   => $censusRecord->id,
                     'record_type' => HouseholdCensusRecord::class,
-                    'action' => 'Approved',
+                    'action'      => 'Approved',
                     'data_status' => 'Approved',
-                    'details' => "Census record approved by Zone Leader: " . Auth::user()->email,
+                    'details'     => "Census record approved by Zone Leader: " . Auth::user()->email,
                 ]);
             }
 
+            // ── 5. Notify the submitting BHW ─────────────────────
             $this->notifySubmittingBHWs($resident, 'approved');
 
             DB::commit();
 
             return $this->respondSuccess([
-                'resident_id' => $resident->id,
-                'resident_name' => $resident->first_name . ' ' . $resident->last_name,
-                'user_id' => $user ? $user->id : null,
-                'status' => 'approved',
-                'household_id' => $household ? $household->id : null,
-                'household_status' => $household ? $household->status : null,
-                'census_id' => $censusRecord->id ?? null,
-                'census_status' => $censusRecord->data_status ?? null,
-                'message' => 'Registration approved successfully',
+                'resident_id'       => $resident->id,
+                'resident_name'     => $resident->first_name . ' ' . $resident->last_name,
+                'user_id'           => null, // no User created here anymore
+                'status'            => 'approved',
+                'household_id'      => $household ? $household->id : null,
+                'household_status'  => $household ? $household->status : null,
+                'census_id'         => $censusRecord->id ?? null,
+                'census_status'     => $censusRecord->data_status ?? null,
+                'message'           => 'Registration approved successfully',
             ], 'Registration approved successfully');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -501,12 +518,13 @@ class ZoneController extends Controller
                 return $this->respondError('Only pending registrations can be rejected', null, 422);
             }
 
-            $resident->status = 'inactive';
+            $resident->status  = 'inactive';
             $resident->remarks = $request->reason;
             $resident->save();
 
-            $household = $resident->households->first();
+            $household    = $resident->households->first();
             $censusRecord = null;
+
             if ($household) {
                 $household->status = 'inactive';
                 $household->save();
@@ -521,22 +539,22 @@ class ZoneController extends Controller
             }
 
             RecordActivityLog::create([
-                'encoded_by' => Auth::id(),
-                'record_id' => $resident->id,
+                'encoded_by'  => Auth::id(),
+                'record_id'   => $resident->id,
                 'record_type' => Resident::class,
-                'action' => 'Rejected',
+                'action'      => 'Rejected',
                 'data_status' => 'Inactive',
-                'details' => "Registration rejected by Zone Leader: " . Auth::user()->email . ". Reason: " . $request->reason,
+                'details'     => "Registration rejected by Zone Leader: " . Auth::user()->email . ". Reason: " . $request->reason,
             ]);
 
             if ($censusRecord) {
                 RecordActivityLog::create([
-                    'encoded_by' => Auth::id(),
-                    'record_id' => $censusRecord->id,
+                    'encoded_by'  => Auth::id(),
+                    'record_id'   => $censusRecord->id,
                     'record_type' => HouseholdCensusRecord::class,
-                    'action' => 'Rejected',
+                    'action'      => 'Rejected',
                     'data_status' => 'Rejected',
-                    'details' => "Census record rejected by Zone Leader: " . Auth::user()->email . ". Reason: " . $request->reason,
+                    'details'     => "Census record rejected by Zone Leader: " . Auth::user()->email . ". Reason: " . $request->reason,
                 ]);
             }
 
@@ -545,14 +563,14 @@ class ZoneController extends Controller
             DB::commit();
 
             return $this->respondSuccess([
-                'resident_id' => $resident->id,
+                'resident_id'  => $resident->id,
                 'resident_name' => $resident->first_name . ' ' . $resident->last_name,
-                'status' => 'rejected',
-                'reason' => $request->reason,
+                'status'       => 'rejected',
+                'reason'       => $request->reason,
                 'household_id' => $household ? $household->id : null,
-                'census_id' => $censusRecord->id ?? null,
+                'census_id'    => $censusRecord->id ?? null,
                 'census_status' => $censusRecord->data_status ?? null,
-                'message' => 'Registration rejected successfully',
+                'message'      => 'Registration rejected successfully',
             ], 'Registration rejected');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -596,10 +614,10 @@ class ZoneController extends Controller
             }
 
             $data = $rows->map(function ($c) {
-                $resident = $c->resident;
+                $resident  = $c->resident;
                 $household = $resident?->households?->first();
-                $address = $household?->address;
-                $zone = $address?->barangayZone;
+                $address   = $household?->address;
+                $zone      = $address?->barangayZone;
 
                 $requestedByName = null;
                 if ($c->requestedBy) {
@@ -609,30 +627,30 @@ class ZoneController extends Controller
                 }
 
                 return [
-                    'id' => $c->id,
-                    'resident_id' => $c->resident_id,
-                    'resident_name' => $resident
+                    'id'                         => $c->id,
+                    'resident_id'                => $c->resident_id,
+                    'resident_name'              => $resident
                         ? trim(($resident->first_name ?? '') . ' ' . ($resident->last_name ?? ''))
                         : 'Unknown',
-                    'first_name' => $resident?->first_name,
-                    'last_name' => $resident?->last_name,
-                    'middle_name' => $resident?->middle_name,
-                    'gender' => $resident?->gender,
-                    'birth_date' => $resident?->birth_date,
-                    'phone_number' => $resident?->phone_number,
-                    'email' => $resident?->email,
-                    'household_id' => $household?->id,
-                    'household_number' => $household?->household_number,
-                    'household_tracking_number' => $household?->household_tracking_number,
-                    'address' => $address?->street,
-                    'zone_name' => $zone?->name,
-                    'zone_id' => $address?->zone,
-                    'status' => $c->status,
-                    'notes' => $c->notes,
-                    'submitted_at' => $c->created_at?->toISOString(),
-                    'requested_at' => $c->created_at?->toISOString(),
-                    'requested_by_name' => $requestedByName,
-                    'zone_leader_name' => $c->zoneLeader?->resident?->full_name
+                    'first_name'                 => $resident?->first_name,
+                    'last_name'                  => $resident?->last_name,
+                    'middle_name'                => $resident?->middle_name,
+                    'gender'                     => $resident?->gender,
+                    'birth_date'                 => $resident?->birth_date,
+                    'phone_number'               => $resident?->phone_number,
+                    'email'                      => $resident?->email,
+                    'household_id'               => $household?->id,
+                    'household_number'           => $household?->household_number,
+                    'household_tracking_number'  => $household?->household_tracking_number,
+                    'address'                    => $address?->street,
+                    'zone_name'                  => $zone?->name,
+                    'zone_id'                    => $address?->zone,
+                    'status'                     => $c->status,
+                    'notes'                      => $c->notes,
+                    'submitted_at'               => $c->created_at?->toISOString(),
+                    'requested_at'               => $c->created_at?->toISOString(),
+                    'requested_by_name'          => $requestedByName,
+                    'zone_leader_name'           => $c->zoneLeader?->resident?->full_name
                         ?? $c->zoneLeader?->email,
                 ];
             });
@@ -658,7 +676,7 @@ class ZoneController extends Controller
             }
 
             $confirmation->update([
-                'status' => 'confirmed',
+                'status'       => 'confirmed',
                 'confirmed_at' => now(),
             ]);
 
@@ -717,8 +735,8 @@ class ZoneController extends Controller
             }
 
             $confirmation->update([
-                'status' => 'rejected',
-                'rejected_at' => now(),
+                'status'           => 'rejected',
+                'rejected_at'      => now(),
                 'rejection_reason' => $request->reason,
             ]);
 
@@ -797,9 +815,9 @@ class ZoneController extends Controller
 
         if ($existingCensus) {
             $existingCensus->update([
-                'census_date' => $censusData['census_date'] ?? now(),
+                'census_date'    => $censusData['census_date'] ?? now(),
                 'monthly_income' => $censusData['monthly_income'] ?? null,
-                'data_status' => 'Pending',
+                'data_status'    => 'Pending',
             ]);
 
             if (isset($censusData['environment'])) {
@@ -818,12 +836,12 @@ class ZoneController extends Controller
         }
 
         $census = HouseholdCensusRecord::create([
-            'household_id' => $householdId,
-            'census_year' => $censusData['census_year'] ?? date('Y'),
-            'census_date' => $censusData['census_date'] ?? now(),
+            'household_id'   => $householdId,
+            'census_year'    => $censusData['census_year'] ?? date('Y'),
+            'census_date'    => $censusData['census_date'] ?? now(),
             'monthly_income' => $censusData['monthly_income'] ?? null,
-            'encoded_by' => Auth::id(),
-            'data_status' => 'Pending',
+            'encoded_by'     => Auth::id(),
+            'data_status'    => 'Pending',
         ]);
 
         if (isset($censusData['environment'])) {
@@ -841,46 +859,27 @@ class ZoneController extends Controller
         HouseGeotag::updateOrCreate(
             ['household_id' => $householdId],
             [
-                'latitude' => $geotagData['latitude'] ?? 0,
-                'longitude' => $geotagData['longitude'] ?? 0,
+                'latitude'    => $geotagData['latitude'] ?? 0,
+                'longitude'   => $geotagData['longitude'] ?? 0,
                 'captured_at' => $geotagData['captured_at'] ?? now(),
             ]
         );
     }
 
-    private function createUserAccount($resident)
-    {
-        try {
-            $existingUser = User::where('resident_id', $resident->id)->first();
-            if ($existingUser) return $existingUser;
-
-            $email = strtolower($resident->first_name . '.' . $resident->last_name . '@barangay.com');
-            $email = str_replace(' ', '', $email);
-
-            if (User::where('email', $email)->exists()) {
-                $email = strtolower($resident->first_name . '.' . $resident->last_name . '.' . rand(1, 999) . '@barangay.com');
-                $email = str_replace(' ', '', $email);
-            }
-
-            $user = User::create([
-                'resident_id' => $resident->id,
-                'email' => $email,
-                'password' => bcrypt('password123'),
-                'account_status' => 'active',
-                'is_first_login' => true,
-            ]);
-
-            $residentRole = \App\Models\Role::where('name', 'Resident')->first();
-            if ($residentRole) {
-                $user->roles()->attach($residentRole);
-            }
-
-            return $user;
-        } catch (\Exception $e) {
-            Log::error('Create user account error: ' . $e->getMessage());
-            return null;
-        }
-    }
+    // ══════════════════════════════════════════════════════════════
+    // REMOVED: createUserAccount()
+    //
+    // This method used to auto-create a User row with a synthetic
+    // email (firstname.lastname@barangay.com) whenever a Zone Leader
+    // approved a resident registration.
+    //
+    // That behaviour is now obsolete:
+    //   • Residents self-register via the mobile app
+    //   • The User row is created only in
+    //     AuthController::verifyRegistrationOtp()
+    //   • Creating users here blocks the OTP registration flow
+    //     with a false "account already exists" error
+    // ══════════════════════════════════════════════════════════════
 
     private function notifySubmittingBHWs($resident, string $status, ?string $reason = null)
     {
@@ -940,13 +939,13 @@ class ZoneController extends Controller
 
             if (!$zoneId) {
                 Log::warning('Cannot notify zone leaders — no zone found for registration', [
-                    'resident_id' => $resident->id,
+                    'resident_id'  => $resident->id,
                     'household_id' => $household?->id,
                 ]);
                 return;
             }
 
-            $message = "New registration submitted for approval.\n";
+            $message  = "New registration submitted for approval.\n";
             $message .= "Resident: {$resident->first_name} {$resident->last_name}\n";
             $message .= "Household: " . ($household ? $household->household_number : 'N/A');
             if ($notes) {

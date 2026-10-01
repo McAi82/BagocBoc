@@ -252,9 +252,7 @@ class AuthController extends Controller
 
         $email = strtolower(trim($request->email));
 
-        // ─────────────────────────────────────────────────────────
-        // 1. Resident must exist with this email
-        // ─────────────────────────────────────────────────────────
+        // ── 1. Resident must exist ────────────────────────────────
         $resident = Resident::whereRaw('LOWER(email) = ?', [$email])->first();
 
         if (!$resident) {
@@ -265,9 +263,7 @@ class AuthController extends Controller
             );
         }
 
-        // ─────────────────────────────────────────────────────────
-        // 2. Name must match the resident record
-        // ─────────────────────────────────────────────────────────
+        // ── 2. Name must match ────────────────────────────────────
         $firstNameMatches = strtolower(trim($resident->first_name)) === strtolower(trim($request->first_name));
         $lastNameMatches  = strtolower(trim($resident->last_name))  === strtolower(trim($request->last_name));
 
@@ -279,22 +275,44 @@ class AuthController extends Controller
             );
         }
 
-        // ─────────────────────────────────────────────────────────
-        // 3. No User account may already exist for this resident
-        //    (This is the check that was removed from
-        //     /account-activation/verify and belongs HERE.)
-        // ─────────────────────────────────────────────────────────
-        if (User::where('resident_id', $resident->id)->exists()) {
-            return $this->respondError(
-                'An account already exists for this resident. Please use the "Forgot Password" option if you cannot log in.',
-                null,
-                422
-            );
+        // ── 3. Existing User handling ─────────────────────────────
+        $existingUser = User::where('resident_id', $resident->id)->first();
+
+        if ($existingUser) {
+            // Is this a stale auto-created account?
+            //   • synthetic email (…@barangay.com)
+            //   • is_first_login = true
+            //   • never logged in
+            $isStaleAutoCreated =
+                str_contains($existingUser->email, '@barangay.com') &&
+                $existingUser->is_first_login === true &&
+                is_null($existingUser->last_login_at);
+
+            if (!$isStaleAutoCreated) {
+                // Real account — ask them to log in / reset password
+                return $this->respondError(
+                    'An account already exists for this resident. Please use the "Forgot Password" option if you cannot log in.',
+                    null,
+                    422
+                );
+            }
+
+            // ✅ Reclaim: delete the stale record so we can recreate it fresh
+            //    after OTP verification.
+            DB::transaction(function () use ($existingUser) {
+                $existingUser->roles()->detach();
+                $existingUser->tokens()->delete();
+                $existingUser->delete();
+            });
+
+            Log::info('Reclaimed stale auto-created user', [
+                'resident_id' => $resident->id,
+                'old_email'   => $existingUser->email,
+                'new_email'   => $email,
+            ]);
         }
 
-        // ─────────────────────────────────────────────────────────
-        // 4. Email must not be claimed by a different user
-        // ─────────────────────────────────────────────────────────
+        // ── 4. Email must not be claimed elsewhere ────────────────
         if (User::whereRaw('LOWER(email) = ?', [$email])->exists()) {
             return $this->respondError(
                 'This email is already in use by another account. Please contact the barangay office.',
@@ -303,35 +321,24 @@ class AuthController extends Controller
             );
         }
 
-        // ─────────────────────────────────────────────────────────
-        // 5. Cache the pending registration (30-min window)
-        //    We store the password hash so we never keep the
-        //    plaintext password in memory after this request.
-        // ─────────────────────────────────────────────────────────
+        // ── 5. Cache the pending registration ─────────────────────
         $pendingKey = 'pending_registration:' . $email;
 
-        // If a previous attempt is still cached, overwrite it.
         Cache::put($pendingKey, [
-            'resident_id'    => $resident->id,
-            'email'          => $email,
-            'first_name'     => trim($request->first_name),
-            'last_name'      => trim($request->last_name),
-            'phone_number'   => trim($request->phone_number),
-            'password_hash'  => Hash::make($request->password),
+            'resident_id'   => $resident->id,
+            'email'         => $email,
+            'first_name'    => trim($request->first_name),
+            'last_name'     => trim($request->last_name),
+            'phone_number'  => trim($request->phone_number),
+            'password_hash' => Hash::make($request->password),
         ], now()->addMinutes(30));
 
-        // ─────────────────────────────────────────────────────────
-        // 6. Invalidate old OTPs for this email + purpose
-        // ─────────────────────────────────────────────────────────
+        // ── 6. Send OTP ───────────────────────────────────────────
         Otp::whereRaw('LOWER(email) = ?', [$email])
             ->where('purpose', 'registration')
             ->whereNull('used_at')
             ->delete();
 
-        // ─────────────────────────────────────────────────────────
-        // 7. Generate + store the new OTP
-        //    user_id is NULL because no User exists yet.
-        // ─────────────────────────────────────────────────────────
         $otp = random_int(100000, 999999);
 
         Otp::create([
@@ -344,38 +351,26 @@ class AuthController extends Controller
             'sent_at'    => now(),
         ]);
 
-        // ─────────────────────────────────────────────────────────
-        // 8. Email the OTP
-        // ─────────────────────────────────────────────────────────
         try {
-            Mail::to($email)->send(new OtpMail($otp, (object) [
+            Mail::to($email)->send(new OtpMail($otp, (object)[
                 'email'   => $email,
                 'purpose' => 'registration',
             ], 'registration'));
         } catch (\Exception $e) {
             Log::error('Failed to send registration OTP: ' . $e->getMessage());
-            // Don't fail the whole request — the client can request a resend.
         }
 
-        // ─────────────────────────────────────────────────────────
-        // 9. Respond
-        //    NOTE: dev_otp is echoed ONLY when APP_DEBUG=true.
-        // ─────────────────────────────────────────────────────────
         $response = [
-            'email'         => $email,
-            'requires_otp'  => true,
-            'purpose'       => 'registration',
+            'email'        => $email,
+            'requires_otp' => true,
+            'purpose'      => 'registration',
         ];
 
         if (config('app.debug')) {
             $response['dev_otp'] = $otp;
         }
 
-        return $this->respondSuccess(
-            $response,
-            'OTP sent to your email address.',
-            200
-        );
+        return $this->respondSuccess($response, 'OTP sent to your email address.', 200);
     }
 
     public function sendOtp(User $user, string $purpose)
