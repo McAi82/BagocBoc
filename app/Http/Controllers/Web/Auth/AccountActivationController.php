@@ -21,73 +21,99 @@ class AccountActivationController extends Controller
     public function verifyRecords(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'firstName' => 'required|string',
+            'firstName'  => 'required|string',
             'middleName' => 'nullable|string',
-            'lastName' => 'required|string',
-            'suffix' => 'nullable|string',
-            'birthDate' => 'required|date',
-            'email' => 'required|email',
+            'lastName'   => 'required|string',
+            'suffix'     => 'nullable|string',
+            'birthDate'  => 'required|date',
+            'email'      => 'required|email',
         ]);
 
         if ($validator->fails()) {
-            return $this->respondError('Validation error', $validator->errors(), 422);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors'  => $validator->errors(),
+            ], 422);
         }
 
-        $query = Resident::where('first_name', $request->firstName)
-            ->where('last_name', $request->lastName)
-            ->whereDate('birth_date', $request->birthDate);
+        $email = strtolower(trim($request->email));
 
-        if (!empty($request->middleName)) {
-            $query->where('middle_name', $request->middleName);
-        } else {
-            $query->where(function ($q) {
-                $q->whereNull('middle_name')->orWhere('middle_name', '');
-            });
-        }
-
-        if (!empty($request->suffix)) {
-            $query->where('suffix', $request->suffix);
-        } else {
-            $query->where(function ($q) {
-                $q->whereNull('suffix')->orWhere('suffix', '');
-            });
-        }
-
-        $resident = $query->first();
+        // ── 1. Find the resident by email only ─────────────────────
+        // (email is the unique anchor; name and DOB are validated after)
+        $resident = Resident::whereRaw('LOWER(email) = ?', [$email])->first();
 
         if (!$resident) {
-            return $this->respondNotFound('Information does not match our records.');
+            return response()->json([
+                'success' => false,
+                'message' => 'No resident record found with this email. Please visit the barangay hall to register your email first.',
+            ], 404);
         }
 
-        if (!$resident->email) {
-            return $this->respondError(
-                'This resident record does not have an email on file. Please visit the barangay hall to update your records.',
-                null,
-                422
-            );
+        // ── 2. Cross-check the person's identity ───────────────────
+        $firstNameMatches = strtolower(trim($resident->first_name)) === strtolower(trim($request->firstName));
+        $lastNameMatches  = strtolower(trim($resident->last_name))  === strtolower(trim($request->lastName));
+
+        if (!$firstNameMatches || !$lastNameMatches) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The name you provided does not match our records for this email.',
+            ], 422);
         }
 
-        if (strtolower(trim($resident->email)) !== strtolower(trim($request->email))) {
-            return $this->respondError(
-                'The email you provided does not match our records for this resident. Please use the email that was registered with the barangay, or visit the barangay hall to update your records.',
-                null,
-                422
-            );
+        // Middle name (optional match)
+        if ($request->filled('middleName') && $resident->middle_name) {
+            $middleMatches = strtolower(trim($resident->middle_name)) === strtolower(trim($request->middleName));
+            if (!$middleMatches) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The middle name you provided does not match our records.',
+                ], 422);
+            }
         }
 
-        $existingUser = User::where('resident_id', $resident->id)->first();
-        if ($existingUser) {
-            return $this->respondError(
-                'An account already exists for this resident. Please use the "Forgot Password" option if you cannot log in.',
-                null,
-                422
-            );
+        // Suffix (optional match)
+        if ($request->filled('suffix') && $resident->suffix) {
+            $suffixMatches = strtolower(trim($resident->suffix)) === strtolower(trim($request->suffix));
+            if (!$suffixMatches) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The suffix you provided does not match our records.',
+                ], 422);
+            }
         }
 
-        return $this->respondSuccess([
-            'resident_id' => $resident->id,
-            'email' => $resident->email,
-        ], 'Verification Complete!');
+        // Birth date
+        try {
+            $residentDob = \Carbon\Carbon::parse($resident->birth_date)->toDateString();
+            $inputDob    = \Carbon\Carbon::parse($request->birthDate)->toDateString();
+
+            if ($residentDob !== $inputDob) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The birth date you provided does not match our records.',
+                ], 422);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid birth date format.',
+            ], 422);
+        }
+
+        // ── 3. Resident is verified ✅ ─────────────────────────────
+        // DO NOT check whether a User account exists here.
+        // That check belongs to AuthController::register().
+        return response()->json([
+            'success' => true,
+            'message' => 'Resident verified successfully.',
+            'data' => [
+                'resident_id' => $resident->id,
+                'first_name'  => $resident->first_name,
+                'last_name'   => $resident->last_name,
+                'email'       => $resident->email,
+            ],
+        ], 200);
     }
 
     public function store(Request $request)

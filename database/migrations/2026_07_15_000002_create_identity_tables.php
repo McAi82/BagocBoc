@@ -58,10 +58,10 @@ return new class extends Migration
 
         Schema::create('otps_codes', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('user_id')->nullable()->change();
             $table->string('email');
             $table->string('code_hash');
-            $table->enum('purpose', ['is_first_login', 'password_reset', 'change_password'])->default('is_first_login');
+            $table->enum('purpose', ['is_first_login', 'password_reset', 'change_password', 'registration'])->default('is_first_login');
             $table->timestamp('expires_at');
             $table->timestamp('used_at')->nullable();
             $table->unsignedTinyInteger('attempts')->default(0);

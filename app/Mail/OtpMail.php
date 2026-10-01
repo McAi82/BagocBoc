@@ -33,13 +33,13 @@ class OtpMail extends Mailable
      */
     public function envelope(): Envelope
     {
-        $subject = $this->purpose === 'password_reset'
-            ? 'Barangay Bagocboc - Password Reset OTP'
-            : 'Barangay Bagocboc - OTP Verification Code';
+        $subject = match ($this->purpose) {
+            'password_reset' => 'Barangay Bagocboc - Password Reset OTP',
+            'registration'   => 'Barangay Bagocboc - Registration Verification Code',
+            default          => 'Barangay Bagocboc - OTP Verification Code',
+        };
 
-        return new Envelope(
-            subject: $subject,
-        );
+        return new Envelope(subject: $subject);
     }
 
     /**
@@ -50,10 +50,11 @@ class OtpMail extends Mailable
         return new Content(
             view: 'emails.otp',
             with: [
-                'otp' => $this->otp,
-                'userName' => $this->user->resident?->first_name ?? $this->user->email,
-                'email' => $this->user->email,
-                'purpose' => $this->purpose,
+                'otp'      => $this->otp,
+                'userName' => $this->user->resident?->first_name
+                    ?? ($this->user->email ?? 'Resident'),
+                'email'    => $this->user->email,
+                'purpose'  => $this->purpose,
             ],
         );
     }
@@ -65,6 +66,7 @@ class OtpMail extends Mailable
             'is_first_login'  => 'Your Login Verification Code',
             'password_reset'  => 'Your Password Reset Code',
             'change_password' => 'Your Password Change Verification Code',
+            'registration'    => 'Your Registration Verification Code',
         ];
 
         return $this->subject($subjects[$this->purpose] ?? 'Your OTP Code')

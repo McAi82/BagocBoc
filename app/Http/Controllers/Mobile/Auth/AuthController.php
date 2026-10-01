@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
 use App\Mail\OtpMail;
+use Illuminate\Support\Facades\Cache;
 
 class AuthController extends Controller
 {
@@ -102,21 +103,149 @@ class AuthController extends Controller
         ], 'Login successful');
     }
 
-    public function register(Request $request)
+    public function verifyRegistrationOtp(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'phone_number' => 'required|string|max:20',
-            'password' => 'required|string|min:8|confirmed',
+            'email' => 'required|email',
+            'otp'   => 'required|digits:6',
         ]);
 
         if ($validator->fails()) {
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        $resident = Resident::where('email', strtolower(trim($request->email)))->first();
+        $email = strtolower(trim($request->email));
+        $pendingKey = 'pending_registration:' . $email;
+
+        // ── 1. Load pending registration ─────────────────────────
+        $pending = Cache::get($pendingKey);
+
+        if (!$pending) {
+            return $this->respondError(
+                'Registration session expired. Please start over.',
+                null,
+                422
+            );
+        }
+
+        // ── 2. Find OTP ──────────────────────────────────────────
+        $otp = Otp::where('email', $email)
+            ->where('purpose', 'registration')
+            ->whereNull('used_at')
+            ->where('expires_at', '>', now())
+            ->latest()
+            ->first();
+
+        if (!$otp) {
+            return $this->respondError('OTP invalid or expired.', null, 422);
+        }
+
+        if ($otp->attempts >= 5) {
+            return $this->respondError('Too many attempts. Please request a new OTP.', null, 429);
+        }
+
+        if (!Hash::check($request->otp, $otp->code_hash)) {
+            $otp->increment('attempts');
+            return $this->respondError('Invalid OTP.', null, 422);
+        }
+
+        // ── 3. Consume OTP ───────────────────────────────────────
+        $otp->update(['used_at' => now(), 'attempts' => 0]);
+
+        // ── 4. Create the User ───────────────────────────────────
+        DB::beginTransaction();
+        try {
+            $resident = Resident::find($pending['resident_id']);
+
+            if (!$resident) {
+                DB::rollBack();
+                Cache::forget($pendingKey);
+                return $this->respondError('Resident record no longer exists.', null, 422);
+            }
+
+            // Double-check that no user was created in the meantime
+            if (User::where('resident_id', $resident->id)->exists()) {
+                DB::rollBack();
+                Cache::forget($pendingKey);
+                return $this->respondError(
+                    'An account already exists for this resident.',
+                    null,
+                    422
+                );
+            }
+
+            $user = User::create([
+                'resident_id'       => $resident->id,
+                'email'             => $pending['email'],
+                'password'          => $pending['password_hash'],
+                'account_status'    => 'active',
+                'is_first_login'    => false,
+                'phone_verified_at' => now(),
+                'email_verified_at' => now(),
+            ]);
+
+            if (!$resident->phone_number && !empty($pending['phone_number'])) {
+                $resident->update(['phone_number' => $pending['phone_number']]);
+            }
+
+            $residentRole = Role::where('name', 'Resident')->first();
+            if ($residentRole) {
+                $user->roles()->attach($residentRole);
+            }
+
+            DB::commit();
+            Cache::forget($pendingKey);
+
+            // Notify front desk / secretary
+            try {
+                $this->notifyRoles(
+                    ['Front Desk Clerk', 'Barangay Secretary'],
+                    '👤 New Resident Registration',
+                    "A new resident {$resident->first_name} {$resident->last_name} has registered via mobile.",
+                    'registration',
+                    'normal',
+                    '/residents/' . $resident->id,
+                    null
+                );
+            } catch (\Exception $e) {
+                Log::error('Registration notify error: ' . $e->getMessage());
+            }
+
+            // Issue token so the resident is logged in immediately
+            $user->load('roles', 'resident');
+            $token = $user->createToken('mobile_auth_token')->plainTextToken;
+
+            return $this->respondSuccess([
+                'user'       => $user,
+                'roles'      => $user->roles->pluck('name')->values(),
+                'token'      => $token,
+                'token_type' => 'Bearer',
+            ], 'Registration successful.', 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Registration verification error: ' . $e->getMessage());
+            return $this->respondError('Failed to complete registration.', null, 500);
+        }
+    }
+
+    public function register(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:255',
+            'last_name'  => 'required|string|max:255',
+            'email'      => 'required|email',
+            'phone_number' => 'required|string|max:20',
+            'password'   => 'required|string|min:8|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
+
+        $email = strtolower(trim($request->email));
+
+        // ── 1. Resident must exist with this email ────────────────
+        $resident = Resident::where('email', $email)->first();
 
         if (!$resident) {
             return $this->respondError(
@@ -126,9 +255,10 @@ class AuthController extends Controller
             );
         }
 
+        // ── 2. Name must match ───────────────────────────────────
         if (
             strtolower(trim($resident->first_name)) !== strtolower(trim($request->first_name)) ||
-            strtolower(trim($resident->last_name)) !== strtolower(trim($request->last_name))
+            strtolower(trim($resident->last_name))  !== strtolower(trim($request->last_name))
         ) {
             return $this->respondError(
                 'The name you provided does not match our records for this email. Please double-check your information.',
@@ -137,6 +267,7 @@ class AuthController extends Controller
             );
         }
 
+        // ── 3. No User account must already exist ─────────────────
         if (User::where('resident_id', $resident->id)->exists()) {
             return $this->respondError(
                 'An account already exists for this resident. Please use the "Forgot Password" option.',
@@ -145,50 +276,65 @@ class AuthController extends Controller
             );
         }
 
-        DB::beginTransaction();
-        try {
-            $user = User::create([
-                'resident_id' => $resident->id,
-                'email' => strtolower(trim($request->email)),
-                'password' => Hash::make($request->password),
-                'account_status' => 'active',
-                'is_first_login' => false,
-                'phone_verified_at' => now(),
-                'email_verified_at' => now(),
-            ]);
-
-            if (!$resident->phone_number && $request->phone_number) {
-                $resident->update(['phone_number' => $request->phone_number]);
-            }
-
-            $residentRole = Role::where('name', 'Resident')->first();
-            if ($residentRole) {
-                $user->roles()->attach($residentRole);
-            }
-
-            DB::commit();
-
-            $this->notifyRoles(
-                ['Front Desk Clerk', 'Barangay Secretary'],
-                '👤 New Resident Registration',
-                "A new resident {$resident->first_name} {$resident->last_name} has registered via mobile.",
-                'registration',
-                'normal',
-                '/residents/' . $resident->id,
-                null
+        // ── 4. Email must not be taken by another user ────────────
+        if (User::where('email', $email)->exists()) {
+            return $this->respondError(
+                'This email is already in use. Please contact the barangay office.',
+                null,
+                422
             );
-
-            return $this->respondSuccess([
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'resident_id' => $resident->id,
-                'message' => 'Registration successful. Please login.'
-            ], 'Registration successful', 201);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Registration error: ' . $e->getMessage());
-            return $this->respondError('Failed to register: ' . $e->getMessage(), null, 500);
         }
+
+        // ── 5. Cache the registration payload ─────────────────────
+        // We do NOT create the User yet. We store the pending
+        // registration so verifyRegistrationOtp() can finish the job.
+        $pendingKey = 'pending_registration:' . $email;
+
+        Cache::put($pendingKey, [
+            'resident_id'   => $resident->id,
+            'email'         => $email,
+            'first_name'    => trim($request->first_name),
+            'last_name'     => trim($request->last_name),
+            'phone_number'  => trim($request->phone_number),
+            'password_hash' => Hash::make($request->password),
+        ], now()->addMinutes(30));
+
+        // ── 6. Create + send OTP ─────────────────────────────────
+        // We use a synthetic user_id of 0 to avoid a FK violation
+        // on the otps_codes table. See the migration note below.
+        $otp = random_int(100000, 999999);
+
+        // Delete previous unused OTPs for this email+purpose
+        Otp::where('email', $email)
+            ->where('purpose', 'registration')
+            ->whereNull('used_at')
+            ->delete();
+
+        Otp::create([
+            'user_id'    => null, // allow null → see migration
+            'email'      => $email,
+            'code_hash'  => Hash::make($otp),
+            'purpose'    => 'registration',
+            'expires_at' => now()->addMinutes(10),
+            'attempts'   => 0,
+            'sent_at'    => now(),
+        ]);
+
+        try {
+            Mail::to($email)->send(new OtpMail($otp, (object)[
+                'email'   => $email,
+                'purpose' => 'registration',
+            ], 'registration'));
+        } catch (\Exception $e) {
+            Log::error('Failed to send registration OTP: ' . $e->getMessage());
+        }
+
+        return $this->respondSuccess([
+            'email'        => $email,
+            'requires_otp' => true,
+            'purpose'      => 'registration',
+            'dev_otp'      => $otp, // remove in production
+        ], 'OTP sent to your email address.', 200);
     }
 
     public function sendOtp(User $user, string $purpose)
@@ -317,15 +463,62 @@ class AuthController extends Controller
     public function checkEmail(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'purpose' => 'required|in:is_first_login,password_reset'
+            'email'   => 'required|email',
+            'purpose' => 'required|in:is_first_login,password_reset,registration',
         ]);
 
         if ($validator->fails()) {
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        $user = User::where('email', $request->email)->first();
+        $email = strtolower(trim($request->email));
+
+        // For registration resend: OTP must be regenerated from the cached payload
+        if ($request->purpose === 'registration') {
+            $pending = Cache::get('pending_registration:' . $email);
+
+            if (!$pending) {
+                return $this->respondError(
+                    'Registration session expired. Please start over.',
+                    null,
+                    422
+                );
+            }
+
+            $otp = random_int(100000, 999999);
+
+            Otp::where('email', $email)
+                ->where('purpose', 'registration')
+                ->whereNull('used_at')
+                ->delete();
+
+            Otp::create([
+                'user_id'    => null,
+                'email'      => $email,
+                'code_hash'  => Hash::make($otp),
+                'purpose'    => 'registration',
+                'expires_at' => now()->addMinutes(10),
+                'attempts'   => 0,
+                'sent_at'    => now(),
+            ]);
+
+            try {
+                Mail::to($email)->send(new OtpMail($otp, (object)[
+                    'email'   => $email,
+                    'purpose' => 'registration',
+                ], 'registration'));
+            } catch (\Exception $e) {
+                Log::error('Resend registration OTP failed: ' . $e->getMessage());
+            }
+
+            return $this->respondSuccess([
+                'email'   => $email,
+                'dev_otp' => $otp,
+            ], 'OTP resent to your email address.');
+        }
+
+        // Original flow for existing users
+        $user = User::where('email', $email)->first();
 
         if (!$user) {
             return $this->respondNotFound('Email not registered');

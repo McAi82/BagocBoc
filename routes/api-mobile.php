@@ -46,6 +46,7 @@ Route::post('/account-activation/request', [AccountActivationController::class, 
 
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/verify-registration-otp', [AuthController::class, 'verifyRegistrationOtp']);
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/check-email', [AuthController::class, 'checkEmail']);
     Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
