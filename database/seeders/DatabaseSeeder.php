@@ -61,7 +61,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // ============================================
-        // 1. BARANGAY ZONES (6 zones)
+        // 1. BARANGAY ZONES (9 zones)
         // ============================================
         $zones = [
             ['zone_number' => 1, 'name' => 'Zone 1 - Poblacion',  'latitude' => 8.4198, 'longitude' => 124.5022],
@@ -70,9 +70,17 @@ class DatabaseSeeder extends Seeder
             ['zone_number' => 4, 'name' => 'Zone 4 - Seaside',    'latitude' => 8.4200, 'longitude' => 124.5060],
             ['zone_number' => 5, 'name' => 'Zone 5 - Highway',    'latitude' => 8.4240, 'longitude' => 124.5010],
             ['zone_number' => 6, 'name' => 'Zone 6 - Interior',   'latitude' => 8.4160, 'longitude' => 124.5080],
+            ['zone_number' => 7, 'name' => 'Zone 7 - South',      'latitude' => 8.4150, 'longitude' => 124.5030],
+            ['zone_number' => 8, 'name' => 'Zone 8 - Central',    'latitude' => 8.4180, 'longitude' => 124.5070],
+            ['zone_number' => 9, 'name' => 'Zone 9 - North',      'latitude' => 8.4250, 'longitude' => 124.5050],
         ];
-        foreach ($zones as $zone) BarangayZone::create($zone);
-        $this->command->info('✅ Barangay zones seeded (6)');
+        foreach ($zones as $zone) {
+            BarangayZone::updateOrCreate(
+                ['zone_number' => $zone['zone_number']],
+                $zone
+            );
+        }
+        $this->command->info('✅ Barangay zones seeded (9)');
 
         // ============================================
         // 2. ROLES
@@ -90,47 +98,57 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Zone Leader', 'description' => 'Zone Leader'],
             ['name' => 'Resident', 'description' => 'Resident'],
         ];
-        foreach ($roles as $r) Role::create($r);
+        foreach ($roles as $r) {
+            Role::updateOrCreate(['name' => $r['name']], $r);
+        }
         $roleIds = Role::pluck('id', 'name')->toArray();
         $this->command->info('✅ Roles seeded (' . count($roles) . ')');
 
         // ============================================
         // 3. BARANGAY INFO
         // ============================================
-        BarangayInfo::create([
-            'name' => 'Bagocboc',
-            'captain_name' => 'Marcos P. Gonzales',
-            'municipality' => 'Opol',
-            'province' => 'Misamis Oriental',
-            'phone' => '+63 912 345 6789',
-            'email' => 'bagocboc.opol@example.com',
-            'address' => 'Zone 1, Barangay Bagocboc, Opol, Misamis Oriental',
-            'barangay_secretary' => 'Concordio A. Esber',
-            'barangay_treasurer' => 'Juan D. Dela Cruz',
-            'about_us' => 'Barangay Bagocboc is a progressive barangay in Opol, Misamis Oriental.',
-            'mission' => 'To provide quality service to our constituents.',
-            'vision' => 'A progressive and peaceful community.',
-        ]);
+        BarangayInfo::updateOrCreate(
+            ['id' => 1],
+            [
+                'name' => 'Bagocboc',
+                'captain_name' => 'Marcos P. Gonzales',
+                'municipality' => 'Opol',
+                'province' => 'Misamis Oriental',
+                'phone' => '+63 912 345 6789',
+                'email' => 'bagocboc.opol@example.com',
+                'address' => 'Zone 1, Barangay Bagocboc, Opol, Misamis Oriental',
+                'barangay_secretary' => 'Concordio A. Esber',
+                'barangay_treasurer' => 'Juan D. Dela Cruz',
+                'about_us' => 'Barangay Bagocboc is a progressive barangay in Opol, Misamis Oriental.',
+                'mission' => 'To provide quality service to our constituents.',
+                'vision' => 'A progressive and peaceful community.',
+            ]
+        );
         $this->command->info('✅ Barangay info seeded');
 
         // ============================================
         // 4. CLEARANCE CONFIGURATION
         // ============================================
-        ClearanceConfiguration::create([
-            'default_fee' => 50.00,
-            'punong_barangay_name' => 'Marcos P. Gonzales',
-            'barangay_secretary_name' => 'Concordio A. Esber',
-            'header_text' => 'Republic of the Philippines - Province of Misamis Oriental - Municipality of Opol',
-            'footer_text' => 'This clearance is valid for one year from the date of issuance.',
-            'is_active' => true,
-        ]);
+        ClearanceConfiguration::updateOrCreate(
+            ['id' => 1],
+            [
+                'default_fee' => 50.00,
+                'punong_barangay_name' => 'Marcos P. Gonzales',
+                'barangay_secretary_name' => 'Concordio A. Esber',
+                'header_text' => 'Republic of the Philippines - Province of Misamis Oriental - Municipality of Opol',
+                'footer_text' => 'This clearance is valid for one year from the date of issuance.',
+                'is_active' => true,
+            ]
+        );
         $this->command->info('✅ Clearance configuration seeded');
 
         // ============================================
         // 5. FOOD PRODUCTION TYPES
         // ============================================
         $foodTypes = ['Vegetable Gardening', 'Poultry Raising', 'Fish Pond'];
-        foreach ($foodTypes as $name) FoodProductionType::create(['name' => $name]);
+        foreach ($foodTypes as $name) {
+            FoodProductionType::firstOrCreate(['name' => $name]);
+        }
         $this->command->info('✅ Food production types seeded (3)');
 
         // ============================================
@@ -142,18 +160,19 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Certificate of Good Moral', 'description' => 'Good moral character', 'fee' => 50, 'is_active' => true],
             ['name' => 'Barangay Clearance', 'description' => 'Barangay clearance', 'fee' => 50, 'is_active' => true],
         ];
-        foreach ($certTypes as $t) CertificationType::create($t);
+        foreach ($certTypes as $t) {
+            CertificationType::updateOrCreate(['name' => $t['name']], $t);
+        }
         $this->command->info('✅ Certification types seeded (4)');
 
         // ============================================
-        // 7. HOUSEHOLDS + RESIDENTS (6 households, 30 residents)
+        // 7. HOUSEHOLDS + RESIDENTS
         //
-        // Distribution: 5 residents per household × 6 households = 30
-        // Each household lives in its own zone (1 zone per household).
+        // 9 households × 5 members = 45 residents
+        // Each household lives in its own zone (1 household per zone).
         // ============================================
-        $zoneList = BarangayZone::all();
+        $zoneList = BarangayZone::orderBy('zone_number')->get();
 
-        // ✅ First names for variety
         $firstNamesMale = [
             'Juan',
             'Pedro',
@@ -170,6 +189,16 @@ class DatabaseSeeder extends Seeder
             'Alfredo',
             'Rogelio',
             'Ernesto',
+            'Manuel',
+            'Diego',
+            'Victor',
+            'Sergio',
+            'Andres',
+            'Ramon',
+            'Nestor',
+            'Felipe',
+            'Gabriel',
+            'Enrique',
         ];
         $firstNamesFemale = [
             'Maria',
@@ -187,9 +216,19 @@ class DatabaseSeeder extends Seeder
             'Gloria',
             'Mila',
             'Cristina',
+            'Beatriz',
+            'Diana',
+            'Veronica',
+            'Patricia',
+            'Monica',
+            'Claudia',
+            'Sandra',
+            'Yolanda',
+            'Alma',
+            'Lorna',
         ];
 
-        // ✅ 6 family surnames
+        // ✅ 9 family surnames (one per zone)
         $surnames = [
             'Dela Cruz',
             'Santos',
@@ -197,6 +236,9 @@ class DatabaseSeeder extends Seeder
             'Garcia',
             'Bautista',
             'Mendoza',
+            'Aquino',
+            'Fernandez',
+            'Gonzales',
         ];
 
         $allResidents = [];
@@ -218,7 +260,7 @@ class DatabaseSeeder extends Seeder
             ]);
             $allHouseholds[] = $household;
 
-            // ✅ Build 5 members per household
+            // Build 5 members per household
             $members = [];
 
             // Head (male)
@@ -336,7 +378,7 @@ class DatabaseSeeder extends Seeder
         // 8. HOUSE GEOTAGS
         // ============================================
         foreach ($allHouseholds as $i => $household) {
-            $zone = $zoneList[$i % 6];
+            $zone = $zoneList[$i % 9];
             HouseGeotag::create([
                 'household_id' => $household->id,
                 'latitude' => $zone->latitude + ($i * 0.0005),
@@ -349,7 +391,7 @@ class DatabaseSeeder extends Seeder
         // ============================================
         // 9. USERS
         // ============================================
-        // Super Admin + 5 staff + 6 zone leaders + 1 resident
+        // Super Admin + 8 staff + 9 zone leaders + 1 resident
         $users = [
             ['email' => 'superadmin@gmail.com',   'role' => 'Super Admin',                 'resident' => null],
             ['email' => 'captain@gmail.com',      'role' => 'Barangay Captain',            'resident' => $allResidents[0]],
@@ -361,16 +403,19 @@ class DatabaseSeeder extends Seeder
             ['email' => 'bhw@gmail.com',          'role' => 'Barangay Health Worker',      'resident' => $allResidents[6]],
             ['email' => 'bns@gmail.com',          'role' => 'Barangay Nutrition Scholar',  'resident' => $allResidents[7]],
 
-            // ✅ 6 Zone Leaders, one per zone
+            // ✅ 9 Zone Leaders, one per zone
             ['email' => 'zoneleader1@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[8]],
             ['email' => 'zoneleader2@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[9]],
             ['email' => 'zoneleader3@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[10]],
             ['email' => 'zoneleader4@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[11]],
             ['email' => 'zoneleader5@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[12]],
             ['email' => 'zoneleader6@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[13]],
+            ['email' => 'zoneleader7@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[14]],
+            ['email' => 'zoneleader8@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[15]],
+            ['email' => 'zoneleader9@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[16]],
 
             // Resident demo account
-            ['email' => 'resident@gmail.com',     'role' => 'Resident',    'resident' => $allResidents[14]],
+            ['email' => 'resident@gmail.com',     'role' => 'Resident',    'resident' => $allResidents[17]],
         ];
 
         $userMap = [];
@@ -389,7 +434,7 @@ class DatabaseSeeder extends Seeder
             ]);
             $user->roles()->attach($roleIds[$u['role']]);
 
-            // Non-resident roles also get the Resident role so they have access to resident-level features
+            // Non-resident roles also get the Resident role
             if ($u['resident'] && $u['role'] !== 'Resident') {
                 $user->roles()->syncWithoutDetaching([$roleIds['Resident']]);
             }
@@ -474,8 +519,8 @@ class DatabaseSeeder extends Seeder
             NutritionAssessment::create([
                 'participant_id' => $participant->id,
                 'assessment_date' => now()->subDays(7),
-                'weight' => rand(180, 350) / 10,   // 18.0 - 35.0
-                'height' => rand(1050, 1450) / 10, // 105.0 - 145.0
+                'weight' => rand(180, 350) / 10,
+                'height' => rand(1050, 1450) / 10,
                 'bmi' => rand(150, 220) / 10,
                 'nutrition_status' => 'Normal',
                 'encoded_by' => $bhw->id,
@@ -706,8 +751,8 @@ class DatabaseSeeder extends Seeder
             ['resident' => $allResidents[0],  'type_idx' => 0, 'status' => 'Pending',  'purpose' => 'Employment'],
             ['resident' => $allResidents[1],  'type_idx' => 3, 'status' => 'Approved', 'purpose' => 'School'],
             ['resident' => $allResidents[2],  'type_idx' => 0, 'status' => 'Released', 'purpose' => 'Travel'],
-            ['resident' => $allResidents[15], 'type_idx' => 1, 'status' => 'Pending',  'purpose' => 'Financial Assistance'],
-            ['resident' => $allResidents[16], 'type_idx' => 2, 'status' => 'Approved', 'purpose' => 'Employment'],
+            ['resident' => $allResidents[20], 'type_idx' => 1, 'status' => 'Pending',  'purpose' => 'Financial Assistance'],
+            ['resident' => $allResidents[21], 'type_idx' => 2, 'status' => 'Approved', 'purpose' => 'Employment'],
         ];
 
         $certIndex = 1;
@@ -753,8 +798,8 @@ class DatabaseSeeder extends Seeder
             ['resident' => $allResidents[0],  'status' => 'pending'],
             ['resident' => $allResidents[3],  'status' => 'approved'],
             ['resident' => $allResidents[6],  'status' => 'released'],
-            ['resident' => $allResidents[17], 'status' => 'pending'],
-            ['resident' => $allResidents[18], 'status' => 'approved'],
+            ['resident' => $allResidents[22], 'status' => 'pending'],
+            ['resident' => $allResidents[23], 'status' => 'approved'],
         ];
         foreach ($clearances as $i => $c) {
             $createdAt = now()->subDays(15);
@@ -783,7 +828,7 @@ class DatabaseSeeder extends Seeder
         for ($i = 0; $i < 12; $i++) {
             $paidAt = now()->subDays(rand(1, 20));
             Payment::create([
-                'resident_id' => $allResidents[$i % 30]->id,
+                'resident_id' => $allResidents[$i % 45]->id,
                 'processed_by_user_id' => $treasurer->id,
                 'or_number' => 'OR-' . $paidAt->format('Ymd') . '-' . str_pad($i + 1, 4, '0', STR_PAD_LEFT),
                 'amount' => 50.00,
@@ -843,7 +888,7 @@ class DatabaseSeeder extends Seeder
             'paid_at' => now()->subDays(5),
         ]);
         Penalty::create([
-            'resident_id' => $allResidents[20]->id,
+            'resident_id' => $allResidents[30]->id,
             'issued_by_user_id' => $processedBy->id,
             'reference_number' => 'PNL-2026-0003',
             'reason' => 'Curfew violation',
@@ -1020,22 +1065,13 @@ class DatabaseSeeder extends Seeder
         // ============================================
         // 25. RESIDENT CONFIRMATIONS
         //
-        // ✅ One per zone leader (6 total), each for a resident in
-        //    a different household than the leader themselves.
+        // ✅ One per zone leader (9 total), each for a different resident.
         // ============================================
         foreach ($zoneLeaderUsers as $index => $zoneLeader) {
-            // Pick a resident from a different household
-            $residentToConfirm = $allResidentsCollection
-                ->first(
-                    fn($r) =>
-                    $r->id !== $zoneLeader->resident_id
-                        && $r->id !== ($zoneLeaderUsers[0]->resident_id ?? null)
-                )
+            // Rotate through residents so each zone leader confirms someone different
+            $pickIndex = ($index * 4 + 2) % count($allResidents);
+            $residentToConfirm = $allResidentsCollection[$pickIndex]
                 ?? $allResidentsCollection->first();
-
-            // Rotate residents so each zone leader confirms someone different
-            $pickIndex = ($index * 4) % count($allResidents);
-            $residentToConfirm = $allResidentsCollection[$pickIndex] ?? $residentToConfirm;
 
             ResidentConfirmation::create([
                 'resident_id' => $residentToConfirm->id,
@@ -1061,10 +1097,10 @@ class DatabaseSeeder extends Seeder
         // ============================================
         // 27. ZONE CHECK-INS
         //
-        // ✅ One per zone leader
+        // ✅ One per zone leader (9 total), one per zone.
         // ============================================
         foreach ($zoneLeaderUsers as $index => $zoneLeader) {
-            $zone = $zoneList[$index % 6];
+            $zone = $zoneList[$index % 9];
             ZoneCheckIn::create([
                 'zone_leader_id' => $zoneLeader->id,
                 'zone_id' => $zone->id,
@@ -1107,12 +1143,9 @@ class DatabaseSeeder extends Seeder
         $this->command->info('   - NDP: ndp@gmail.com');
         $this->command->info('   - BHW: bhw@gmail.com');
         $this->command->info('   - BNS: bns@gmail.com');
-        $this->command->info('   - Zone Leader 1: zoneleader1@gmail.com');
-        $this->command->info('   - Zone Leader 2: zoneleader2@gmail.com');
-        $this->command->info('   - Zone Leader 3: zoneleader3@gmail.com');
-        $this->command->info('   - Zone Leader 4: zoneleader4@gmail.com');
-        $this->command->info('   - Zone Leader 5: zoneleader5@gmail.com');
-        $this->command->info('   - Zone Leader 6: zoneleader6@gmail.com');
+        for ($i = 1; $i <= 9; $i++) {
+            $this->command->info("   - Zone Leader {$i}: zoneleader{$i}@gmail.com");
+        }
         $this->command->info('   - Resident: resident@gmail.com');
         $this->command->info('═══════════════════════════════════════');
     }

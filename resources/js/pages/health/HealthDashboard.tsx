@@ -21,10 +21,8 @@ import {
   Stethoscope,
   AlertCircle,
   RefreshCw,
-  TrendingUp,
-  TrendingDown,
   CheckCircle,
-  XCircle,
+  ArrowUpRight,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { api } from "../../api/apiClient";
@@ -82,7 +80,6 @@ export default function HealthDashboard() {
     fetchStats();
   }, []);
 
-  // ✅ Click outside to close search results
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -98,28 +95,16 @@ export default function HealthDashboard() {
 
   const extractData = (data: any): any => {
     if (!data) return {};
+    if (data?.data) return data.data;
+    if (data?.success && data?.data) return data.data;
+    if (data?.totalPatients !== undefined) return data;
 
-    console.log("🔍 Extracting stats data:", data);
-
-    // If data has a data property
-    if (data?.data) {
-      return data.data;
-    }
-
-    // If data is wrapped in success
-    if (data?.success && data?.data) {
-      return data.data;
-    }
-
-    // If data itself is the stats
-    if (data?.totalPatients !== undefined) {
-      return data;
-    }
-
-    // Try to find stats in nested structure
     const findStats = (obj: any): any => {
       if (!obj) return null;
-      if (obj.totalPatients !== undefined || obj.total_patients !== undefined) {
+      if (
+        obj.totalPatients !== undefined ||
+        obj.total_patients !== undefined
+      ) {
         return obj;
       }
       if (typeof obj === "object") {
@@ -131,22 +116,15 @@ export default function HealthDashboard() {
       return null;
     };
 
-    const found = findStats(data);
-    if (found) return found;
-
-    return {};
+    return findStats(data) || {};
   };
 
   const fetchStats = async () => {
     setIsLoading(true);
     setIsError(false);
     try {
-      console.log("📊 Fetching health dashboard stats...");
       const response = await api.get("/web/health/stats");
-      console.log("📦 Stats response:", response.data);
-
       const data = extractData(response.data);
-      console.log("✅ Extracted stats:", data);
 
       setStats({
         totalPatients:
@@ -157,7 +135,8 @@ export default function HealthDashboard() {
         senior: data.senior || 0,
         ncd: data.ncd || 0,
         todayCheckups: data.todayCheckups || data.today_checkups || 0,
-        pendingFollowups: data.pendingFollowups || data.pending_followups || 0,
+        pendingFollowups:
+          data.pendingFollowups || data.pending_followups || 0,
         male: data.male || 0,
         female: data.female || 0,
       });
@@ -225,15 +204,13 @@ export default function HealthDashboard() {
     }, 500);
   };
 
-  const statCards = [
-    {
-      id: "total",
-      label: "Total Patients",
-      value: stats.totalPatients,
-      icon: Users,
-      color: "blue",
-      path: "/barangay-bagocboc/health/records",
-    },
+  /* ============================================================
+     STAT DEFINITIONS
+     ============================================================ */
+
+  const totalPatients = stats.totalPatients || 1;
+
+  const breakdownStats = [
     {
       id: "pregnant",
       label: "Pregnant",
@@ -310,52 +287,67 @@ export default function HealthDashboard() {
   const getColorClasses = (color: string) => {
     const colors: Record<
       string,
-      { bg: string; light: string; text: string; hover: string }
+      { bg: string; light: string; text: string; bar: string; ring: string }
     > = {
       blue: {
         bg: "bg-blue-500",
         light: "bg-blue-50 dark:bg-blue-900/20",
         text: "text-blue-600 dark:text-blue-400",
-        hover: "hover:bg-blue-50 dark:hover:bg-blue-900/20",
+        bar: "bg-blue-500",
+        ring: "ring-blue-500/20",
       },
       pink: {
         bg: "bg-pink-500",
         light: "bg-pink-50 dark:bg-pink-900/20",
         text: "text-pink-600 dark:text-pink-400",
-        hover: "hover:bg-pink-50 dark:hover:bg-pink-900/20",
+        bar: "bg-pink-500",
+        ring: "ring-pink-500/20",
       },
       green: {
         bg: "bg-green-500",
         light: "bg-green-50 dark:bg-green-900/20",
         text: "text-green-600 dark:text-green-400",
-        hover: "hover:bg-green-50 dark:hover:bg-green-900/20",
+        bar: "bg-green-500",
+        ring: "ring-green-500/20",
       },
       purple: {
         bg: "bg-purple-500",
         light: "bg-purple-50 dark:bg-purple-900/20",
         text: "text-purple-600 dark:text-purple-400",
-        hover: "hover:bg-purple-50 dark:hover:bg-purple-900/20",
+        bar: "bg-purple-500",
+        ring: "ring-purple-500/20",
       },
       amber: {
         bg: "bg-amber-500",
         light: "bg-amber-50 dark:bg-amber-900/20",
         text: "text-amber-600 dark:text-amber-400",
-        hover: "hover:bg-amber-50 dark:hover:bg-amber-900/20",
+        bar: "bg-amber-500",
+        ring: "ring-amber-500/20",
       },
       red: {
         bg: "bg-red-500",
         light: "bg-red-50 dark:bg-red-900/20",
         text: "text-red-600 dark:text-red-400",
-        hover: "hover:bg-red-50 dark:hover:bg-red-900/20",
+        bar: "bg-red-500",
+        ring: "ring-red-500/20",
       },
       gray: {
         bg: "bg-gray-500",
         light: "bg-gray-50 dark:bg-gray-900/20",
         text: "text-gray-600 dark:text-gray-400",
-        hover: "hover:bg-gray-50 dark:hover:bg-gray-900/20",
+        bar: "bg-gray-500",
+        ring: "ring-gray-500/20",
       },
     };
     return colors[color] || colors.blue;
+  };
+
+  const getDisplayRole = () => {
+    const roles = user?.roles?.map((r) => r.name) || [];
+    if (roles.includes("Midwife")) return "Midwife";
+    if (roles.includes("Nurse Deployment Program")) return "NDP";
+    if (roles.includes("Super Admin")) return "Admin";
+    return "User";
   };
 
   if (isLoading) {
@@ -393,26 +385,16 @@ export default function HealthDashboard() {
     );
   }
 
-  const getDisplayRole = () => {
-    const roles = user?.roles?.map((r) => r.name) || [];
-    if (roles.includes("Midwife")) return "Midwife";
-    if (roles.includes("Nurse Deployment Program")) return "NDP";
-    if (roles.includes("Super Admin")) return "Admin";
-    return "User";
-  };
-
   return (
     <div className="space-y-6">
+      {/* ============================================ */}
       {/* Header */}
+      {/* ============================================ */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-theme-text">
             Health Dashboard
           </h1>
-          <p className="text-sm text-theme-textSecondary">
-            Welcome back, {user?.resident?.first_name || getDisplayRole()}! Manage
-            patient records and health services.
-          </p>
           {lastUpdated && (
             <p className="text-xs text-theme-textSecondary mt-1">
               Last updated: {lastUpdated}
@@ -436,7 +418,9 @@ export default function HealthDashboard() {
         </div>
       </div>
 
+      {/* ============================================ */}
       {/* Search Bar */}
+      {/* ============================================ */}
       <div className="relative" ref={searchRef}>
         <div className="flex items-center gap-3 bg-theme-surface border border-theme rounded-xl px-4 py-2 shadow-sm">
           <Search className="w-5 h-5 text-theme-textSecondary" />
@@ -452,7 +436,6 @@ export default function HealthDashboard() {
           )}
         </div>
 
-        {/* Search Results Dropdown */}
         {showSearchResults && searchResults.length > 0 && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-theme-surface border border-theme rounded-xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto">
             {searchResults.map((result) => (
@@ -512,27 +495,183 @@ export default function HealthDashboard() {
           )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {statCards.map((stat) => {
-          const colors = getColorClasses(stat.color);
-          return (
-            <button
-              key={stat.id}
-              onClick={() => navigate(stat.path)}
-              className={`bg-theme-surface border border-theme rounded-xl p-4 text-left transition-all ${colors.hover}`}
-            >
-              <div className={`p-2 rounded-lg ${colors.light} w-fit mb-2`}>
-                <stat.icon className={`w-5 h-5 ${colors.text}`} />
+      {/* ============================================ */}
+      {/* ✅ SINGLE CONSOLIDATED STATS CARD */}
+      {/* ============================================ */}
+      <div className="bg-theme-surface border border-theme rounded-2xl shadow-sm overflow-hidden">
+        {/* Card Header */}
+        <div className="px-6 py-5 border-b border-theme bg-theme-background/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-theme-primary/10">
+              <Stethoscope className="w-5 h-5 text-theme-primary" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-theme-text text-lg">
+                Patient Statistics
+              </h2>
+              <p className="text-xs text-theme-textSecondary">
+                Overview of all registered patients and their categories
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => navigate("/barangay-bagocboc/health/records")}
+            className="flex items-center gap-1 text-xs text-theme-primary hover:text-theme-secondary font-medium self-start sm:self-auto"
+          >
+            View all records <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Card Body */}
+        <div className="p-6 space-y-6">
+          {/* --- Top summary row --- */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Patients */}
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 text-white shadow-sm">
+              <div className="flex items-center justify-between">
+                <Users className="w-5 h-5 text-white/80" />
+                <span className="text-[10px] uppercase tracking-wide text-white/70 font-bold">
+                  Total
+                </span>
               </div>
-              <p className="text-2xl font-bold text-theme-text">{stat.value}</p>
-              <p className="text-sm text-theme-textSecondary">{stat.label}</p>
-            </button>
-          );
-        })}
+              <p className="text-3xl font-bold mt-2">{stats.totalPatients}</p>
+              <p className="text-xs text-white/80 mt-0.5">Registered Patients</p>
+            </div>
+
+            {/* Today's Checkups */}
+            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-4 text-white shadow-sm">
+              <div className="flex items-center justify-between">
+                <Calendar className="w-5 h-5 text-white/80" />
+                <span className="text-[10px] uppercase tracking-wide text-white/70 font-bold">
+                  Today
+                </span>
+              </div>
+              <p className="text-3xl font-bold mt-2">{stats.todayCheckups}</p>
+              <p className="text-xs text-white/80 mt-0.5">Checkups Recorded</p>
+            </div>
+
+            {/* Male */}
+            <div className="bg-gradient-to-br from-sky-500 to-sky-600 rounded-xl p-4 text-white shadow-sm">
+              <div className="flex items-center justify-between">
+                <User className="w-5 h-5 text-white/80" />
+                <span className="text-[10px] uppercase tracking-wide text-white/70 font-bold">
+                  Male
+                </span>
+              </div>
+              <p className="text-3xl font-bold mt-2">{stats.male || 0}</p>
+              <p className="text-xs text-white/80 mt-0.5">
+                {totalPatients > 1
+                  ? Math.round((stats.male / totalPatients) * 100)
+                  : 0}
+                % of total
+              </p>
+            </div>
+
+            {/* Female */}
+            <div className="bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl p-4 text-white shadow-sm">
+              <div className="flex items-center justify-between">
+                <User className="w-5 h-5 text-white/80" />
+                <span className="text-[10px] uppercase tracking-wide text-white/70 font-bold">
+                  Female
+                </span>
+              </div>
+              <p className="text-3xl font-bold mt-2">{stats.female || 0}</p>
+              <p className="text-xs text-white/80 mt-0.5">
+                {totalPatients > 1
+                  ? Math.round((stats.female / totalPatients) * 100)
+                  : 0}
+                % of total
+              </p>
+            </div>
+          </div>
+
+          {/* --- Divider --- */}
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-theme-border" />
+            <span className="text-xs text-theme-textSecondary font-medium uppercase tracking-wide">
+              Patient Breakdown
+            </span>
+            <div className="h-px flex-1 bg-theme-border" />
+          </div>
+
+          {/* --- 5-category breakdown --- */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {breakdownStats.map((item) => {
+              const colors = getColorClasses(item.color);
+              const pct = totalPatients
+                ? Math.round((item.value / totalPatients) * 100)
+                : 0;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => navigate(item.path)}
+                  className="group bg-theme-background border border-theme rounded-xl p-4 text-left hover:shadow-md hover:border-theme-primary/40 transition-all"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div
+                      className={`p-2 rounded-lg ${colors.light}`}
+                    >
+                      <item.icon className={`w-5 h-5 ${colors.text}`} />
+                    </div>
+                    <ArrowUpRight className="w-4 h-4 text-theme-textSecondary group-hover:text-theme-primary transition-colors" />
+                  </div>
+
+                  <p className="text-2xl font-bold text-theme-text">
+                    {item.value}
+                  </p>
+                  <p className="text-xs text-theme-textSecondary font-medium mt-0.5">
+                    {item.label}
+                  </p>
+
+                  {/* Progress bar */}
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-[10px] text-theme-textSecondary mb-1">
+                      <span>{pct}%</span>
+                      <span>of total</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-theme-surface rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${colors.bar} rounded-full transition-all duration-500`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* --- Pending follow-ups strip --- */}
+          <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-theme-text">
+                  Pending Follow-ups
+                </p>
+                <p className="text-xs text-theme-textSecondary">
+                  {stats.pendingFollowups === 0
+                    ? "All caught up! 🎉"
+                    : `${stats.pendingFollowups} follow-up${stats.pendingFollowups !== 1 ? "s" : ""} need attention`}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                {stats.pendingFollowups}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* ============================================ */}
       {/* Quick Actions */}
+      {/* ============================================ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {quickActions.map((action) => {
           const colors = getColorClasses(action.color);
@@ -557,77 +696,23 @@ export default function HealthDashboard() {
         })}
       </div>
 
-      {/* Today's Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-theme-surface border border-theme rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-theme-text">Today's Checkups</h3>
-            <Calendar className="w-5 h-5 text-theme-textSecondary" />
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-3xl font-bold text-theme-text">
-              {stats.todayCheckups}
-            </div>
-            <div className="text-sm text-theme-textSecondary">
-              {stats.todayCheckups === 0
-                ? "No checkups today"
-                : `${stats.todayCheckups} checkup${stats.todayCheckups !== 1 ? "s" : ""} recorded`}
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full">
-              Pregnant: {stats.pregnant || 0}
-            </span>
-            <span className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full">
-              Children: {stats.children || 0}
-            </span>
-            <span className="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full">
-              Lactating: {stats.lactating || 0}
-            </span>
-            <span className="text-xs px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full">
-              Senior: {stats.senior || 0}
-            </span>
-            <span className="text-xs px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full">
-              NCD: {stats.ncd || 0}
-            </span>
-          </div>
-        </div>
-
-        <div className="bg-theme-surface border border-theme rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-theme-text">
-              Pending Follow-ups
-            </h3>
-            <Clock className="w-5 h-5 text-theme-textSecondary" />
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-3xl font-bold text-amber-500">
-              {stats.pendingFollowups}
-            </div>
-            <div className="text-sm text-theme-textSecondary">
-              {stats.pendingFollowups === 0
-                ? "All caught up! 🎉"
-                : `${stats.pendingFollowups} follow-up${stats.pendingFollowups !== 1 ? "s" : ""} need attention`}
-            </div>
-          </div>
-          <div className="mt-4 flex items-center gap-2 text-xs text-theme-textSecondary">
-            <span
-              className={`px-2 py-1 rounded-full ${stats.pendingFollowups === 0 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}
-            >
-              {stats.pendingFollowups === 0
-                ? "✅ Up to date"
-                : "⚠️ Needs attention"}
-            </span>
-          </div>
-        </div>
-      </div>
-
+      {/* ============================================ */}
       {/* Demographics Summary */}
+      {/* ============================================ */}
       <div className="bg-theme-surface border border-theme rounded-xl p-6">
-        <h3 className="font-semibold text-theme-text mb-4">
-          Demographics Summary
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-theme-text">
+              Demographics Summary
+            </h3>
+            <p className="text-xs text-theme-textSecondary mt-0.5">
+              Quick distribution of registered patients
+            </p>
+          </div>
+          <CheckCircle className="w-5 h-5 text-green-500" />
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="bg-theme-background rounded-lg p-4 text-center">
             <p className="text-sm text-theme-textSecondary">Total Patients</p>
             <p className="text-2xl font-bold text-theme-text">

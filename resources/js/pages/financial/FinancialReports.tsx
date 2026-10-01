@@ -19,6 +19,12 @@ import {
   Trash2,
   AlertCircle,
   Inbox,
+  User as UserIcon,
+  Calendar as CalendarIcon,
+  DollarSign,
+  Info,
+  BarChart3,
+  Tag,
 } from "lucide-react";
 import { formatDate, formatCurrency, getStatusColor } from "../../utils/format";
 import { api } from "../../api/apiClient";
@@ -26,16 +32,13 @@ import { useAuthStore } from "../../stores/authStore";
 import Spinner from "../../components/ui/Spinner";
 import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
+import SendReportModal, {
+  SendReportPayload,
+} from "../../components/features/SendReportModal";
+import ReportDetailModal from "../../components/features/ReportDetailModal";
+import { printReport, statusBadge, esc } from "../../utils/printReport";
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
-
-const REPORT_TYPE_OPTIONS = [
-  { value: "collection", label: "Collection Report" },
-  { value: "annual", label: "Annual Summary" },
-  { value: "certificate", label: "Certificate Report" },
-  { value: "tax", label: "Tax Collection Report" },
-  { value: "payment", label: "Payment Summary" },
-];
 
 export default function FinancialReports() {
   const { user } = useAuthStore();
@@ -54,7 +57,13 @@ export default function FinancialReports() {
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✅ Pagination state
+  // ✅ Send-to-captain state
+  const [sendPayload, setSendPayload] = useState<SendReportPayload | null>(
+    null,
+  );
+  const [showSendModal, setShowSendModal] = useState(false);
+
+  // ✅ Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -171,7 +180,6 @@ export default function FinancialReports() {
     fetchData();
   }, [typeFilter]);
 
-  // ✅ Filtered reports
   const filteredReports = useMemo(() => {
     if (!Array.isArray(reports) || reports.length === 0) return [];
     let filtered = [...reports];
@@ -197,7 +205,6 @@ export default function FinancialReports() {
     return filtered;
   }, [reports, searchQuery, statusFilter]);
 
-  // ✅ Pagination calculations
   const totalPages = Math.max(
     1,
     Math.ceil(filteredReports.length / itemsPerPage),
@@ -212,12 +219,10 @@ export default function FinancialReports() {
     return filteredReports.slice(startIndex, endIndex);
   }, [filteredReports, startIndex, endIndex]);
 
-  // ✅ Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter, typeFilter, itemsPerPage]);
 
-  // ✅ Clamp current page
   useEffect(() => {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
@@ -298,18 +303,63 @@ export default function FinancialReports() {
     }
   };
 
-  const handleSendForApproval = async (id: number) => {
+  /* ============================================================
+     ✅ Send to Captain — opens confirmation modal
+     ============================================================ */
+  const handleSendForApproval = (id: number) => {
     if (!isTreasurer && !isSecretary && !isSuperAdmin) {
       toast.error("Only Treasurer or Secretary can send reports for approval");
       return;
     }
-    try {
-      await api.post(`/web/financial-reports/${id}/submit`);
-      toast.success("Report sent for approval!");
-      fetchData();
-    } catch (error) {
-      toast.error("Failed to send report");
+
+    const report = reports.find((r) => r.id === id);
+    if (!report) {
+      toast.error("Report not found");
+      return;
     }
+
+    const content = [
+      `SCD REPORT — ${report.title}`,
+      `Type: ${report.report_type}`,
+      `Period: ${report.period}`,
+      `Amount: ${formatCurrency(parseFloat(report.total_amount) || 0)}`,
+      "",
+      "Notes:",
+      report.notes || "No notes provided.",
+      "",
+      "This report is submitted for Captain review and approval.",
+    ].join("\n");
+
+    setSendPayload({
+      report_type: report.report_type,
+      title: report.title,
+      content,
+      period: report.period,
+      metadata: {
+        report_id: report.id,
+        report_type: report.report_type,
+        period: report.period,
+        total_amount: parseFloat(report.total_amount) || 0,
+        status: report.status,
+        source: "SCD Reports",
+      },
+    });
+    setShowSendModal(true);
+  };
+
+  const handleConfirmSend = async (payload: SendReportPayload) => {
+    const reportId = payload.metadata?.report_id;
+    if (!reportId) {
+      throw new Error("Missing report id");
+    }
+
+    await api.post(`/web/financial-reports/${reportId}/submit`, {
+      title: payload.title,
+      content: payload.content,
+      period: payload.period,
+    });
+
+    fetchData();
   };
 
   const handleApprove = async (id: number) => {
@@ -373,35 +423,147 @@ export default function FinancialReports() {
     }
   };
 
+  function parseReportBody(
+    body: string,
+  ): { field: string; value: string }[] {
+    const lines = body.split("\n");
+    const out: { field: string; value: string }[] = [];
+
+    const isDecoration = (line: string) =>
+      /^[═─=_.\s]+$/.test(line.trim()) && line.trim().length > 0;
+
+    const isDotLeader = (line: string) =>
+      /\.{2,}/.test(line) && line.includes(" ");
+
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const line = raw.trim();
+
+      if (!line || isDecoration(line)) continue;
+
+      if (
+        /^(resident|clearance|certificate|scd|financial|scd report|report)\s+report$/i.test(
+          line,
+        )
+      ) {
+        continue;
+      }
+      if (/^barangay bagocboc, opol/i.test(line)) continue;
+
+      if (isDotLeader(raw)) {
+        const match = raw.match(/^(.*?)\s*\.{2,}\s*(.*)$/);
+        if (match) {
+          const field = match[1].trim();
+          const value = match[2].trim();
+          if (field) out.push({ field, value });
+        }
+        continue;
+      }
+
+      const colonIndex = raw.indexOf(":");
+      if (colonIndex > 0) {
+        const field = raw.slice(0, colonIndex).trim();
+        const value = raw.slice(colonIndex + 1).trim();
+        if (field && field.length < 60) {
+          out.push({ field, value: value || "—" });
+          continue;
+        }
+      }
+
+      out.push({ field: "•", value: esc(line) });
+    }
+
+    return out;
+  }
+
+  /* ============================================================
+     ✅ Professional print via shared printReport utility
+     ============================================================ */
   const handlePrint = (report: any) => {
     if (!canPrintDownload && !isSuperAdmin) {
       toast.error("You don't have permission to print reports");
       return;
     }
-    const printWindow = window.open("", "_blank", "width=800,height=600");
-    if (!printWindow) {
-      toast.error("Please allow popups");
-      return;
+
+    // ✅ Build rows for the Field/Value table
+    const rows: { field: string; value: string }[] = [
+      { field: "Report Title", value: esc(report.title) },
+      { field: "Report Type", value: esc(report.report_type) },
+      { field: "Period", value: esc(report.period) },
+      {
+        field: "Total Amount",
+        value: `₱${(parseFloat(report.total_amount) || 0).toLocaleString(
+          "en-PH",
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+        )}`,
+      },
+      { field: "Status", value: statusBadge(report.status) },
+      {
+        field: "Created",
+        value: report.created_at
+          ? esc(new Date(report.created_at).toLocaleString("en-PH"))
+          : "—",
+      },
+      {
+        field: "Submitted",
+        value: report.submitted_at
+          ? esc(new Date(report.submitted_at).toLocaleString("en-PH"))
+          : "Not yet submitted",
+      },
+      {
+        field: "Approved",
+        value: report.approved_at
+          ? esc(new Date(report.approved_at).toLocaleString("en-PH"))
+          : "Not yet approved",
+      },
+      { field: "Created By", value: esc(getSenderName(report)) },
+    ];
+
+    // ✅ If the notes contain the long-form report body, parse it into rows
+    if (report.notes && typeof report.notes === "string") {
+      const parsed = parseReportBody(report.notes);
+      if (parsed.length > 0) {
+        rows.push({ field: "Report Content", value: "" }); // section spacer
+        parsed.forEach((p) => rows.push(p));
+      } else {
+        rows.push({ field: "Notes", value: esc(report.notes) });
+      }
     }
-    printWindow.document.write(`
-      <!DOCTYPE html><html><head><title>Financial Report - ${report.title}</title>
-      <style>body{font-family:Arial;padding:40px;max-width:800px;margin:0 auto;color:#333}.header{text-align:center;border-bottom:2px solid #333;padding-bottom:20px;margin-bottom:20px}.header h1{font-size:24px;margin:0;color:#1a56db}.details{margin:20px 0}.details table{width:100%;border-collapse:collapse}.details td{padding:8px 0;border-bottom:1px solid #eee}.details .label{color:#666;font-weight:bold}.footer{text-align:center;font-size:12px;color:#999;margin-top:30px;padding-top:20px;border-top:1px solid #ddd}
-      @media print{.no-print{display:none}body{padding:20px}}</style>
-      </head><body>
-      <div class="header"><h1>Barangay Bagocboc</h1><p>Financial Report</p><p><strong>${report.title}</strong></p></div>
-      <div class="details"><table>
-        <tr><td class="label">Report Type</td><td>${report.report_type?.toUpperCase() || "N/A"}</td></tr>
-        <tr><td class="label">Period</td><td>${report.period || "N/A"}</td></tr>
-        <tr><td class="label">Status</td><td>${report.status?.toUpperCase() || "DRAFT"}</td></tr>
-        <tr><td class="label">Total Amount</td><td>${formatCurrency(parseFloat(report.total_amount) || 0)}</td></tr>
-        <tr><td class="label">Submitted By</td><td>${report.created_by?.email || "N/A"}</td></tr>
-        <tr><td class="label">Notes</td><td>${report.notes || "No notes"}</td></tr>
-      </table></div>
-      <div class="footer"><p>This is a system-generated report.</p><p>Barangay Bagocboc Management System</p></div>
-      <div style="text-align:center;margin-top:20px;" class="no-print"><button onclick="window.print()" style="padding:10px 30px;background:#1a56db;color:white;border:none;border-radius:5px;cursor:pointer;">Print</button><button onclick="window.close()" style="padding:10px 30px;background:#6b7280;color:white;border:none;border-radius:5px;cursor:pointer;margin-left:10px;">Close</button></div>
-      <script>setTimeout(() => window.print(), 500)</script></body></html>
-    `);
-    printWindow.document.close();
+
+    if (report.rejection_reason) {
+      rows.push({
+        field: "Rejection Reason",
+        value: esc(report.rejection_reason),
+      });
+    }
+
+    const ok = printReport({
+      title: "SCD Report",
+      subtitle: report.title,
+      periodLabel: report.period || "—",
+      columns: [
+        { key: "field", label: "Field", width: "32%" },
+        { key: "value", label: "Value" },
+      ],
+      rows,
+      summary: [
+        {
+          label: "Amount",
+          value: `₱${(parseFloat(report.total_amount) || 0).toLocaleString(
+            "en-PH",
+            { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+          )}`,
+        },
+        { label: "Status", value: report.status },
+        { label: "Period", value: report.period },
+      ],
+      signatories: {
+        left: { name: "Concordio A. Esber", title: "Barangay Secretary" },
+        right: { name: "Marcos P. Gonzales", title: "Punong Barangay" },
+      },
+    });
+
+    if (!ok) toast.error("Please allow popups to print the report");
   };
 
   const handleDownloadPDF = (report: any) => {
@@ -437,7 +599,6 @@ export default function FinancialReports() {
         ["Status", report.status?.toUpperCase() || "DRAFT"],
         ["Total Amount", formatCurrency(parseFloat(report.total_amount) || 0)],
         ["Submitted By", report.created_by?.email || "N/A"],
-        ["Notes", report.notes || "No notes"],
       ];
       let y = 55;
       details.forEach(([label, value]) => {
@@ -514,7 +675,6 @@ export default function FinancialReports() {
     );
   }
 
-  // ✅ Empty state (no reports at all)
   if (reports.length === 0 && !isLoading) {
     return (
       <div className="space-y-6">
@@ -623,7 +783,7 @@ export default function FinancialReports() {
         </div>
       </div>
 
-      {/* Filters + Items per page */}
+      {/* Filters */}
       <div className="bg-theme-surface rounded-xl border border-theme p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
@@ -672,7 +832,6 @@ export default function FinancialReports() {
           </select>
         </div>
 
-        {/* Results info */}
         {filteredReports.length > 0 && (
           <div className="mt-3 pt-3 border-t border-theme flex items-center justify-between text-sm text-theme-textSecondary flex-wrap gap-2">
             <span>
@@ -715,7 +874,9 @@ export default function FinancialReports() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full ${getStatusColor(report.status || "draft")}`}
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs rounded-full ${getStatusColor(
+                            report.status || "draft",
+                          )}`}
                         >
                           {getStatusIcon(report.status || "draft")}
                           {report.status || "draft"}
@@ -852,7 +1013,6 @@ export default function FinancialReports() {
               ))}
             </div>
 
-            {/* ✅ Pagination */}
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -865,7 +1025,7 @@ export default function FinancialReports() {
         )}
       </div>
 
-      {/* Create Modal */}
+      {/* CREATE MODAL */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => {
@@ -890,7 +1050,7 @@ export default function FinancialReports() {
         />
       </Modal>
 
-      {/* Edit Modal */}
+      {/* EDIT MODAL */}
       <Modal
         isOpen={showEditModal}
         onClose={() => {
@@ -917,132 +1077,168 @@ export default function FinancialReports() {
         />
       </Modal>
 
-      {/* View Modal */}
-      <Modal
+      {/* VIEW DETAILS MODAL */}
+      <ReportDetailModal
         isOpen={showViewModal}
         onClose={() => {
           setShowViewModal(false);
           setSelectedReport(null);
         }}
-        title="Report Details"
-        size="lg"
-      >
-        {selectedReport && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Title
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedReport.title}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Status
-                </p>
-                <span
-                  className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(selectedReport.status)}`}
-                >
-                  {selectedReport.status}
-                </span>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Report Type
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedReport.report_type}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Period
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedReport.period}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Total Amount
-                </p>
-                <p className="font-medium text-theme-text">
-                  {formatCurrency(parseFloat(selectedReport.total_amount) || 0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Created By
-                </p>
-                <p className="font-medium text-theme-text">
-                  {getSenderName(selectedReport)}
-                </p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Notes
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedReport.notes || "No notes"}
-                </p>
-              </div>
-              {selectedReport.approved_at && (
-                <div>
-                  <p className="text-xs text-theme-textSecondary font-medium">
-                    Approved At
-                  </p>
-                  <p className="font-medium text-theme-text">
-                    {formatDate(selectedReport.approved_at)}
-                  </p>
-                </div>
-              )}
-              {selectedReport.rejection_reason && (
-                <div className="col-span-2">
-                  <p className="text-xs text-theme-textSecondary font-medium">
-                    Rejection Reason
-                  </p>
-                  <p className="font-medium text-red-600">
-                    {selectedReport.rejection_reason}
-                  </p>
-                </div>
-              )}
+        title="SCD Report Details"
+        badge={
+          selectedReport
+            ? {
+              label: selectedReport.status || "draft",
+              className:
+                selectedReport.status === "approved"
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                  : selectedReport.status === "pending"
+                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    : selectedReport.status === "rejected"
+                      ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                      : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
+            }
+            : undefined
+        }
+        headerIcon={BarChart3}
+        subtitle={
+          selectedReport && (
+            <div>
+              <p className="font-semibold text-theme-text text-base">
+                {selectedReport.title}
+              </p>
+              <p className="text-xs">
+                {selectedReport.report_type} • {selectedReport.period}
+              </p>
             </div>
-            <div className="flex justify-end gap-3">
-              {(selectedReport.status === "approved" ||
-                selectedReport.status === "rejected") &&
-                (canPrintDownload || isSuperAdmin) && (
-                  <>
-                    <button
-                      onClick={() => handlePrint(selectedReport)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <Printer className="w-4 h-4" /> Print
-                    </button>
-                    <button
-                      onClick={() => handleDownloadPDF(selectedReport)}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                    >
-                      <Download className="w-4 h-4" /> Download PDF
-                    </button>
-                  </>
-                )}
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  setSelectedReport(null);
-                }}
-                className="px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+          )
+        }
+        sections={
+          selectedReport
+            ? [
+              {
+                title: "Report Information",
+                icon: FileText,
+                rows: [
+                  {
+                    label: "Report Title",
+                    value: selectedReport.title,
+                    icon: FileText,
+                    span: 2,
+                  },
+                  {
+                    label: "Report Type",
+                    value: selectedReport.report_type || "—",
+                    icon: Tag,
+                  },
+                  {
+                    label: "Period",
+                    value: selectedReport.period || "—",
+                    icon: CalendarIcon,
+                  },
+                ],
+              },
+              {
+                title: "Amount & Financials",
+                icon: DollarSign,
+                rows: [
+                  {
+                    label: "Total Amount",
+                    value: formatCurrency(
+                      parseFloat(selectedReport.total_amount) || 0,
+                    ),
+                    icon: DollarSign,
+                  },
+                ],
+              },
+              {
+                title: "Processing Timeline",
+                icon: Clock,
+                rows: [
+                  {
+                    label: "Created",
+                    value: selectedReport.created_at
+                      ? formatDate(selectedReport.created_at)
+                      : "—",
+                    icon: CalendarIcon,
+                  },
+                  {
+                    label: "Submitted",
+                    value: selectedReport.submitted_at
+                      ? formatDate(selectedReport.submitted_at)
+                      : "Not yet submitted",
+                    icon: Send,
+                  },
+                  {
+                    label: "Approved",
+                    value: selectedReport.approved_at
+                      ? formatDate(selectedReport.approved_at)
+                      : "Not yet approved",
+                    icon: CheckCircle,
+                  },
+                  {
+                    label: "Rejected",
+                    value: selectedReport.rejection_reason
+                      ? formatDate(
+                        selectedReport.rejected_at ||
+                        selectedReport.updated_at,
+                      )
+                      : "—",
+                    icon: XCircle,
+                  },
+                ],
+              },
+              {
+                title: "People Involved",
+                icon: UserIcon,
+                rows: [
+                  {
+                    label: "Created By",
+                    value: getSenderName(selectedReport),
+                    icon: UserIcon,
+                  },
+                  {
+                    label: "Reviewed By",
+                    value:
+                      selectedReport.approved_by?.email ||
+                      "Not reviewed yet",
+                    icon: UserIcon,
+                  },
+                ],
+              },
+              {
+                title: "Notes & Remarks",
+                icon: Info,
+                rows: [
+                  {
+                    label: "Notes",
+                    value: selectedReport.notes || "No notes provided",
+                    span: 2,
+                    preformatted: true, // ✅ preserves ═══ / ─── formatting
+                  },
+                  {
+                    label: "Rejection Reason",
+                    value: selectedReport.rejection_reason || "—",
+                    span: 2,
+                  },
+                ],
+              },
+            ]
+            : []
+        }
+        footerActions={
+          <button
+            onClick={() => {
+              if (selectedReport) handlePrint(selectedReport);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
+          >
+            <Printer className="w-4 h-4" /> Print Report
+          </button>
+        }
+      />
 
-      {/* Delete Modal */}
+      {/* DELETE MODAL */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => {
@@ -1087,7 +1283,7 @@ export default function FinancialReports() {
         </div>
       </Modal>
 
-      {/* Reject Modal */}
+      {/* REJECT MODAL */}
       <Modal
         isOpen={showRejectModal}
         onClose={() => {
@@ -1133,6 +1329,18 @@ export default function FinancialReports() {
           </div>
         </div>
       </Modal>
+
+      {/* SEND-TO-CAPTAIN CONFIRMATION MODAL */}
+      <SendReportModal
+        isOpen={showSendModal}
+        onClose={() => {
+          setShowSendModal(false);
+          setSendPayload(null);
+        }}
+        payload={sendPayload}
+        onSend={handleConfirmSend}
+        reportLabel="SCD Report"
+      />
     </div>
   );
 }
@@ -1161,9 +1369,8 @@ function ReportForm({
           type="text"
           value={formData.title}
           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors placeholder:text-theme-textSecondary ${
-            formErrors.title ? "border-red-500" : "border-theme"
-          }`}
+          className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors placeholder:text-theme-textSecondary ${formErrors.title ? "border-red-500" : "border-theme"
+            }`}
           placeholder="e.g., Monthly Collection Report - July 2026"
         />
         {formErrors.title && (
@@ -1179,9 +1386,8 @@ function ReportForm({
           onChange={(e) =>
             setFormData({ ...formData, report_type: e.target.value })
           }
-          className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-            formErrors.report_type ? "border-red-500" : "border-theme"
-          }`}
+          className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.report_type ? "border-red-500" : "border-theme"
+            }`}
         >
           {reportTypeOptions.map((option: any) => (
             <option key={option.value} value={option.value}>
@@ -1201,9 +1407,8 @@ function ReportForm({
           type="text"
           value={formData.period}
           onChange={(e) => setFormData({ ...formData, period: e.target.value })}
-          className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors placeholder:text-theme-textSecondary ${
-            formErrors.period ? "border-red-500" : "border-theme"
-          }`}
+          className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors placeholder:text-theme-textSecondary ${formErrors.period ? "border-red-500" : "border-theme"
+            }`}
           placeholder="e.g., July 2026, Q2 2026, 2025"
         />
         {formErrors.period && (

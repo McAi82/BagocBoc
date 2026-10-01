@@ -90,11 +90,8 @@ class FinancialReportController extends Controller
         return $this->respondSuccess($report);
     }
 
-    /**
-     * Submit report for approval
-     * ✅ Notifies Captain of pending report
-     */
-    public function submit($id)
+
+    public function submit(Request $request, $id)
     {
         $report = FinancialReport::find($id);
 
@@ -106,12 +103,30 @@ class FinancialReportController extends Controller
             return $this->respondError('Only draft reports can be submitted', null, 422);
         }
 
-        $report->update([
-            'status' => 'pending',
-            'submitted_at' => now(),
+        $validator = Validator::make($request->all(), [
+            'title'    => 'sometimes|string|max:255',
+            'content'  => 'sometimes|string',
+            'period'   => 'sometimes|string|max:100',
+            'metadata' => 'sometimes|array',
         ]);
 
-        // ✅ Notify Captain that a report is waiting for approval
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
+
+        $report->update([
+            'title'        => $request->input('title', $report->title),
+            'period'       => $request->input('period', $report->period),
+            'notes'        => $request->input('content', $report->notes),
+            'status'       => 'pending',
+            'submitted_at' => now(),
+            'report_data'  => array_merge(
+                is_array($report->report_data) ? $report->report_data : [],
+                $request->input('metadata', [])
+            ),
+        ]);
+
+        // ✅ Notify Captain
         $this->notifyRole(
             'Barangay Captain',
             '📊 Financial Report Awaiting Approval',

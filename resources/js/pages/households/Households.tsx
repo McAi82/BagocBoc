@@ -40,7 +40,9 @@ export default function Households() {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+
+  // ✅ List view is now the default
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   // ✅ Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,12 +60,10 @@ export default function Households() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // ✅ Check user roles
+  // ✅ Role checks
   const userRoles = user?.roles?.map((r) => r.name) || [];
-  const isCaptain = userRoles.includes("Barangay Captain");
   const isSecretary = userRoles.includes("Barangay Secretary");
   const isSuperAdmin = userRoles.includes("Super Admin");
-
   const canAddHousehold = isSecretary || isSuperAdmin;
 
   const extractData = (data: any): any[] => {
@@ -96,10 +96,8 @@ export default function Households() {
     try {
       console.log("🔍 [Households] Fetching households...");
       const response = await api.get("/web/households-info");
-      console.log("📦 [Households] Response:", response.data);
       const data = extractData(response.data);
       console.log(`✅ [Households] Loaded ${data.length} households`);
-
       setHouseholds(data);
     } catch (error) {
       console.error("❌ [Households] Error:", error);
@@ -438,6 +436,7 @@ export default function Households() {
         </div>
       </div>
 
+      {/* Search + view toggle + per-page */}
       <div className="bg-theme-surface rounded-xl border border-theme p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
@@ -468,22 +467,20 @@ export default function Households() {
             <div className="flex rounded-lg border border-theme overflow-hidden">
               <button
                 onClick={() => setViewMode("grid")}
-                className={`px-3 py-2 transition-colors ${
-                  viewMode === "grid"
-                    ? "bg-theme-primary text-white"
-                    : "bg-theme-surface text-theme-textSecondary hover:bg-theme-hover"
-                }`}
+                className={`px-3 py-2 transition-colors ${viewMode === "grid"
+                  ? "bg-theme-primary text-white"
+                  : "bg-theme-surface text-theme-textSecondary hover:bg-theme-hover"
+                  }`}
                 title="Grid View"
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode("list")}
-                className={`px-3 py-2 transition-colors ${
-                  viewMode === "list"
-                    ? "bg-theme-primary text-white"
-                    : "bg-theme-surface text-theme-textSecondary hover:bg-theme-hover"
-                }`}
+                className={`px-3 py-2 transition-colors ${viewMode === "list"
+                  ? "bg-theme-primary text-white"
+                  : "bg-theme-surface text-theme-textSecondary hover:bg-theme-hover"
+                  }`}
                 title="List View"
               >
                 <List className="w-4 h-4" />
@@ -670,11 +667,93 @@ export default function Households() {
               </tbody>
             </table>
           </div>
+
+          {/* ✅ Pagination Controls (inside the table card) */}
+          {totalPages > 1 && (
+            <div className="px-4 py-4 border-t border-theme flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-sm text-theme-textSecondary order-2 sm:order-1">
+                Showing{" "}
+                <span className="font-semibold text-theme-text">
+                  {startIndex + 1}–{endIndex}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-theme-text">
+                  {filteredHouseholds.length}
+                </span>{" "}
+                households
+              </p>
+
+              <div className="flex items-center gap-1 order-1 sm:order-2">
+                <button
+                  onClick={() => goToPage(1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg border border-theme hover:bg-theme-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-theme-textSecondary"
+                  title="First page"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="p-2 rounded-lg border border-theme hover:bg-theme-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-theme-textSecondary"
+                  title="Previous page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <div className="flex items-center gap-1 mx-1">
+                  {getPageNumbers().map((page, index) => {
+                    if (page === "...") {
+                      return (
+                        <span
+                          key={`ellipsis-${index}`}
+                          className="px-2 text-theme-textSecondary text-sm"
+                        >
+                          …
+                        </span>
+                      );
+                    }
+                    const pageNum = page as number;
+                    const isActive = pageNum === currentPage;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => goToPage(pageNum)}
+                        className={`min-w-[36px] h-9 px-3 rounded-lg text-sm font-medium transition-colors ${isActive
+                          ? "bg-theme-primary text-white shadow-sm"
+                          : "border border-theme text-theme-text hover:bg-theme-hover"
+                          }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg border border-theme hover:bg-theme-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-theme-textSecondary"
+                  title="Next page"
+                >
+                  <ChevronRightIcon className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => goToPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 rounded-lg border border-theme hover:bg-theme-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-theme-textSecondary"
+                  title="Last page"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
+      {/* ✅ Pagination Controls (for grid view — rendered below the grid) */}
+      {viewMode === "grid" && filteredHouseholds.length > 0 && totalPages > 1 && (
         <div className="bg-theme-surface rounded-xl border border-theme shadow-sm px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-sm text-theme-textSecondary order-2 sm:order-1">
             Showing{" "}
@@ -724,11 +803,10 @@ export default function Households() {
                   <button
                     key={pageNum}
                     onClick={() => goToPage(pageNum)}
-                    className={`min-w-[36px] h-9 px-3 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-theme-primary text-white shadow-sm"
-                        : "border border-theme text-theme-text hover:bg-theme-hover"
-                    }`}
+                    className={`min-w-[36px] h-9 px-3 rounded-lg text-sm font-medium transition-colors ${isActive
+                      ? "bg-theme-primary text-white shadow-sm"
+                      : "border border-theme text-theme-text hover:bg-theme-hover"
+                      }`}
                   >
                     {pageNum}
                   </button>
@@ -776,9 +854,8 @@ export default function Households() {
               onChange={(e) =>
                 setFormData({ ...formData, zone: e.target.value })
               }
-              className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                formErrors.zone ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.zone ? "border-red-500" : "border-theme"
+                }`}
             >
               <option value="">Select Zone</option>
               {zones.map((zone: any) => (
@@ -802,9 +879,8 @@ export default function Households() {
               onChange={(e) =>
                 setFormData({ ...formData, street: e.target.value })
               }
-              className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                formErrors.street ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.street ? "border-red-500" : "border-theme"
+                }`}
               placeholder="Street name or purok"
             />
             {formErrors.street && (
@@ -826,11 +902,10 @@ export default function Households() {
                     household_number: e.target.value,
                   })
                 }
-                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                  formErrors.household_number
-                    ? "border-red-500"
-                    : "border-theme"
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.household_number
+                  ? "border-red-500"
+                  : "border-theme"
+                  }`}
                 placeholder="e.g., BB-001"
               />
               {formErrors.household_number && (
@@ -852,11 +927,10 @@ export default function Households() {
                     household_tracking_number: e.target.value,
                   })
                 }
-                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                  formErrors.household_tracking_number
-                    ? "border-red-500"
-                    : "border-theme"
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.household_tracking_number
+                  ? "border-red-500"
+                  : "border-theme"
+                  }`}
                 placeholder="e.g., TRK-001"
               />
               {formErrors.household_tracking_number && (

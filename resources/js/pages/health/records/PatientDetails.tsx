@@ -1235,6 +1235,7 @@ export default function PatientDetails() {
                 key={checkup.id}
                 className="border border-theme rounded-lg p-4 hover:bg-theme-hover/50 transition-colors"
               >
+                {/* Header */}
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <CalendarIcon className="w-4 h-4 text-theme-textSecondary" />
@@ -1249,6 +1250,8 @@ export default function PatientDetails() {
                     by {checkup.performed_by?.email || "Unknown"}
                   </span>
                 </div>
+
+                {/* Shared fields */}
                 {checkup.assessment && (
                   <p className="text-sm text-theme-text mb-1">
                     <span className="font-medium">Assessment: </span>
@@ -1261,11 +1264,289 @@ export default function PatientDetails() {
                     {checkup.recommendations}
                   </p>
                 )}
+
+                {/* Type-specific details */}
+                <div className="mt-3 pt-3 border-t border-theme space-y-1 text-xs text-theme-textSecondary">
+                  {/* PREGNANCY */}
+                  {checkup.pregnancyCheckup && (
+                    <>
+                      {checkup.pregnancyCheckup.fetal_assessment && (
+                        <p>
+                          <strong>Fetal Assessment:</strong>{" "}
+                          {checkup.pregnancyCheckup.fetal_assessment}
+                        </p>
+                      )}
+                      {checkup.pregnancyCheckup.fetal_heart_rate && (
+                        <p>
+                          <strong>Fetal Heart Rate:</strong>{" "}
+                          {checkup.pregnancyCheckup.fetal_heart_rate} bpm
+                        </p>
+                      )}
+                      {checkup.pregnancyCheckup.fundal_height && (
+                        <p>
+                          <strong>Fundal Height:</strong>{" "}
+                          {checkup.pregnancyCheckup.fundal_height} cm
+                        </p>
+                      )}
+                      {checkup.pregnancyCheckup.micronutrients && (
+                        <p>
+                          <strong>Micronutrients:</strong>{" "}
+                          {checkup.pregnancyCheckup.micronutrients}
+                        </p>
+                      )}
+                      {(checkup.pregnancyCheckup.iron_supplement ||
+                        checkup.pregnancyCheckup.folic_acid) && (
+                          <p>
+                            <strong>Supplements:</strong>{" "}
+                            {checkup.pregnancyCheckup.iron_supplement && "Iron"}
+                            {checkup.pregnancyCheckup.iron_supplement &&
+                              checkup.pregnancyCheckup.folic_acid &&
+                              ", "}
+                            {checkup.pregnancyCheckup.folic_acid && "Folic Acid"}
+                          </p>
+                        )}
+                      {checkup.pregnancyCheckup.clinical_assessment && (
+                        <p>
+                          <strong>Clinical:</strong>{" "}
+                          {checkup.pregnancyCheckup.clinical_assessment}
+                        </p>
+                      )}
+                    </>
+                  )}
+
+                  {/* CHILD */}
+                  {checkup.childCheckup && (
+                    <>
+                      {checkup.childCheckup.weight && (
+                        <p>
+                          <strong>Weight:</strong> {checkup.childCheckup.weight} kg
+                        </p>
+                      )}
+                      {checkup.childCheckup.height && (
+                        <p>
+                          <strong>Height:</strong> {checkup.childCheckup.height} cm
+                        </p>
+                      )}
+                      {checkup.childCheckup.muac && (
+                        <p>
+                          <strong>MUAC:</strong> {checkup.childCheckup.muac} cm
+                        </p>
+                      )}
+                      {checkup.childCheckup.head_circumference && (
+                        <p>
+                          <strong>Head Circumference:</strong>{" "}
+                          {checkup.childCheckup.head_circumference} cm
+                        </p>
+                      )}
+                      {checkup.childCheckup.nutritional_status && (
+                        <p>
+                          <strong>Nutritional Status:</strong>{" "}
+                          {checkup.childCheckup.nutritional_status}
+                        </p>
+                      )}
+                      {checkup.childCheckup.vaccines_given &&
+                        Array.isArray(checkup.childCheckup.vaccines_given) &&
+                        checkup.childCheckup.vaccines_given.length > 0 && (
+                          <p>
+                            <strong>Vaccines:</strong>{" "}
+                            {checkup.childCheckup.vaccines_given
+                              .map((v: any) =>
+                                typeof v === "string"
+                                  ? v
+                                  : `${v.name || "?"} (${v.date || "—"})`,
+                              )
+                              .join(", ")}
+                          </p>
+                        )}
+                      {checkup.childCheckup.developmental_assessment && (
+                        <p>
+                          <strong>Development:</strong>{" "}
+                          {checkup.childCheckup.developmental_assessment}
+                        </p>
+                      )}
+                      {checkup.childCheckup.developmental_milestones &&
+                        Array.isArray(checkup.childCheckup.developmental_milestones) &&
+                        checkup.childCheckup.developmental_milestones.length > 0 && (
+                          <p>
+                            <strong>Milestones:</strong>{" "}
+                            {checkup.childCheckup.developmental_milestones.join(
+                              ", ",
+                            )}
+                          </p>
+                        )}
+                    </>
+                  )}
+
+                  {/* LACTATING */}
+                  {checkup.lactatingCheckup && (
+                    <>
+                      {checkup.lactatingCheckup.feeding_method && (
+                        <p>
+                          <strong>Feeding Method:</strong>{" "}
+                          {checkup.lactatingCheckup.feeding_method}
+                        </p>
+                      )}
+                      {checkup.lactatingCheckup.latching_assessment && (
+                        <p>
+                          <strong>Latching:</strong>{" "}
+                          {checkup.lactatingCheckup.latching_assessment}
+                        </p>
+                      )}
+                      {checkup.lactatingCheckup.engorgement_status && (
+                        <p>
+                          <strong>Engorgement:</strong>{" "}
+                          {checkup.lactatingCheckup.engorgement_status}
+                        </p>
+                      )}
+                      {checkup.lactatingCheckup.infant_weight && (
+                        <p>
+                          <strong>Infant Weight:</strong>{" "}
+                          {checkup.lactatingCheckup.infant_weight} kg
+                        </p>
+                      )}
+                      {checkup.lactatingCheckup.infant_health_status && (
+                        <p>
+                          <strong>Infant Health:</strong>{" "}
+                          {checkup.lactatingCheckup.infant_health_status}
+                        </p>
+                      )}
+                      {checkup.lactatingCheckup.family_planning_counseling && (
+                        <p>
+                          <strong>Family Planning Counseling:</strong>{" "}
+                          {checkup.lactatingCheckup.family_planning_counseling}
+                        </p>
+                      )}
+                      {checkup.lactatingCheckup.family_planning_method && (
+                        <p>
+                          <strong>Family Planning Method:</strong>{" "}
+                          {checkup.lactatingCheckup.family_planning_method}
+                        </p>
+                      )}
+                    </>
+                  )}
+
+                  {/* SENIOR */}
+                  {checkup.seniorCheckup && (
+                    <>
+                      {checkup.seniorCheckup.vitals &&
+                        typeof checkup.seniorCheckup.vitals === "object" && (
+                          <p>
+                            <strong>Vitals:</strong>{" "}
+                            {Object.entries(checkup.seniorCheckup.vitals)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(", ")}
+                          </p>
+                        )}
+                      {checkup.seniorCheckup.blood_sugar && (
+                        <p>
+                          <strong>Blood Sugar:</strong>{" "}
+                          {checkup.seniorCheckup.blood_sugar} mmol/L
+                        </p>
+                      )}
+                      {checkup.seniorCheckup.falls_reassessment != null && (
+                        <p>
+                          <strong>Falls Risk:</strong>{" "}
+                          {checkup.seniorCheckup.falls_reassessment}/10
+                        </p>
+                      )}
+                      {checkup.seniorCheckup.cognitive_check && (
+                        <p>
+                          <strong>Cognitive Check:</strong>{" "}
+                          {checkup.seniorCheckup.cognitive_check}
+                        </p>
+                      )}
+                      {checkup.seniorCheckup.medication_adherence && (
+                        <p>
+                          <strong>Medication Adherence:</strong>{" "}
+                          {checkup.seniorCheckup.medication_adherence}
+                        </p>
+                      )}
+                      {checkup.seniorCheckup.medications_refilled &&
+                        Array.isArray(checkup.seniorCheckup.medications_refilled) &&
+                        checkup.seniorCheckup.medications_refilled.length > 0 && (
+                          <p>
+                            <strong>Refilled:</strong>{" "}
+                            {checkup.seniorCheckup.medications_refilled.join(", ")}
+                          </p>
+                        )}
+                    </>
+                  )}
+
+                  {/* NCD */}
+                  {checkup.ncdCheckup && (
+                    <>
+                      {checkup.ncdCheckup.vitals &&
+                        typeof checkup.ncdCheckup.vitals === "object" && (
+                          <p>
+                            <strong>Vitals:</strong>{" "}
+                            {Object.entries(checkup.ncdCheckup.vitals)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(", ")}
+                          </p>
+                        )}
+                      {checkup.ncdCheckup.lab_results &&
+                        typeof checkup.ncdCheckup.lab_results === "object" &&
+                        Object.keys(checkup.ncdCheckup.lab_results).length > 0 && (
+                          <p>
+                            <strong>Lab Results:</strong>{" "}
+                            {Object.entries(checkup.ncdCheckup.lab_results)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(", ")}
+                          </p>
+                        )}
+                      {checkup.ncdCheckup.medication_adherence && (
+                        <p>
+                          <strong>Medication Adherence:</strong>{" "}
+                          {checkup.ncdCheckup.medication_adherence}
+                        </p>
+                      )}
+                      {checkup.ncdCheckup.medications_refilled &&
+                        Array.isArray(checkup.ncdCheckup.medications_refilled) &&
+                        checkup.ncdCheckup.medications_refilled.length > 0 && (
+                          <p>
+                            <strong>Refilled:</strong>{" "}
+                            {checkup.ncdCheckup.medications_refilled.join(", ")}
+                          </p>
+                        )}
+                      {checkup.ncdCheckup.lifestyle_counseling && (
+                        <p>
+                          <strong>Lifestyle Counseling:</strong>{" "}
+                          {checkup.ncdCheckup.lifestyle_counseling}
+                        </p>
+                      )}
+                      {checkup.ncdCheckup.dietary_counseling && (
+                        <p>
+                          <strong>Dietary Counseling:</strong>{" "}
+                          {checkup.ncdCheckup.dietary_counseling}
+                        </p>
+                      )}
+                      {checkup.ncdCheckup.exercise_recommendations && (
+                        <p>
+                          <strong>Exercise Recommendations:</strong>{" "}
+                          {checkup.ncdCheckup.exercise_recommendations}
+                        </p>
+                      )}
+                      {checkup.ncdCheckup.complication_monitoring && (
+                        <p>
+                          <strong>Complication Monitoring:</strong>{" "}
+                          {checkup.ncdCheckup.complication_monitoring}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Follow-up + Notes */}
                 {checkup.follow_up_date && (
                   <p className="text-xs text-theme-textSecondary mt-2 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     Follow-up:{" "}
                     {new Date(checkup.follow_up_date).toLocaleDateString()}
+                  </p>
+                )}
+                {checkup.notes && (
+                  <p className="text-xs text-theme-textSecondary mt-1">
+                    <strong>Notes:</strong> {checkup.notes}
                   </p>
                 )}
               </div>

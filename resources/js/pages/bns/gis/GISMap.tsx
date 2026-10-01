@@ -77,6 +77,25 @@ const createZoneLabelIcon = (
   });
 };
 
+// ✅ 15-bucket age distribution
+interface AgeGroups {
+  "1-2": number;
+  "3-4": number;
+  "5-9": number;
+  "10-14": number;
+  "15-19": number;
+  "20-24": number;
+  "25-29": number;
+  "30-34": number;
+  "35-39": number;
+  "40-44": number;
+  "45-49": number;
+  "50-54": number;
+  "55-59": number;
+  "60-64": number;
+  "65 above": number;
+}
+
 interface ZoneStatistics {
   zone_id: number;
   zone_name: string;
@@ -86,13 +105,9 @@ interface ZoneStatistics {
   health_concerns_percentage: number;
   male_population: number;
   female_population: number;
-  age_groups: {
-    "0-12": number;
-    "13-18": number;
-    "19-35": number;
-    "36-60": number;
-    "60+": number;
-  };
+  age_groups: AgeGroups;
+  births: number; // ✅ new
+  deaths: number; // ✅ new
   last_updated: string;
 }
 
@@ -282,8 +297,7 @@ export default function GISMap() {
                 eventHandlers={{
                   click: () => handleZoneClick(zoneName),
                 }}
-              >
-              </Polygon>
+              ></Polygon>
             );
           })}
 
@@ -302,8 +316,7 @@ export default function GISMap() {
                 eventHandlers={{
                   click: () => handleZoneClick(zoneName),
                 }}
-              >
-              </Marker>
+              ></Marker>
             );
           })}
         </MapContainer>
@@ -344,6 +357,7 @@ export default function GISMap() {
               </div>
             ) : zoneStats ? (
               <>
+                {/* --- Basic counts --- */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-center">
                     <Users className="w-5 h-5 mx-auto text-blue-600 dark:text-blue-400" />
@@ -365,6 +379,7 @@ export default function GISMap() {
                   </div>
                 </div>
 
+                {/* --- Geotagging coverage --- */}
                 <div className="bg-theme-background rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm text-theme-textSecondary">
@@ -382,6 +397,7 @@ export default function GISMap() {
                   </div>
                 </div>
 
+                {/* --- Health concerns --- */}
                 <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-red-600 dark:text-red-400">
@@ -393,6 +409,7 @@ export default function GISMap() {
                   </div>
                 </div>
 
+                {/* --- Population by Sex --- */}
                 <div className="bg-theme-background rounded-lg p-3">
                   <h4 className="text-sm font-medium text-theme-text mb-2">
                     Population by Sex
@@ -437,36 +454,81 @@ export default function GISMap() {
                   </div>
                 </div>
 
+                {/* ✅ Births & Deaths */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-center border border-emerald-200 dark:border-emerald-800">
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                      Births (This Year)
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                      {zoneStats.births ?? 0}
+                    </p>
+                  </div>
+                  <div className="bg-rose-50 dark:bg-rose-900/20 rounded-lg p-3 text-center border border-rose-200 dark:border-rose-800">
+                    <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                      Deaths
+                    </p>
+                    <p className="text-2xl font-bold text-rose-700 dark:text-rose-300">
+                      {zoneStats.deaths ?? 0}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ✅ Detailed Age Distribution (15 buckets) */}
                 <div className="bg-theme-background rounded-lg p-3">
-                  <h4 className="text-sm font-medium text-theme-text mb-2">
-                    Age Distribution
+                  <h4 className="text-sm font-medium text-theme-text mb-2 flex items-center justify-between">
+                    <span>Age Distribution</span>
+                    <span className="text-xs text-theme-textSecondary font-normal">
+                      {zoneStats.total_population} total
+                    </span>
                   </h4>
-                  <div className="space-y-2">
+
+                  {/* Sanity check — bucketed sum vs total population */}
+                  {(() => {
+                    const sum = Object.values(zoneStats.age_groups).reduce(
+                      (a, b) => a + b,
+                      0,
+                    );
+                    return sum !== zoneStats.total_population ? (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mb-2">
+                        ⚠ Bucketed total ({sum}) ≠ population (
+                        {zoneStats.total_population})
+                      </p>
+                    ) : null;
+                  })()}
+
+                  <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
                     {Object.entries(zoneStats.age_groups).map(
-                      ([group, count]) => (
-                        <div key={group}>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-theme-textSecondary">
-                              {group} years
-                            </span>
-                            <span className="font-medium text-theme-text">
-                              {count}
-                            </span>
+                      ([group, count]) => {
+                        const total = zoneStats.total_population || 1;
+                        const pct = Math.round((count / total) * 100);
+                        return (
+                          <div key={group}>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-theme-textSecondary font-medium">
+                                {group} yrs
+                              </span>
+                              <span className="font-semibold text-theme-text">
+                                {count}
+                                <span className="text-theme-textSecondary font-normal ml-1">
+                                  ({pct}%)
+                                </span>
+                              </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-theme-border rounded-full overflow-hidden mt-0.5">
+                              <div
+                                className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
                           </div>
-                          <div className="w-full h-1.5 bg-theme-border rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-purple-500 rounded-full"
-                              style={{
-                                width: `${(count / zoneStats.total_population) * 100}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ),
+                        );
+                      },
                     )}
                   </div>
                 </div>
 
+                {/* --- Last updated --- */}
                 <div className="text-xs text-theme-textSecondary text-center border-t border-theme pt-3">
                   Last updated:{" "}
                   {new Date(zoneStats.last_updated).toLocaleString()}

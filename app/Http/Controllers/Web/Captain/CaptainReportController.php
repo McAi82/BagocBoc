@@ -16,24 +16,22 @@ class CaptainReportController extends Controller
 {
     use SendsNotifications;
 
-    /**
-     * Send a report to Captain (from Secretary)
-     */
+
     public function sendToCaptain(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'report_type' => 'required|string|in:certificate,clearance,resident_registry,collection,annual,tax,payment',
-            'title' => 'required|string|max:255',
-            'content' => 'required|string',
-            'metadata' => 'nullable|array',
-            'period' => 'nullable|string|max:100',
+            'title'       => 'required|string|max:255',
+            'content'     => 'required|string',
+            'metadata'    => 'nullable|array',
+            'period'      => 'nullable|string|max:100',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
@@ -44,38 +42,42 @@ class CaptainReportController extends Controller
 
             $report = FinancialReport::create([
                 'created_by_user_id' => Auth::id(),
-                'title' => $request->title,
-                'report_type' => $request->report_type,
-                'period' => $period,
-                'total_amount' => $request->metadata['total_amount'] ?? $request->metadata['total_fee'] ?? 0,
-                'notes' => $request->content,
-                'status' => 'pending',
-                'submitted_at' => now(),
-                'report_data' => [
-                    'source' => $request->report_type,
-                    'metadata' => $request->metadata,
-                    'sent_at' => now()->toISOString(),
+                'title'              => $request->title,
+                'report_type'        => $request->report_type,
+                'period'             => $period,
+                'total_amount'       => $request->metadata['total_amount']
+                    ?? $request->metadata['total_fee']
+                    ?? 0,
+                'notes'              => $request->content,
+                'status'             => 'pending',
+                'submitted_at'       => now(),
+                'report_data'        => [
+                    'source'    => $request->report_type,
+                    'metadata'  => $request->metadata,
+                    'reference' => $request->metadata['reference_number'] ?? null,
+                    'sent_at'   => now()->toISOString(),
                 ],
             ]);
 
-            // ✅ Notify Captain using trait
             $this->notifyCaptain($report);
 
             DB::commit();
 
             Log::info("Report sent to Captain", [
-                'report_id' => $report->id,
-                'type' => $request->report_type,
-                'user_id' => Auth::id(),
+                'report_id'   => $report->id,
+                'type'        => $request->report_type,
+                'reference'   => $request->metadata['reference_number'] ?? null,
+                'user_id'     => Auth::id(),
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Report sent to Captain successfully!',
-                'data' => [
-                    'report_id' => $report->id,
-                    'status' => 'pending',
-                ]
+                'data'    => [
+                    'report_id'        => $report->id,
+                    'reference_number' => $request->metadata['reference_number'] ?? null,
+                    'status'           => 'pending',
+                ],
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();

@@ -71,9 +71,6 @@ class PatientController extends Controller
 
     public function store(Request $request)
     {
-        /* ------------------------------------------------------
-     | 1. Validation
-     ------------------------------------------------------ */
         $validated = $request->validate([
             'resident_id'  => ['required', 'integer', 'exists:residents,id'],
             'patient_type' => [
@@ -81,7 +78,7 @@ class PatientController extends Controller
                 Rule::in(['pregnant', 'child', 'lactating', 'senior', 'ncd']),
             ],
 
-            // Vitals (all optional)
+            // Vitals
             'vital_signs'                  => ['nullable', 'array'],
             'vital_signs.blood_pressure'   => ['nullable', 'string', 'max:20'],
             'vital_signs.heart_rate'       => ['nullable', 'numeric', 'min:0', 'max:300'],
@@ -98,29 +95,57 @@ class PatientController extends Controller
             'para'                   => ['nullable', 'integer', 'min:0', 'max:20'],
             'obstetric_history'      => ['nullable', 'string'],
             'risk_level'             => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'immunization_status'    => ['nullable', 'string', 'max:255'],
+            'prenatal_logs'          => ['nullable', 'string'],
+            'allergies'              => ['nullable', 'string'],
+            'medical_history'        => ['nullable', 'string'],
+            'current_medications'    => ['nullable', 'string'],
 
             // Child
             'birth_weight'             => ['nullable', 'numeric', 'min:0', 'max:20'],
             'birth_height'             => ['nullable', 'numeric', 'min:0', 'max:100'],
             'birth_head_circumference' => ['nullable', 'numeric', 'min:0', 'max:60'],
             'gestational_age_at_birth' => ['nullable', 'integer', 'min:0', 'max:45'],
+            'birth_type'               => ['nullable', 'string', 'max:255'],
+            'birth_complications'      => ['nullable', 'string'],
+            'immunization_history'     => ['nullable', 'string'],
+            'chronic_conditions'       => ['nullable', 'string'],
+            'current_weight'           => ['nullable', 'numeric', 'min:0', 'max:200'],
+            'current_height'           => ['nullable', 'numeric', 'min:0', 'max:250'],
+            'current_muac'             => ['nullable', 'numeric', 'min:0', 'max:40'],
 
             // Lactating
             'breastfeeding_status' => ['nullable', 'string', 'max:50'],
             'infant_age'           => ['nullable', 'integer', 'min:0', 'max:60'],
+            'feeding_method'       => ['nullable', 'string', 'max:50'],
+            'latching_assessment'  => ['nullable', 'string'],
+            'nutritional_status'   => ['nullable', 'string', 'max:255'],
+            'family_planning_method' => ['nullable', 'string', 'max:255'],
+            'maternal_health_status' => ['nullable', 'string'],
+            'infant_weight'        => ['nullable', 'numeric', 'min:0', 'max:30'],
+            'infant_health_status' => ['nullable', 'string'],
 
             // Senior
             'falls_risk_score'     => ['nullable', 'integer', 'min:0', 'max:10'],
             'cognitive_assessment' => ['nullable', 'string'],
+            'memory_status'        => ['nullable', 'string', 'max:255'],
+            'medication_list'      => ['nullable', 'string'],
+            'activity_level'       => ['nullable', 'string', 'max:255'],
+            'support_system'       => ['nullable', 'string'],
+            'emergency_contact'    => ['nullable', 'string', 'max:255'],
 
             // NCD
             'ncd_classification' => ['nullable', 'string', 'max:255'],
             'diagnosis_date'     => ['nullable', 'date'],
+            'lab_results'        => ['nullable', 'array'],
+            'medications'        => ['nullable', 'string'],
+            'complications'      => ['nullable', 'string'],
+            'lifestyle_factors'  => ['nullable', 'string'],
+            'treatment_history'  => ['nullable', 'string'],
+            'current_status'     => ['nullable', 'string', 'max:255'],
         ]);
 
-        /* ------------------------------------------------------
-     | 2. Guard against duplicate patient record
-     ------------------------------------------------------ */
+        // Guard: one patient record per resident
         $existing = PatientRecord::where('resident_id', $validated['resident_id'])->first();
         if ($existing) {
             return response()->json([
@@ -130,11 +155,7 @@ class PatientController extends Controller
             ], 409);
         }
 
-        /* ------------------------------------------------------
-     | 3. Who is creating this record?
-     ------------------------------------------------------ */
         $userId = $request->user()?->id;
-
         if (!$userId) {
             return response()->json([
                 'status'  => 'error',
@@ -142,15 +163,9 @@ class PatientController extends Controller
             ], 401);
         }
 
-        /* ------------------------------------------------------
-     | 4. Persist in a transaction
-     ------------------------------------------------------ */
         DB::beginTransaction();
 
         try {
-            // 4a. Parent patient record
-            //     Only columns that exist:
-            //     resident_id, patient_type, created_by_user_id
             $patient = PatientRecord::create([
                 'resident_id'        => $validated['resident_id'],
                 'patient_type'       => $validated['patient_type'],
@@ -159,10 +174,8 @@ class PatientController extends Controller
                 'created_by_user_id' => $userId,
             ]);
 
-            // 4b. Type-specific sub-record
-            //     Every child table requires: patient_record_id, resident_id
-            //     Do NOT add created_by_user_id here — those columns don't exist.
             switch ($validated['patient_type']) {
+                /* ---------- PREGNANT ---------- */
                 case 'pregnant':
                     PregnancyRecord::create([
                         'patient_record_id'      => $patient->id,
@@ -174,9 +187,15 @@ class PatientController extends Controller
                         'para'                   => $validated['para'] ?? null,
                         'obstetric_history'      => $validated['obstetric_history'] ?? null,
                         'risk_level'             => $validated['risk_level'] ?? 'low',
+                        'immunization_status'    => $validated['immunization_status'] ?? null,
+                        'prenatal_logs'          => $validated['prenatal_logs'] ?? null,
+                        'allergies'              => $validated['allergies'] ?? null,
+                        'medical_history'        => $validated['medical_history'] ?? null,
+                        'current_medications'    => $validated['current_medications'] ?? null,
                     ]);
                     break;
 
+                /* ---------- CHILD ---------- */
                 case 'child':
                     ChildRecord::create([
                         'patient_record_id'          => $patient->id,
@@ -185,35 +204,66 @@ class PatientController extends Controller
                         'birth_height'               => $validated['birth_height'] ?? null,
                         'birth_head_circumference'   => $validated['birth_head_circumference'] ?? null,
                         'gestational_age_at_birth'   => $validated['gestational_age_at_birth'] ?? null,
+                        'birth_type'                 => $validated['birth_type'] ?? null,
+                        'birth_complications'        => $validated['birth_complications'] ?? null,
+                        'immunization_history'       => $validated['immunization_history'] ?? null,
+                        'allergies'                  => $validated['allergies'] ?? null,
+                        'chronic_conditions'         => $validated['chronic_conditions'] ?? null,
+                        'current_weight'             => $validated['current_weight'] ?? null,
+                        'current_height'             => $validated['current_height'] ?? null,
+                        'current_muac'               => $validated['current_muac'] ?? null,
                         'current_nutritional_status' => 'normal',
                     ]);
                     break;
 
+                /* ---------- LACTATING ---------- */
                 case 'lactating':
                     LactatingRecord::create([
-                        'patient_record_id'    => $patient->id,
-                        'resident_id'          => $validated['resident_id'],
-                        'breastfeeding_status' => $validated['breastfeeding_status'] ?? 'exclusive',
-                        'infant_age'           => $validated['infant_age'] ?? null,
+                        'patient_record_id'      => $patient->id,
+                        'resident_id'            => $validated['resident_id'],
+                        'breastfeeding_status'   => $validated['breastfeeding_status'] ?? 'exclusive',
+                        'infant_age'             => $validated['infant_age'] ?? null,
+                        'feeding_method'         => $validated['feeding_method'] ?? null,
+                        'latching_assessment'    => $validated['latching_assessment'] ?? null,
+                        'nutritional_status'     => $validated['nutritional_status'] ?? null,
+                        'family_planning_method' => $validated['family_planning_method'] ?? null,
+                        'maternal_health_status' => $validated['maternal_health_status'] ?? null,
+                        'infant_weight'          => $validated['infant_weight'] ?? null,
+                        'infant_health_status'   => $validated['infant_health_status'] ?? null,
                     ]);
                     break;
 
+                /* ---------- SENIOR ---------- */
                 case 'senior':
                     SeniorRecord::create([
                         'patient_record_id'    => $patient->id,
                         'resident_id'          => $validated['resident_id'],
                         'falls_risk_score'     => $validated['falls_risk_score'] ?? null,
                         'cognitive_assessment' => $validated['cognitive_assessment'] ?? null,
+                        'memory_status'        => $validated['memory_status'] ?? null,
+                        'chronic_conditions'   => $validated['chronic_conditions'] ?? null,
+                        'medication_list'      => $validated['medication_list'] ?? null,
+                        'allergies'            => $validated['allergies'] ?? null,
+                        'activity_level'       => $validated['activity_level'] ?? null,
+                        'support_system'       => $validated['support_system'] ?? null,
+                        'emergency_contact'    => $validated['emergency_contact'] ?? null,
                     ]);
                     break;
 
+                /* ---------- NCD ---------- */
                 case 'ncd':
                     NcdRecord::create([
                         'patient_record_id'  => $patient->id,
                         'resident_id'        => $validated['resident_id'],
                         'ncd_classification' => $validated['ncd_classification'] ?? null,
                         'diagnosis_date'     => $validated['diagnosis_date'] ?? null,
-                        'current_status'     => 'monitoring',
+                        'lab_results'        => $validated['lab_results'] ?? null,
+                        'medications'        => $validated['medications'] ?? null,
+                        'complications'      => $validated['complications'] ?? null,
+                        'lifestyle_factors'  => $validated['lifestyle_factors'] ?? null,
+                        'allergies'          => $validated['allergies'] ?? null,
+                        'treatment_history'  => $validated['treatment_history'] ?? null,
+                        'current_status'     => $validated['current_status'] ?? 'monitoring',
                     ]);
                     break;
             }
@@ -221,7 +271,6 @@ class PatientController extends Controller
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
-
             Log::error('Failed to create patient record.', [
                 'resident_id'  => $validated['resident_id'] ?? null,
                 'patient_type' => $validated['patient_type'] ?? null,
@@ -236,9 +285,6 @@ class PatientController extends Controller
             ], 500);
         }
 
-        /* ------------------------------------------------------
-     | 5. Return the full record
-     ------------------------------------------------------ */
         $patient->load([
             'resident',
             'pregnancyRecord',
@@ -394,6 +440,9 @@ class PatientController extends Controller
         ]);
     }
 
+    /* ============================================
+   PREGNANCY CHECKUP — extended
+   ============================================ */
     public function storePregnancyCheckup(Request $request, $id)
     {
         $patientRecord = PatientRecord::with(['resident'])
@@ -405,18 +454,22 @@ class PatientController extends Controller
 
         $validator = Validator::make($request->all(), [
             'checkup_date' => 'required|date',
+
             'maternal_vitals' => 'nullable|array',
             'maternal_vitals.blood_pressure' => 'nullable|string',
             'maternal_vitals.heart_rate' => 'nullable|integer',
             'maternal_vitals.temperature' => 'nullable|numeric',
             'maternal_vitals.weight' => 'nullable|numeric',
+
             'fetal_assessment' => 'nullable|string',
             'fetal_heart_rate' => 'nullable|integer',
             'fundal_height' => 'nullable|numeric',
+
             'interventions' => 'nullable|string',
             'micronutrients' => 'nullable|string',
             'iron_supplement' => 'nullable|boolean',
             'folic_acid' => 'nullable|boolean',
+
             'clinical_assessment' => 'nullable|string',
             'risk_level' => 'nullable|in:low,medium,high',
             'recommendations' => 'nullable|string',
@@ -447,15 +500,15 @@ class PatientController extends Controller
                 ]);
 
                 PregnancyCheckup::create([
-                    'checkup_record_id' => $checkup->id,
-                    'maternal_vitals' => $request->maternal_vitals,
-                    'fetal_assessment' => $request->fetal_assessment,
-                    'fetal_heart_rate' => $request->fetal_heart_rate,
-                    'fundal_height' => $request->fundal_height,
-                    'interventions' => $request->interventions,
-                    'micronutrients' => $request->micronutrients,
-                    'iron_supplement' => $request->iron_supplement,
-                    'folic_acid' => $request->folic_acid,
+                    'checkup_record_id'  => $checkup->id,
+                    'maternal_vitals'    => $request->maternal_vitals,
+                    'fetal_assessment'   => $request->fetal_assessment,
+                    'fetal_heart_rate'   => $request->fetal_heart_rate,
+                    'fundal_height'      => $request->fundal_height,
+                    'interventions'      => $request->interventions,
+                    'micronutrients'     => $request->micronutrients,
+                    'iron_supplement'    => $request->iron_supplement ?? false,
+                    'folic_acid'         => $request->folic_acid ?? false,
                     'clinical_assessment' => $request->clinical_assessment,
                 ]);
 
@@ -465,7 +518,6 @@ class PatientController extends Controller
                     ]);
                 }
 
-                // ✅ Notify BHW
                 $this->notifyBHWsAboutCheckup($patientRecord, $checkup, 'pregnancy check-up');
 
                 return $checkup;
@@ -536,6 +588,7 @@ class PatientController extends Controller
             'recommendations' => 'nullable|string',
             'follow_up_date' => 'nullable|date',
             'notes' => 'nullable|string',
+            'developmental_milestones' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
@@ -571,6 +624,7 @@ class PatientController extends Controller
                     'nutritional_status' => $request->nutritional_status,
                     'nutritional_counseling' => $request->nutritional_counseling,
                     'interventions' => $request->interventions,
+                    'developmental_milestones' => $request->developmental_milestones,
                 ]);
 
                 $patientRecord->childRecord()->update([
@@ -639,6 +693,9 @@ class PatientController extends Controller
             'recommendations' => 'nullable|string',
             'follow_up_date' => 'nullable|date',
             'notes' => 'nullable|string',
+            'engorgement_status' => 'nullable|string',
+            'family_planning_counseling' => 'nullable|string',
+            'family_planning_method' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -669,6 +726,9 @@ class PatientController extends Controller
                     'nutritional_counseling' => $request->nutritional_counseling,
                     'infant_weight' => $request->infant_weight,
                     'infant_health_status' => $request->infant_health_status,
+                    'family_planning_counseling' => $request->family_planning_counseling,
+                    'family_planning_method' => $request->family_planning_method,
+                    'engorgement_status' => $request->engorgement_status,
                     'family_planning_counseling' => $request->family_planning_counseling,
                     'family_planning_method' => $request->family_planning_method,
                 ]);
@@ -839,6 +899,9 @@ class PatientController extends Controller
             'recommendations' => 'nullable|string',
             'follow_up_date' => 'nullable|date',
             'notes' => 'nullable|string',
+            'medications_refilled' => 'nullable|array',
+            'dietary_counseling' => 'nullable|string',
+            'exercise_recommendations' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {

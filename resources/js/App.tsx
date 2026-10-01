@@ -44,6 +44,7 @@ import {
     CheckupForm,
     PatientSearch,
     PatientRegistration,
+    HealthReports,
 } from "./pages/health";
 
 // ============================================
@@ -269,6 +270,15 @@ function App() {
                                 element={
                                     <ProtectedRoute allowedRoles={HEALTH_ROLES}>
                                         <HealthDashboard />
+                                    </ProtectedRoute>
+                                }
+                            />
+
+                            <Route
+                                path="health/reports"
+                                element={
+                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                        <HealthReports />
                                     </ProtectedRoute>
                                 }
                             />

@@ -1,4 +1,4 @@
-// src/pages/health/PatientRecordForm.tsx
+// src/pages/health/records/PatientRecordForm.tsx
 
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -14,7 +14,6 @@ import {
   Loader2,
   AlertCircle,
   Search,
-  CheckCircle,
 } from "lucide-react";
 import { healthApi } from "../../../api/endpoints";
 import toast from "react-hot-toast";
@@ -59,6 +58,7 @@ export default function PatientRecordForm({
       weight: "",
       height: "",
     },
+
     // Pregnancy
     last_menstrual_period: "",
     expected_delivery_date: "",
@@ -67,20 +67,56 @@ export default function PatientRecordForm({
     para: "",
     obstetric_history: "",
     risk_level: "low",
+    immunization_status: "",
+    prenatal_logs: "",
+    medical_history: "",
+    current_medications: "",
+
     // Child
     birth_weight: "",
     birth_height: "",
     birth_head_circumference: "",
     gestational_age_at_birth: "",
+    birth_type: "",
+    birth_complications: "",
+    immunization_history: "",
+    chronic_conditions: "",
+    current_weight: "",
+    current_height: "",
+    current_muac: "",
+
     // Lactating
     breastfeeding_status: "",
     infant_age: "",
+    feeding_method: "",
+    latching_assessment: "",
+    nutritional_status: "",
+    family_planning_method: "",
+    maternal_health_status: "",
+    infant_weight: "",
+    infant_health_status: "",
+
     // Senior
     falls_risk_score: "",
     cognitive_assessment: "",
+    memory_status: "",
+    medication_list: "",
+    activity_level: "",
+    support_system: "",
+    emergency_contact: "",
+
     // NCD
     ncd_classification: "",
     diagnosis_date: "",
+    medications: "",
+    complications: "",
+    lifestyle_factors: "",
+    treatment_history: "",
+    current_status: "",
+    lab_results_text: "", // free-text, converted to array before submit
+
+    // Shared across types
+    allergies: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -125,7 +161,7 @@ export default function PatientRecordForm({
   };
 
   /* ============================================================
-     FORM INPUT HANDLING
+     INPUT HANDLING
      ============================================================ */
 
   const handleInputChange = (
@@ -145,7 +181,6 @@ export default function PatientRecordForm({
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
 
-    // Clear the error for the field being edited
     const errorKey = name.startsWith("vital_")
       ? `vital_signs.${name.replace("vital_", "")}`
       : name;
@@ -159,20 +194,16 @@ export default function PatientRecordForm({
   };
 
   /* ============================================================
-     CLIENT-SIDE VALIDATION
+     VALIDATION
      ============================================================ */
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!selectedResident) {
-      newErrors.resident = "Please select a resident";
-    }
-    if (!formData.patient_type) {
+    if (!selectedResident) newErrors.resident = "Please select a resident";
+    if (!formData.patient_type)
       newErrors.patient_type = "Please select a patient type";
-    }
 
-    // Pregnancy-specific
     if (formData.patient_type === "pregnant") {
       if (
         formData.last_menstrual_period &&
@@ -198,20 +229,11 @@ export default function PatientRecordForm({
 
     if (!validate()) {
       toast.error("Please fix the errors below");
-      // Scroll to the first error
-      const firstError = document.querySelector(
-        "[data-error='true']",
-      ) as HTMLElement | null;
-      firstError?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // ✅ Clean the payload:
-      //   - filter out empty vital signs
-      //   - coerce empty strings to null
-      //   - coerce numeric fields to numbers
       const cleanVitals = Object.fromEntries(
         Object.entries(formData.vital_signs).filter(
           ([_, v]) => v !== "" && v !== null && v !== undefined,
@@ -224,6 +246,11 @@ export default function PatientRecordForm({
         return isNaN(n) ? null : n;
       };
 
+      const toStringOrNull = (v: any) => {
+        if (v === "" || v === null || v === undefined) return null;
+        return String(v);
+      };
+
       const payload: Record<string, any> = {
         resident_id: selectedResident.id,
         patient_type: formData.patient_type,
@@ -231,16 +258,24 @@ export default function PatientRecordForm({
           Object.keys(cleanVitals).length > 0 ? cleanVitals : null,
       };
 
-      // Type-specific fields
       if (formData.patient_type === "pregnant") {
         Object.assign(payload, {
-          last_menstrual_period: formData.last_menstrual_period || null,
-          expected_delivery_date: formData.expected_delivery_date || null,
+          last_menstrual_period: toStringOrNull(
+            formData.last_menstrual_period,
+          ),
+          expected_delivery_date: toStringOrNull(
+            formData.expected_delivery_date,
+          ),
           gestational_age: toNumOrNull(formData.gestational_age),
           gravida: toNumOrNull(formData.gravida),
           para: toNumOrNull(formData.para),
-          obstetric_history: formData.obstetric_history || null,
+          obstetric_history: toStringOrNull(formData.obstetric_history),
           risk_level: formData.risk_level || "low",
+          immunization_status: toStringOrNull(formData.immunization_status),
+          prenatal_logs: toStringOrNull(formData.prenatal_logs),
+          medical_history: toStringOrNull(formData.medical_history),
+          current_medications: toStringOrNull(formData.current_medications),
+          allergies: toStringOrNull(formData.allergies),
         });
       } else if (formData.patient_type === "child") {
         Object.assign(payload, {
@@ -252,29 +287,85 @@ export default function PatientRecordForm({
           gestational_age_at_birth: toNumOrNull(
             formData.gestational_age_at_birth,
           ),
+          birth_type: toStringOrNull(formData.birth_type),
+          birth_complications: toStringOrNull(
+            formData.birth_complications,
+          ),
+          immunization_history: toStringOrNull(
+            formData.immunization_history,
+          ),
+          chronic_conditions: toStringOrNull(formData.chronic_conditions),
+          current_weight: toNumOrNull(formData.current_weight),
+          current_height: toNumOrNull(formData.current_height),
+          current_muac: toNumOrNull(formData.current_muac),
+          allergies: toStringOrNull(formData.allergies),
         });
       } else if (formData.patient_type === "lactating") {
         Object.assign(payload, {
-          breastfeeding_status: formData.breastfeeding_status || null,
+          breastfeeding_status: toStringOrNull(
+            formData.breastfeeding_status,
+          ),
           infant_age: toNumOrNull(formData.infant_age),
+          feeding_method: toStringOrNull(formData.feeding_method),
+          latching_assessment: toStringOrNull(
+            formData.latching_assessment,
+          ),
+          nutritional_status: toStringOrNull(formData.nutritional_status),
+          family_planning_method: toStringOrNull(
+            formData.family_planning_method,
+          ),
+          maternal_health_status: toStringOrNull(
+            formData.maternal_health_status,
+          ),
+          infant_weight: toNumOrNull(formData.infant_weight),
+          infant_health_status: toStringOrNull(
+            formData.infant_health_status,
+          ),
         });
       } else if (formData.patient_type === "senior") {
         Object.assign(payload, {
           falls_risk_score: toNumOrNull(formData.falls_risk_score),
-          cognitive_assessment: formData.cognitive_assessment || null,
+          cognitive_assessment: toStringOrNull(
+            formData.cognitive_assessment,
+          ),
+          memory_status: toStringOrNull(formData.memory_status),
+          medication_list: toStringOrNull(formData.medication_list),
+          activity_level: toStringOrNull(formData.activity_level),
+          support_system: toStringOrNull(formData.support_system),
+          emergency_contact: toStringOrNull(formData.emergency_contact),
+          chronic_conditions: toStringOrNull(formData.chronic_conditions),
+          allergies: toStringOrNull(formData.allergies),
         });
       } else if (formData.patient_type === "ncd") {
+        // Convert free-text lab results into a simple key/value object
+        const labResults: Record<string, string> = {};
+        if (formData.lab_results_text.trim()) {
+          formData.lab_results_text
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .forEach((line) => {
+              const [k, ...v] = line.split(":");
+              if (k && v.length) labResults[k.trim()] = v.join(":").trim();
+              else if (k) labResults[k.trim()] = "";
+            });
+        }
+
         Object.assign(payload, {
-          ncd_classification: formData.ncd_classification || null,
-          diagnosis_date: formData.diagnosis_date || null,
+          ncd_classification: toStringOrNull(formData.ncd_classification),
+          diagnosis_date: toStringOrNull(formData.diagnosis_date),
+          lab_results:
+            Object.keys(labResults).length > 0 ? labResults : null,
+          medications: toStringOrNull(formData.medications),
+          complications: toStringOrNull(formData.complications),
+          lifestyle_factors: toStringOrNull(formData.lifestyle_factors),
+          treatment_history: toStringOrNull(formData.treatment_history),
+          current_status: formData.current_status || "monitoring",
+          allergies: toStringOrNull(formData.allergies),
         });
       }
 
-      console.log("📤 Submitting patient record:", payload);
-
       const response = await healthApi.createPatient(payload);
-
-      console.log("✅ Patient record created:", response.data);
 
       toast.success("Patient record created successfully!");
 
@@ -285,13 +376,9 @@ export default function PatientRecordForm({
         navigate("/barangay-bagocboc/health");
       }
 
-      if (onSuccess) onSuccess();
+      onSuccess?.();
     } catch (error: any) {
-      // ✅ Log full validation errors from the backend
-      console.error("❌ Full error response:", error?.response?.data);
-      console.error("❌ Validation errors:", error?.response?.data?.errors);
-      console.error("❌ Status:", error?.response?.status);
-
+      console.error("❌ Full error:", error?.response?.data);
       const apiErrors = error?.response?.data?.errors;
       if (apiErrors && typeof apiErrors === "object") {
         const fieldErrors: Record<string, string> = {};
@@ -300,24 +387,14 @@ export default function PatientRecordForm({
           fieldErrors[key] = Array.isArray(val) ? val[0] : String(val);
         });
         setErrors(fieldErrors);
-
         const firstKey = Object.keys(fieldErrors)[0];
         toast.error(`${firstKey}: ${fieldErrors[firstKey]}`);
-
-        // Scroll to the first errored field
-        setTimeout(() => {
-          const el = document.querySelector(
-            `[name="${firstKey}"], [name="vital_${firstKey.replace("vital_signs.", "")}"]`,
-          ) as HTMLElement | null;
-          el?.scrollIntoView({ behavior: "smooth", block: "center" });
-          el?.focus();
-        }, 100);
       } else {
-        const msg =
+        toast.error(
           error?.response?.data?.message ||
           error?.message ||
-          "Failed to create patient record";
-        toast.error(msg);
+          "Failed to create patient record",
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -328,15 +405,122 @@ export default function PatientRecordForm({
      HELPERS
      ============================================================ */
 
-  const getPatientTypeIcon = (type: string) => {
-    const found = PATIENT_TYPES.find((p) => p.value === type);
-    return found?.icon || User;
-  };
-
   const getFieldError = (key: string) => errors[key];
 
   /* ============================================================
-     TYPE-SPECIFIC FIELDS
+     SHARED INPUTS
+     ============================================================ */
+
+  const TextInput = ({
+    name,
+    value,
+    placeholder,
+    type = "text",
+    error,
+    required,
+  }: {
+    name: string;
+    value: string;
+    placeholder?: string;
+    type?: string;
+    error?: string;
+    required?: boolean;
+  }) => (
+    <>
+      <input
+        type={type}
+        name={name}
+        value={value}
+        onChange={handleInputChange}
+        placeholder={placeholder}
+        className={`w-full px-3 py-2 bg-theme-background border rounded-lg text-theme-text placeholder:text-theme-textSecondary/60 focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none transition-all ${error ? "border-red-500" : "border-theme"
+          }`}
+        data-required={required}
+      />
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </>
+  );
+
+  const NumberInput = ({
+    name,
+    value,
+    placeholder,
+    step,
+    min,
+    max,
+    suffix,
+  }: {
+    name: string;
+    value: string;
+    placeholder?: string;
+    step?: string;
+    min?: number;
+    max?: number;
+    suffix?: string;
+  }) => (
+    <div className="relative">
+      <input
+        type="number"
+        inputMode="decimal"
+        name={name}
+        value={value}
+        onChange={handleInputChange}
+        placeholder={placeholder}
+        step={step}
+        min={min}
+        max={max}
+        className="w-full pl-3 pr-14 py-2 bg-theme-background border border-theme rounded-lg text-theme-text placeholder:text-theme-textSecondary/60 focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none transition-all"
+      />
+      {suffix && (
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-theme-textSecondary pointer-events-none">
+          {suffix}
+        </span>
+      )}
+    </div>
+  );
+
+  const TextArea = ({
+    name,
+    value,
+    placeholder,
+    rows = 2,
+  }: {
+    name: string;
+    value: string;
+    placeholder?: string;
+    rows?: number;
+  }) => (
+    <textarea
+      name={name}
+      value={value}
+      onChange={handleInputChange}
+      placeholder={placeholder}
+      rows={rows}
+      className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text placeholder:text-theme-textSecondary/60 focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none transition-all resize-none"
+    />
+  );
+
+  const Label = ({
+    children,
+    required,
+  }: {
+    children: React.ReactNode;
+    required?: boolean;
+  }) => (
+    <label className="block text-xs font-medium text-theme-textSecondary mb-1">
+      {children}
+      {required && <span className="text-red-500 ml-0.5">*</span>}
+    </label>
+  );
+
+  const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+    <h4 className="font-semibold text-theme-text border-b border-theme pb-2 mb-3 mt-1">
+      {children}
+    </h4>
+  );
+
+  /* ============================================================
+     RENDER TYPE-SPECIFIC FIELDS
      ============================================================ */
 
   const renderTypeSpecificFields = () => {
@@ -344,83 +528,42 @@ export default function PatientRecordForm({
       case "pregnant":
         return (
           <div className="space-y-4">
-            <h4 className="font-semibold text-theme-text border-b border-theme pb-2">
-              Pregnancy Details
-            </h4>
+            <SectionTitle>Pregnancy Details</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Last Menstrual Period
-                </label>
-                <input
+                <Label>Last Menstrual Period</Label>
+                <TextInput
                   type="date"
                   name="last_menstrual_period"
                   value={formData.last_menstrual_period}
-                  onChange={handleInputChange}
-                  max={new Date().toISOString().split("T")[0]}
-                  className={`w-full px-3 py-2 bg-theme-background border rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none ${getFieldError("last_menstrual_period")
-                    ? "border-red-500"
-                    : "border-theme"
-                    }`}
                 />
-                {getFieldError("last_menstrual_period") && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {getFieldError("last_menstrual_period")}
-                  </p>
-                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Expected Delivery Date
-                </label>
-                <input
+                <Label>Expected Delivery Date</Label>
+                <TextInput
                   type="date"
                   name="expected_delivery_date"
                   value={formData.expected_delivery_date}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 bg-theme-background border rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none ${getFieldError("expected_delivery_date")
-                    ? "border-red-500"
-                    : "border-theme"
-                    }`}
+                  error={getFieldError("expected_delivery_date")}
                 />
-                {getFieldError("expected_delivery_date") && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {getFieldError("expected_delivery_date")}
-                  </p>
-                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Gestational Age (weeks)
-                </label>
-                <input
-                  type="number"
+                <Label>Gestational Age (weeks)</Label>
+                <NumberInput
                   name="gestational_age"
                   value={formData.gestational_age}
-                  onChange={handleInputChange}
                   min={0}
                   max={45}
                   placeholder="e.g. 24"
-                  className={`w-full px-3 py-2 bg-theme-background border rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none ${getFieldError("gestational_age")
-                    ? "border-red-500"
-                    : "border-theme"
-                    }`}
                 />
-                {getFieldError("gestational_age") && (
-                  <p className="text-xs text-red-500 mt-1">
-                    {getFieldError("gestational_age")}
-                  </p>
-                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Risk Level
-                </label>
+                <Label>Risk Level</Label>
                 <select
                   name="risk_level"
                   value={formData.risk_level}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -428,47 +571,75 @@ export default function PatientRecordForm({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Gravida (pregnancies)
-                </label>
-                <input
-                  type="number"
+                <Label>Gravida</Label>
+                <NumberInput
                   name="gravida"
                   value={formData.gravida}
-                  onChange={handleInputChange}
                   min={0}
                   max={20}
                   placeholder="e.g. 2"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Para (births)
-                </label>
-                <input
-                  type="number"
+                <Label>Para</Label>
+                <NumberInput
                   name="para"
                   value={formData.para}
-                  onChange={handleInputChange}
                   min={0}
                   max={20}
                   placeholder="e.g. 1"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                />
+              </div>
+              <div>
+                <Label>Immunization Status</Label>
+                <TextInput
+                  name="immunization_status"
+                  value={formData.immunization_status}
+                  placeholder="e.g. Td 2 doses"
+                />
+              </div>
+              <div>
+                <Label>Allergies</Label>
+                <TextInput
+                  name="allergies"
+                  value={formData.allergies}
+                  placeholder="Any known allergies"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Obstetric History
-              </label>
-              <textarea
+              <Label>Obstetric History</Label>
+              <TextArea
                 name="obstetric_history"
                 value={formData.obstetric_history}
-                onChange={handleInputChange}
-                rows={2}
                 placeholder="Previous pregnancies, complications, etc."
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none resize-none"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Medical History</Label>
+                <TextArea
+                  name="medical_history"
+                  value={formData.medical_history}
+                  placeholder="Chronic conditions, surgeries, etc."
+                />
+              </div>
+              <div>
+                <Label>Current Medications</Label>
+                <TextArea
+                  name="current_medications"
+                  value={formData.current_medications}
+                  placeholder="List of current medications"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Prenatal Logs</Label>
+              <TextArea
+                name="prenatal_logs"
+                value={formData.prenatal_logs}
+                placeholder="Notes from prenatal visits"
+                rows={3}
               />
             </div>
           </div>
@@ -477,73 +648,146 @@ export default function PatientRecordForm({
       case "child":
         return (
           <div className="space-y-4">
-            <h4 className="font-semibold text-theme-text border-b border-theme pb-2">
-              Child Details
-            </h4>
+            <SectionTitle>Birth Information</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Birth Weight (kg)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
+                <Label>Birth Weight</Label>
+                <NumberInput
                   name="birth_weight"
                   value={formData.birth_weight}
-                  onChange={handleInputChange}
+                  step="0.01"
                   min={0}
                   max={20}
-                  placeholder="e.g. 3.2"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  placeholder="3.2"
+                  suffix="kg"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Birth Height (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
+                <Label>Birth Height</Label>
+                <NumberInput
                   name="birth_height"
                   value={formData.birth_height}
-                  onChange={handleInputChange}
+                  step="0.1"
                   min={0}
                   max={100}
-                  placeholder="e.g. 50.5"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  placeholder="50.5"
+                  suffix="cm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Head Circumference (cm)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
+                <Label>Head Circumference</Label>
+                <NumberInput
                   name="birth_head_circumference"
                   value={formData.birth_head_circumference}
-                  onChange={handleInputChange}
+                  step="0.1"
                   min={0}
                   max={60}
-                  placeholder="e.g. 34.5"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  placeholder="34.5"
+                  suffix="cm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Gestational Age at Birth (weeks)
-                </label>
-                <input
-                  type="number"
+                <Label>Gestational Age at Birth</Label>
+                <NumberInput
                   name="gestational_age_at_birth"
                   value={formData.gestational_age_at_birth}
-                  onChange={handleInputChange}
                   min={0}
                   max={45}
-                  placeholder="e.g. 38"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  placeholder="38"
+                  suffix="wks"
                 />
               </div>
+              <div>
+                <Label>Birth Type</Label>
+                <select
+                  name="birth_type"
+                  value={formData.birth_type}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none"
+                >
+                  <option value="">Select</option>
+                  <option value="normal">Normal (Vaginal)</option>
+                  <option value="cesarean">Cesarean</option>
+                  <option value="assisted">Assisted</option>
+                </select>
+              </div>
+              <div>
+                <Label>Allergies</Label>
+                <TextInput
+                  name="allergies"
+                  value={formData.allergies}
+                  placeholder="Any known allergies"
+                />
+              </div>
+            </div>
+
+            <SectionTitle>Current Measurements</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label>Current Weight</Label>
+                <NumberInput
+                  name="current_weight"
+                  value={formData.current_weight}
+                  step="0.01"
+                  min={0}
+                  max={200}
+                  placeholder="12.5"
+                  suffix="kg"
+                />
+              </div>
+              <div>
+                <Label>Current Height</Label>
+                <NumberInput
+                  name="current_height"
+                  value={formData.current_height}
+                  step="0.1"
+                  min={0}
+                  max={250}
+                  placeholder="95.5"
+                  suffix="cm"
+                />
+              </div>
+              <div>
+                <Label>MUAC</Label>
+                <NumberInput
+                  name="current_muac"
+                  value={formData.current_muac}
+                  step="0.1"
+                  min={0}
+                  max={40}
+                  placeholder="15.5"
+                  suffix="cm"
+                />
+              </div>
+            </div>
+
+            <SectionTitle>Health Background</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Birth Complications</Label>
+                <TextArea
+                  name="birth_complications"
+                  value={formData.birth_complications}
+                  placeholder="Any complications at birth"
+                />
+              </div>
+              <div>
+                <Label>Chronic Conditions</Label>
+                <TextArea
+                  name="chronic_conditions"
+                  value={formData.chronic_conditions}
+                  placeholder="Asthma, heart conditions, etc."
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Immunization History</Label>
+              <TextArea
+                name="immunization_history"
+                value={formData.immunization_history}
+                placeholder="Vaccines received so far"
+                rows={3}
+              />
             </div>
           </div>
         );
@@ -551,41 +795,95 @@ export default function PatientRecordForm({
       case "lactating":
         return (
           <div className="space-y-4">
-            <h4 className="font-semibold text-theme-text border-b border-theme pb-2">
-              Lactating Details
-            </h4>
+            <SectionTitle>Breastfeeding Details</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Breastfeeding Status
-                </label>
+                <Label>Breastfeeding Status</Label>
                 <select
                   name="breastfeeding_status"
                   value={formData.breastfeeding_status}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none"
                 >
                   <option value="">Select status</option>
-                  <option value="exclusive">Exclusive Breastfeeding</option>
-                  <option value="mixed">Mixed Feeding</option>
+                  <option value="exclusive">Exclusive</option>
+                  <option value="mixed">Mixed</option>
                   <option value="weaned">Weaned</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Infant Age (months)
-                </label>
-                <input
-                  type="number"
+                <Label>Infant Age (months)</Label>
+                <NumberInput
                   name="infant_age"
                   value={formData.infant_age}
-                  onChange={handleInputChange}
                   min={0}
                   max={60}
-                  placeholder="e.g. 4"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  placeholder="4"
                 />
               </div>
+              <div>
+                <Label>Feeding Method</Label>
+                <TextInput
+                  name="feeding_method"
+                  value={formData.feeding_method}
+                  placeholder="e.g. Direct latch"
+                />
+              </div>
+              <div>
+                <Label>Nutritional Status</Label>
+                <TextInput
+                  name="nutritional_status"
+                  value={formData.nutritional_status}
+                  placeholder="e.g. Normal"
+                />
+              </div>
+              <div>
+                <Label>Family Planning Method</Label>
+                <TextInput
+                  name="family_planning_method"
+                  value={formData.family_planning_method}
+                  placeholder="e.g. Pills, IUD"
+                />
+              </div>
+              <div>
+                <Label>Infant Weight</Label>
+                <NumberInput
+                  name="infant_weight"
+                  value={formData.infant_weight}
+                  step="0.1"
+                  min={0}
+                  max={30}
+                  placeholder="5.5"
+                  suffix="kg"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Latching Assessment</Label>
+                <TextArea
+                  name="latching_assessment"
+                  value={formData.latching_assessment}
+                  placeholder="Notes on latching quality"
+                />
+              </div>
+              <div>
+                <Label>Maternal Health Status</Label>
+                <TextArea
+                  name="maternal_health_status"
+                  value={formData.maternal_health_status}
+                  placeholder="Mother's condition"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Infant Health Status</Label>
+              <TextArea
+                name="infant_health_status"
+                value={formData.infant_health_status}
+                placeholder="Infant's condition"
+                rows={3}
+              />
             </div>
           </div>
         );
@@ -593,38 +891,102 @@ export default function PatientRecordForm({
       case "senior":
         return (
           <div className="space-y-4">
-            <h4 className="font-semibold text-theme-text border-b border-theme pb-2">
-              Senior Citizen Details
-            </h4>
+            <SectionTitle>Assessment</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Falls Risk Score (0–10)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
+                <Label>Falls Risk Score (0–10)</Label>
+                <NumberInput
                   name="falls_risk_score"
                   value={formData.falls_risk_score}
+                  min={0}
+                  max={10}
+                  placeholder="3"
+                />
+              </div>
+              <div>
+                <Label>Memory Status</Label>
+                <select
+                  name="memory_status"
+                  value={formData.memory_status}
                   onChange={handleInputChange}
-                  placeholder="e.g. 3"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none"
+                >
+                  <option value="">Select status</option>
+                  <option value="normal">Normal</option>
+                  <option value="mild_impairment">Mild Impairment</option>
+                  <option value="moderate_impairment">Moderate Impairment</option>
+                  <option value="severe_impairment">Severe Impairment</option>
+                </select>
+              </div>
+              <div>
+                <Label>Activity Level</Label>
+                <select
+                  name="activity_level"
+                  value={formData.activity_level}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none"
+                >
+                  <option value="">Select level</option>
+                  <option value="active">Active</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="sedentary">Sedentary</option>
+                  <option value="bedridden">Bedridden</option>
+                </select>
+              </div>
+              <div>
+                <Label>Emergency Contact</Label>
+                <TextInput
+                  name="emergency_contact"
+                  value={formData.emergency_contact}
+                  placeholder="Name & number"
+                />
+              </div>
+              <div>
+                <Label>Allergies</Label>
+                <TextInput
+                  name="allergies"
+                  value={formData.allergies}
+                  placeholder="Any known allergies"
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Cognitive Assessment
-              </label>
-              <textarea
-                name="cognitive_assessment"
-                value={formData.cognitive_assessment}
-                onChange={handleInputChange}
-                rows={2}
-                placeholder="Cognitive status, memory concerns, etc."
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none resize-none"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Cognitive Assessment</Label>
+                <TextArea
+                  name="cognitive_assessment"
+                  value={formData.cognitive_assessment}
+                  placeholder="Cognitive status notes"
+                />
+              </div>
+              <div>
+                <Label>Chronic Conditions</Label>
+                <TextArea
+                  name="chronic_conditions"
+                  value={formData.chronic_conditions}
+                  placeholder="Hypertension, diabetes, etc."
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Medication List</Label>
+                <TextArea
+                  name="medication_list"
+                  value={formData.medication_list}
+                  placeholder="Current medications"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label>Support System</Label>
+                <TextArea
+                  name="support_system"
+                  value={formData.support_system}
+                  placeholder="Family, caregivers, etc."
+                  rows={3}
+                />
+              </div>
             </div>
           </div>
         );
@@ -632,34 +994,97 @@ export default function PatientRecordForm({
       case "ncd":
         return (
           <div className="space-y-4">
-            <h4 className="font-semibold text-theme-text border-b border-theme pb-2">
-              NCD / Chronic Details
-            </h4>
+            <SectionTitle>Diagnosis</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  NCD Classification
-                </label>
-                <input
-                  type="text"
+                <Label>NCD Classification</Label>
+                <TextInput
                   name="ncd_classification"
                   value={formData.ncd_classification}
-                  onChange={handleInputChange}
                   placeholder="e.g. Hypertension, Diabetes"
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                  Diagnosis Date
-                </label>
-                <input
+                <Label>Diagnosis Date</Label>
+                <TextInput
                   type="date"
                   name="diagnosis_date"
                   value={formData.diagnosis_date}
+                />
+              </div>
+              <div>
+                <Label>Current Status</Label>
+                <select
+                  name="current_status"
+                  value={formData.current_status}
                   onChange={handleInputChange}
-                  max={new Date().toISOString().split("T")[0]}
-                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary/30 focus:border-theme-primary outline-none"
+                >
+                  <option value="">Select status</option>
+                  <option value="stable">Stable</option>
+                  <option value="monitoring">Monitoring</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+              <div>
+                <Label>Allergies</Label>
+                <TextInput
+                  name="allergies"
+                  value={formData.allergies}
+                  placeholder="Any known allergies"
+                />
+              </div>
+            </div>
+
+            <SectionTitle>Clinical Details</SectionTitle>
+            <div>
+              <Label>
+                Lab Results (one per line, "name: value" format)
+              </Label>
+              <TextArea
+                name="lab_results_text"
+                value={formData.lab_results_text}
+                placeholder={"FBS: 5.6\nCholesterol: 180\nCreatinine: 0.9"}
+                rows={4}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Medications</Label>
+                <TextArea
+                  name="medications"
+                  value={formData.medications}
+                  placeholder="Current medications"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label>Complications</Label>
+                <TextArea
+                  name="complications"
+                  value={formData.complications}
+                  placeholder="Any complications"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Lifestyle Factors</Label>
+                <TextArea
+                  name="lifestyle_factors"
+                  value={formData.lifestyle_factors}
+                  placeholder="Smoking, alcohol, exercise, diet"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label>Treatment History</Label>
+                <TextArea
+                  name="treatment_history"
+                  value={formData.treatment_history}
+                  placeholder="Past treatments, surgeries"
+                  rows={3}
                 />
               </div>
             </div>
@@ -677,7 +1102,6 @@ export default function PatientRecordForm({
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => navigate("/barangay-bagocboc/health")}
@@ -737,10 +1161,9 @@ export default function PatientRecordForm({
                   value={searchQuery}
                   onChange={(e) => handleSearch(e.target.value)}
                   className={`w-full px-4 py-3 bg-theme-background border rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none ${getFieldError("resident")
-                    ? "border-red-500"
-                    : "border-theme"
+                      ? "border-red-500"
+                      : "border-theme"
                     }`}
-                  data-error={!!getFieldError("resident")}
                 />
                 {isSearching && (
                   <div className="absolute right-3 top-3">
@@ -782,28 +1205,6 @@ export default function PatientRecordForm({
                   ))}
                 </div>
               )}
-
-              {searchQuery.length >= 2 &&
-                !isSearching &&
-                searchResults.length === 0 && (
-                  <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-amber-700 dark:text-amber-400">
-                        No matching residents found.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          navigate("/barangay-bagocboc/residents/new")
-                        }
-                        className="text-sm text-amber-600 dark:text-amber-400 hover:underline"
-                      >
-                        Register a new resident first
-                      </button>
-                    </div>
-                  </div>
-                )}
             </div>
           )}
         </div>
@@ -817,7 +1218,7 @@ export default function PatientRecordForm({
             {PATIENT_TYPES.map((type) => {
               const Icon = type.icon;
               const isSelected = formData.patient_type === type.value;
-              const colors = {
+              const colorMap: Record<string, string> = {
                 pink: "border-pink-300 dark:border-pink-700 bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400",
                 green:
                   "border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400",
@@ -827,9 +1228,6 @@ export default function PatientRecordForm({
                   "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400",
                 red: "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
               };
-              const colorClass =
-                colors[type.color as keyof typeof colors] || "";
-
               return (
                 <button
                   key={type.value}
@@ -841,10 +1239,9 @@ export default function PatientRecordForm({
                     }))
                   }
                   className={`p-4 border-2 rounded-xl text-center transition-all ${isSelected
-                    ? `${colorClass} border-2`
-                    : "border-theme hover:border-theme-primary/50 text-theme-textSecondary hover:text-theme-text"
+                      ? colorMap[type.color]
+                      : "border-theme hover:border-theme-primary/50 text-theme-textSecondary hover:text-theme-text"
                     }`}
-                  data-error={!!getFieldError("patient_type")}
                 >
                   <Icon
                     className={`w-6 h-6 mx-auto mb-2 ${isSelected ? "" : "text-theme-textSecondary"
@@ -869,100 +1266,74 @@ export default function PatientRecordForm({
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Blood Pressure
-              </label>
-              <input
-                type="text"
+              <Label>Blood Pressure</Label>
+              <TextInput
                 name="vital_blood_pressure"
                 value={formData.vital_signs.blood_pressure}
-                onChange={handleInputChange}
-                placeholder="e.g. 120/80"
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                placeholder="120/80"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Heart Rate (bpm)
-              </label>
-              <input
-                type="number"
+              <Label>Heart Rate</Label>
+              <NumberInput
                 name="vital_heart_rate"
                 value={formData.vital_signs.heart_rate}
-                onChange={handleInputChange}
                 min={0}
                 max={300}
-                placeholder="e.g. 72"
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                placeholder="72"
+                suffix="bpm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Temperature (°C)
-              </label>
-              <input
-                type="number"
-                step="0.1"
+              <Label>Temperature</Label>
+              <NumberInput
                 name="vital_temperature"
                 value={formData.vital_signs.temperature}
-                onChange={handleInputChange}
+                step="0.1"
                 min={30}
                 max={45}
-                placeholder="e.g. 36.5"
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                placeholder="36.5"
+                suffix="°C"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Respiratory Rate
-              </label>
-              <input
-                type="number"
+              <Label>Respiratory Rate</Label>
+              <NumberInput
                 name="vital_respiratory_rate"
                 value={formData.vital_signs.respiratory_rate}
-                onChange={handleInputChange}
                 min={0}
                 max={100}
-                placeholder="e.g. 16"
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                placeholder="16"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Weight (kg)
-              </label>
-              <input
-                type="number"
-                step="0.1"
+              <Label>Weight</Label>
+              <NumberInput
                 name="vital_weight"
                 value={formData.vital_signs.weight}
-                onChange={handleInputChange}
+                step="0.1"
                 min={0}
                 max={500}
-                placeholder="e.g. 65.5"
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                placeholder="65.5"
+                suffix="kg"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-theme-textSecondary mb-1">
-                Height (cm)
-              </label>
-              <input
-                type="number"
-                step="0.1"
+              <Label>Height</Label>
+              <NumberInput
                 name="vital_height"
                 value={formData.vital_signs.height}
-                onChange={handleInputChange}
+                step="0.1"
                 min={0}
                 max={300}
-                placeholder="e.g. 165.5"
-                className="w-full px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                placeholder="165.5"
+                suffix="cm"
               />
             </div>
           </div>
         </div>
 
-        {/* Step 4: Type-specific fields */}
+        {/* Step 4: Type-specific */}
         {formData.patient_type && (
           <div className="bg-theme-surface border border-theme rounded-xl p-6">
             {renderTypeSpecificFields()}

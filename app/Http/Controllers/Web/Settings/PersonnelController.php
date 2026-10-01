@@ -66,31 +66,64 @@ class PersonnelController extends Controller
         return $this->respondSuccess($result);
     }
 
-    /**
-     * Assign role to user
-     * ✅ Notifies the user they gained a role
-     */
+    // app/Http/Controllers/Web/Settings/PersonnelController.php
+
     public function assignRole(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'user_id' => 'required|exists:users,id',
-            'role_id' => 'required|exists:roles,id',
+            'user_id'          => 'required|exists:users,id',
+            'role_id'          => 'required_without:role_ids|exists:roles,id',
+            'role_ids'         => 'required_without:role_id|array',
+            'role_ids.*'       => 'exists:roles,id',
+            'sync'             => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        $user = User::find($request->user_id);
-        $role = Role::find($request->role_id);
+        $user = User::findOrFail($request->user_id);
 
+        // ✅ Bulk / sync path
+        if ($request->has('role_ids')) {
+            $newIds = $request->input('role_ids');
+
+            if (count($newIds) === 0) {
+                return $this->respondError('A user must have at least one role', null, 422);
+            }
+
+            // ✅ Guard: don't strip the last Super Admin
+            $superAdminId = \App\Models\Role::where('name', 'Super Admin')->value('id');
+
+            if ($superAdminId) {
+                $wasSuperAdmin = $user->roles()->where('role_id', $superAdminId)->exists();
+                $stillSuperAdmin = in_array($superAdminId, $newIds);
+
+                if ($wasSuperAdmin && !$stillSuperAdmin) {
+                    $remaining = User::whereHas('roles', fn($q) => $q->where('name', 'Super Admin'))
+                        ->where('id', '!=', $user->id)
+                        ->count();
+                    if ($remaining === 0) {
+                        return $this->respondError('Cannot remove the last Super Admin', null, 422);
+                    }
+                }
+            }
+
+            $user->roles()->sync($newIds);
+
+            return $this->respondSuccess(
+                $user->fresh()->load('roles', 'resident'),
+                'Roles updated successfully'
+            );
+        }
+
+        // ✅ Legacy single-role path (kept for backward compat)
+        $role = Role::find($request->role_id);
         if ($user->roles()->where('role_id', $request->role_id)->exists()) {
             return $this->respondError('User already has this role', null, 422);
         }
-
         $user->roles()->attach($request->role_id);
 
-        // ✅ Notify the user
         $this->notifyUser(
             $user->id,
             '🎉 New Role Assigned',

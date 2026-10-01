@@ -35,6 +35,7 @@ use App\Http\Controllers\Web\Residents\ResidentConfirmationController;
 use App\Http\Controllers\Web\BNS\BNSController;
 use App\Http\Controllers\Web\Captain\CaptainReportController;
 use App\Http\Controllers\Mobile\Certificates\CertificateDownloadController;
+use App\Http\Controllers\Web\Health\HealthReportsController;
 use App\Models\Household;
 
 Route::get(
@@ -463,6 +464,8 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
         // Stats
         Route::get('/stats', [HealthStatsController::class, 'index']);
         Route::get('/zone-statistics', [HealthStatsController::class, 'zoneStats']);
+
+        Route::get('/reports', [HealthReportsController::class, 'index']);
 
         // Patients - Static routes first
         Route::get('/patients', [PatientController::class, 'index']);

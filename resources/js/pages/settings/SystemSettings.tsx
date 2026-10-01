@@ -23,6 +23,8 @@ import {
   UserPlus,
   Lock,
 } from "lucide-react";
+import UserRoleModal from "../../components/features/UserRoleModal";
+import { X as XIcon, UserCog as UserCogIcon, ShieldPlus } from "lucide-react";
 import { api } from "../../api/apiClient";
 import { useAuthStore } from "../../stores/authStore";
 import Spinner from "../../components/ui/Spinner";
@@ -37,6 +39,9 @@ export default function SystemSettings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("barangay");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showRoleAssignModal, setShowRoleAssignModal] = useState(false);
+  const [roleModalMode, setRoleModalMode] = useState<"change" | "add">("change");
+  const [roleModalUser, setRoleModalUser] = useState<any>(null);
 
   const [barangayInfo, setBarangayInfo] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -188,6 +193,80 @@ export default function SystemSettings() {
   useEffect(() => {
     fetchAllData();
   }, []);
+
+  /* ============================================================
+   ROLE CHANGE
+   ============================================================ */
+
+  const openChangeRoles = (u: any) => {
+    setRoleModalUser(u);
+    setRoleModalMode("change");
+    setShowRoleAssignModal(true);
+  };
+
+  const openAddRoles = (u: any) => {
+    setRoleModalUser(u);
+    setRoleModalMode("add");
+    setShowRoleAssignModal(true);
+  };
+
+  const handleSaveRoles = async (user: any, roleIds: number[]) => {
+    try {
+      await api.post("/web/personnel/assign-role", {
+        user_id: user.id,
+        role_ids: roleIds,
+        sync: true, // backend should sync (detach missing, attach new)
+      });
+      toast.success("Roles updated successfully");
+      fetchAllData();
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message || "Failed to update roles";
+      toast.error(msg);
+      throw err;
+    }
+  };
+
+  const handleQuickRemoveRole = async (user: any, role: any) => {
+    // Guard: prevent removing the last Super Admin
+    if (role.name === "Super Admin") {
+      const superAdmins = users.filter((u: any) =>
+        (u.roles || []).some((r: any) => r.name === "Super Admin"),
+      );
+      if (superAdmins.length <= 1) {
+        toast.error("Cannot remove the last Super Admin");
+        return;
+      }
+    }
+
+    const remaining = (user.roles || [])
+      .filter((r: any) => r.id !== role.id)
+      .map((r: any) => r.id);
+
+    if (remaining.length === 0) {
+      toast.error("A user must have at least one role");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove role "${role.name}" from this user?`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.post("/web/personnel/assign-role", {
+        user_id: user.id,
+        role_ids: remaining,
+        sync: true,
+      });
+      toast.success(`Removed role: ${role.name}`);
+      fetchAllData();
+    } catch (err: any) {
+      toast.error(
+        err?.response?.data?.message || "Failed to remove role",
+      );
+    }
+  };
 
   // ✅ Filtered users
   const filteredUsers = useMemo(() => {
@@ -497,11 +576,10 @@ export default function SystemSettings() {
                 setStatusFilter("all");
                 setRoleFilter("all");
               }}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap flex items-center gap-2 ${
-                isActive
-                  ? "border-theme-primary text-theme-primary"
-                  : "border-transparent text-theme-textSecondary hover:text-theme-text"
-              }`}
+              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap flex items-center gap-2 ${isActive
+                ? "border-theme-primary text-theme-primary"
+                : "border-transparent text-theme-textSecondary hover:text-theme-text"
+                }`}
             >
               <Icon className="w-4 h-4" />
               {tab.label}
@@ -859,30 +937,35 @@ export default function SystemSettings() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1 max-w-md">
                             {u?.roles && u.roles.length > 0 ? (
                               u.roles.map((r: any) => (
                                 <span
                                   key={r.id}
                                   className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-theme-primary/10 text-theme-primary"
                                 >
-                                  <Shield className="w-3 h-3" /> {r.name}
+                                  <Shield className="w-3 h-3" />
+                                  {r.name}
+                                  <button
+                                    onClick={() => handleQuickRemoveRole(u, r)}
+                                    className="ml-0.5 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                                    title={`Remove ${r.name}`}
+                                  >
+                                    <XIcon className="w-3 h-3" />
+                                  </button>
                                 </span>
                               ))
                             ) : (
-                              <span className="text-xs text-theme-textSecondary">
-                                No roles
-                              </span>
+                              <span className="text-xs text-theme-textSecondary">No roles</span>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
-                              u?.account_status === "active"
-                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                            }`}
+                            className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${u?.account_status === "active"
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                              : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                              }`}
                           >
                             {u?.account_status === "active" ? (
                               <CheckCircle className="w-3 h-3" />
@@ -893,18 +976,31 @@ export default function SystemSettings() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                            <button
+                              onClick={() => openChangeRoles(u)}
+                              className="px-3 py-1 text-xs rounded-lg bg-theme-primary/10 text-theme-primary hover:bg-theme-primary/20 transition-colors font-medium inline-flex items-center gap-1"
+                              title="Change all roles for this user"
+                            >
+                              <UserCogIcon className="w-3 h-3" />
+                              Change Role
+                            </button>
+                            <button
+                              onClick={() => openAddRoles(u)}
+                              className="px-3 py-1 text-xs rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 transition-colors font-medium inline-flex items-center gap-1"
+                              title="Add more roles"
+                            >
+                              <ShieldPlus className="w-3 h-3" />
+                              Add Role
+                            </button>
                             <button
                               onClick={() => handleToggleStatus(u)}
-                              className={`px-2 py-1 text-xs rounded-lg transition-colors ${
-                                u?.account_status === "active"
-                                  ? "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
-                                  : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
-                              }`}
+                              className={`px-2 py-1 text-xs rounded-lg transition-colors ${u?.account_status === "active"
+                                ? "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+                                : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+                                }`}
                             >
-                              {u?.account_status === "active"
-                                ? "Deactivate"
-                                : "Activate"}
+                              {u?.account_status === "active" ? "Deactivate" : "Activate"}
                             </button>
                             <button
                               onClick={() => {
@@ -1149,9 +1245,8 @@ export default function SystemSettings() {
                 onChange={(e) =>
                   setUserForm({ ...userForm, first_name: e.target.value })
                 }
-                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                  formErrors.first_name ? "border-red-500" : "border-theme"
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.first_name ? "border-red-500" : "border-theme"
+                  }`}
               />
               {formErrors.first_name && (
                 <p className="text-sm text-red-500 mt-1">
@@ -1169,9 +1264,8 @@ export default function SystemSettings() {
                 onChange={(e) =>
                   setUserForm({ ...userForm, last_name: e.target.value })
                 }
-                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                  formErrors.last_name ? "border-red-500" : "border-theme"
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.last_name ? "border-red-500" : "border-theme"
+                  }`}
               />
               {formErrors.last_name && (
                 <p className="text-sm text-red-500 mt-1">
@@ -1189,9 +1283,8 @@ export default function SystemSettings() {
                 onChange={(e) =>
                   setUserForm({ ...userForm, email: e.target.value })
                 }
-                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                  formErrors.email ? "border-red-500" : "border-theme"
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.email ? "border-red-500" : "border-theme"
+                  }`}
               />
               {formErrors.email && (
                 <p className="text-sm text-red-500 mt-1">{formErrors.email}</p>
@@ -1221,9 +1314,8 @@ export default function SystemSettings() {
                   onChange={(e) =>
                     setUserForm({ ...userForm, password: e.target.value })
                   }
-                  className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                    formErrors.password ? "border-red-500" : "border-theme"
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.password ? "border-red-500" : "border-theme"
+                    }`}
                 />
                 <button
                   type="button"
@@ -1256,11 +1348,10 @@ export default function SystemSettings() {
                     password_confirmation: e.target.value,
                   })
                 }
-                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                  formErrors.password_confirmation
-                    ? "border-red-500"
-                    : "border-theme"
-                }`}
+                className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.password_confirmation
+                  ? "border-red-500"
+                  : "border-theme"
+                  }`}
               />
               {formErrors.password_confirmation && (
                 <p className="text-sm text-red-500 mt-1">
@@ -1287,11 +1378,10 @@ export default function SystemSettings() {
                             : [...prev.role_ids, role.id],
                         }));
                       }}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                        isSelected
-                          ? "bg-theme-primary text-white border-theme-primary"
-                          : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-theme-hover"
-                      }`}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${isSelected
+                        ? "bg-theme-primary text-white border-theme-primary"
+                        : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-theme-hover"
+                        }`}
                     >
                       {role.name}
                     </button>
@@ -1334,6 +1424,19 @@ export default function SystemSettings() {
           </div>
         </div>
       </Modal>
+
+      {/* CHANGE / ADD ROLE MODAL */}
+      <UserRoleModal
+        isOpen={showRoleAssignModal}
+        onClose={() => {
+          setShowRoleAssignModal(false);
+          setRoleModalUser(null);
+        }}
+        user={roleModalUser}
+        allRoles={roles}
+        onSave={handleSaveRoles}
+        mode={roleModalMode}
+      />
 
       {/* CREATE ROLE MODAL */}
       <Modal

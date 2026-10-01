@@ -364,6 +364,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             path: "/barangay-bagocboc/health/patients/search",
             icon: Search,
           },
+          {
+            name: "Reports",
+            path: "/barangay-bagocboc/health/reports",
+            icon: BarChart3,
+          },
         ],
       });
     }

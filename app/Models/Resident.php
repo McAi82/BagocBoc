@@ -17,7 +17,7 @@ class Resident extends Model
         'last_name',
         'suffix',
         'phone_number',
-        'email',  
+        'email',
         'gender',
         'citizenship',
         'birth_date',
@@ -49,7 +49,10 @@ class Resident extends Model
     {
         return $this->hasMany(Clearance::class);
     }
-
+    public function patientRecords()
+    {
+        return $this->hasMany(\App\Models\PatientRecord::class, 'resident_id');
+    }
     public function payments()
     {
         return $this->hasMany(Payment::class);
@@ -103,11 +106,11 @@ class Resident extends Model
         if ($this->birth_date) {
             try {
                 $birthDate = \Carbon\Carbon::parse($this->birth_date);
-                
+
                 if ($birthDate->isFuture()) {
                     return 0;
                 }
-                
+
                 $age = $birthDate->diffInYears(now());
                 return max(0, $age);
             } catch (\Exception $e) {
@@ -122,11 +125,11 @@ class Resident extends Model
         if ($this->birth_date) {
             try {
                 $birthDate = \Carbon\Carbon::parse($this->birth_date);
-                
+
                 if ($birthDate->isFuture()) {
                     return 0;
                 }
-                
+
                 $months = $birthDate->diffInMonths(now());
                 return max(0, $months);
             } catch (\Exception $e) {
@@ -140,7 +143,7 @@ class Resident extends Model
     {
         $age = $this->age;
         if ($age === null) return 'Unknown';
-        
+
         if ($age <= 12) return '0-12';
         if ($age <= 18) return '13-18';
         if ($age <= 35) return '19-35';

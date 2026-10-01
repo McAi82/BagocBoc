@@ -13,3 +13,4 @@ export { default as CheckupHistory } from "./checkups/CheckupHistory";
 export { default as CheckupForm } from "./checkups/CheckupForm";
 export { default as PatientSearch } from "./patients/PatientSearch";
 export { default as PatientRegistration } from "./patients/PatientRegistration";
+export { default as HealthReports } from "./HealthReports";

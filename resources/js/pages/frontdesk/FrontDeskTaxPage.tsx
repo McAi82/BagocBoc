@@ -12,12 +12,18 @@ import {
   AlertCircle,
   Save,
   Inbox,
+  User as UserIcon,
+  Hash,
+  Calendar as CalendarIcon,
+  Tag,
+  FileText,
 } from "lucide-react";
 import { formatDate, formatCurrency } from "../../utils/format";
 import { api } from "../../api/apiClient";
 import Spinner from "../../components/ui/Spinner";
 import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
+import ReportDetailModal from "../../components/features/ReportDetailModal";
 import toast from "react-hot-toast";
 
 export default function FrontDeskTaxPage() {
@@ -30,7 +36,6 @@ export default function FrontDeskTaxPage() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedTax, setSelectedTax] = useState<any>(null);
 
-  // ✅ Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
 
@@ -199,292 +204,420 @@ export default function FrontDeskTaxPage() {
     }
   };
 
+  /* ============================================================
+     ✅ RENEWED PRINT — professional tax receipt
+     ============================================================ */
   const handlePrintReceipt = (tax: any) => {
     const paidDate = tax.paid_at || tax.created_at;
-    const formattedDate = paidDate
-      ? new Date(paidDate).toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-      : "N/A";
-    const formattedTime = paidDate
-      ? new Date(paidDate).toLocaleTimeString("en-PH", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-      : "";
+    const d = paidDate ? new Date(paidDate) : new Date();
+
+    const formattedDate = d.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const formattedTime = d.toLocaleTimeString("en-PH", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const amount = parseFloat(tax.amount) || 0;
+    const amountFormatted = amount.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    // Number to words for the "Amount in words" line
+    const amountInWords = numberToWords(amount);
 
     const html = `
-    <style>
-      #print-portal * { box-sizing: border-box; margin: 0; padding: 0; }
-      #print-portal {
-        font-family: 'Georgia', 'Times New Roman', serif;
-        color: #1a1a1a;
-        background: #ffffff;
-      }
-      #print-portal .receipt {
-        max-width: 720px;
-        margin: 0 auto;
-        background: #ffffff;
-        padding: 40px 50px;
-      }
-      #print-portal .header {
-        text-align: center;
-        border-bottom: 3px double #1a1a1a;
-        padding-bottom: 18px;
-        margin-bottom: 26px;
-      }
-      #print-portal .header .republic {
-        font-size: 11px;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        color: #555;
-        margin-bottom: 6px;
-      }
-      #print-portal .header .barangay {
-        font-size: 26px;
-        font-weight: bold;
-        letter-spacing: 1px;
-        color: #0f172a;
-        margin-bottom: 4px;
-      }
-      #print-portal .header .location {
-        font-size: 12px;
-        color: #666;
-        font-style: italic;
-      }
-      #print-portal .title {
-        text-align: center;
-        font-size: 20px;
-        font-weight: bold;
-        letter-spacing: 4px;
-        text-transform: uppercase;
-        margin: 22px 0 8px;
-        color: #0f172a;
-      }
-      #print-portal .subtitle {
-        text-align: center;
-        font-size: 12px;
-        color: #666;
-        margin-bottom: 26px;
-        letter-spacing: 2px;
-      }
-      #print-portal .or-box {
-        background: #f8f9fb;
-        border: 1px solid #d1d5db;
-        border-left: 4px solid #6d28d9;
-        padding: 14px 20px;
-        margin-bottom: 26px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      #print-portal .or-box .label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        color: #666;
-        font-weight: bold;
-      }
-      #print-portal .or-box .value {
-        font-size: 18px;
-        font-weight: bold;
-        font-family: 'Courier New', monospace;
-        color: #6d28d9;
-      }
-      #print-portal .details {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 26px;
-      }
-      #print-portal .details tr td {
-        padding: 11px 0;
-        border-bottom: 1px solid #eee;
-        font-size: 14px;
-        vertical-align: top;
-      }
-      #print-portal .details tr:last-child td { border-bottom: none; }
-      #print-portal .details .field {
-        color: #666;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        width: 40%;
-      }
-      #print-portal .details .val {
-        color: #0f172a;
-        font-weight: 600;
-        text-align: right;
-      }
-      #print-portal .amount-section {
-        background: #f5f3ff;
-        border: 2px solid #6d28d9;
-        padding: 20px 24px;
-        margin: 26px 0;
-        text-align: center;
-      }
-      #print-portal .amount-section .label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        color: #6d28d9;
-        margin-bottom: 6px;
-      }
-      #print-portal .amount-section .amount {
-        font-size: 30px;
-        font-weight: bold;
-        color: #6d28d9;
-        font-family: 'Georgia', serif;
-      }
-      #print-portal .status-badge {
-        display: inline-block;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: bold;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        background: #d1fae5;
-        color: #065f46;
-      }
-      #print-portal .signatures {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 50px;
-        gap: 40px;
-      }
-      #print-portal .sig-block {
-        flex: 1;
-        text-align: center;
-      }
-      #print-portal .sig-block .line {
-        border-top: 1px solid #333;
-        margin-bottom: 6px;
-        height: 40px;
-      }
-      #print-portal .sig-block .name {
-        font-size: 13px;
-        font-weight: bold;
-        color: #0f172a;
-      }
-      #print-portal .sig-block .role {
-        font-size: 11px;
-        color: #666;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      #print-portal .footer-note {
-        margin-top: 34px;
-        padding-top: 18px;
-        border-top: 1px dashed #ccc;
-        font-size: 10px;
-        color: #888;
-        text-align: center;
-        line-height: 1.6;
-      }
-    </style>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Tax Receipt — ${tax.receipt_number || "N/A"}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    <div class="receipt">
-      <div class="header">
-        <div class="republic">Republic of the Philippines</div>
-        <div class="barangay">BARANGAY BAGOCBOC</div>
-        <div class="location">Opol, Misamis Oriental</div>
-      </div>
+    @page { size: A4 portrait; margin: 14mm 12mm; }
 
-      <div class="title">Tax Receipt</div>
-      <div class="subtitle">Official Tax Payment Acknowledgement</div>
+    body {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      color: #1a1a1a;
+      background: #fff;
+      font-size: 11.5px;
+      line-height: 1.5;
+      padding: 24px;
+    }
 
-      <div class="or-box">
-        <div>
-          <div class="label">Receipt Number</div>
-          <div class="value">${tax.receipt_number || "N/A"}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="label">Date Issued</div>
-          <div style="font-size:13px;font-weight:600;color:#0f172a;margin-top:4px">
-            ${formattedDate}${formattedTime ? ` • ${formattedTime}` : ""}
-          </div>
-        </div>
-      </div>
+    /* ---------- LETTERHEAD ---------- */
+    .letterhead {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding-bottom: 14px;
+      border-bottom: 3px double #1a1a1a;
+      margin-bottom: 4px;
+    }
 
-      <table class="details">
-        <tr>
-          <td class="field">Taxpayer Name</td>
-          <td class="val">${tax.taxpayer_name || "N/A"}</td>
-        </tr>
-        <tr>
-          <td class="field">Tax Type</td>
-          <td class="val">${tax.tax_type || "N/A"}</td>
-        </tr>
-        <tr>
-          <td class="field">Payment Method</td>
-          <td class="val">${tax.payment_method || "Cash"}</td>
-        </tr>
-        <tr>
-          <td class="field">Status</td>
-          <td class="val">
-            <span class="status-badge">${tax.status || "Paid"}</span>
-          </td>
-        </tr>
-        ${tax.remarks
-        ? `<tr>
-                <td class="field">Remarks</td>
-                <td class="val">${tax.remarks}</td>
-              </tr>`
+    .seal {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      border: 2px solid #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: #555;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      background: #fafafa;
+    }
+
+    .letterhead-text { flex: 1; text-align: center; line-height: 1.35; }
+    .letterhead-text .republic {
+      font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+      color: #444; margin-bottom: 4px;
+    }
+    .letterhead-text .province { font-size: 12px; color: #444; }
+    .letterhead-text .municipality { font-size: 12px; color: #444; margin-bottom: 4px; }
+    .letterhead-text .barangay {
+      font-size: 22px; font-weight: bold; letter-spacing: 1.5px;
+      color: #0f172a; margin: 4px 0;
+    }
+    .letterhead-text .office {
+      font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #555;
+    }
+
+    .rule-thick {
+      border-top: 2px solid #1a1a1a;
+      margin-top: 2px;
+      margin-bottom: 22px;
+    }
+
+    /* ---------- TITLE ---------- */
+    .title-block { text-align: center; margin-bottom: 26px; }
+    .title-block h1 {
+      font-size: 22px; letter-spacing: 5px; text-transform: uppercase;
+      color: #0f172a; margin-bottom: 6px; font-weight: bold;
+    }
+    .title-block .subtitle {
+      font-size: 12px; font-style: italic; color: #666;
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+
+    /* ---------- RECEIPT NUMBER BAND ---------- */
+    .receipt-band {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: #f8f9fb;
+      border: 1px solid #d1d5db;
+      border-left: 4px solid #6d28d9;
+      margin-bottom: 24px;
+    }
+    .receipt-band .lbl {
+      font-size: 10px; text-transform: uppercase;
+      letter-spacing: 1.5px; color: #666; font-weight: bold;
+    }
+    .receipt-band .val {
+      font-size: 18px; font-weight: bold; color: #6d28d9;
+      font-family: 'Courier New', monospace; margin-top: 2px;
+    }
+
+    /* ---------- RECEIPT BODY ---------- */
+    .receipt-body {
+      border: 1px solid #e5e7eb;
+      padding: 26px 30px;
+      margin-bottom: 20px;
+    }
+
+    .receipt-body .lead {
+      font-size: 13px;
+      margin-bottom: 18px;
+      text-align: justify;
+    }
+
+    .row {
+      display: flex;
+      align-items: flex-end;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .row .label {
+      flex: 0 0 auto;
+      padding-right: 8px;
+      color: #555;
+    }
+    .row .dots {
+      flex: 1;
+      border-bottom: 1px dotted #888;
+      margin: 0 6px;
+      transform: translateY(-4px);
+    }
+    .row .value {
+      flex: 0 0 auto;
+      font-weight: bold;
+      color: #0f172a;
+      font-family: 'Courier New', monospace;
+      padding-left: 8px;
+      min-width: 60px;
+      text-align: right;
+    }
+
+    /* Amount panel */
+    .amount-panel {
+      margin-top: 26px;
+      border: 2px solid #6d28d9;
+      background: #f5f3ff;
+      padding: 18px 22px;
+      text-align: center;
+    }
+    .amount-panel .lbl {
+      font-size: 10px; text-transform: uppercase;
+      letter-spacing: 2px; color: #6d28d9; font-weight: bold;
+    }
+    .amount-panel .amt {
+      font-size: 30px; font-weight: bold; color: #6d28d9;
+      font-family: 'Georgia', serif; margin-top: 4px;
+    }
+    .amount-panel .words {
+      margin-top: 8px;
+      font-size: 11px;
+      font-style: italic;
+      color: #4b5563;
+      letter-spacing: 0.3px;
+    }
+
+    /* Payment status badge */
+    .status-wrap {
+      display: flex;
+      justify-content: center;
+      margin-top: 18px;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 10.5px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #6ee7b7;
+    }
+
+    /* ---------- SIGNATURES ---------- */
+    .signatures {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 55px;
+      gap: 40px;
+      page-break-inside: avoid;
+    }
+    .sig-block { flex: 1; max-width: 260px; text-align: center; }
+    .sig-line {
+      border-top: 1px solid #333;
+      margin-bottom: 6px;
+      height: 36px;
+    }
+    .sig-name { font-size: 12px; font-weight: bold; color: #0f172a; }
+    .sig-title {
+      font-size: 10.5px; color: #666; text-transform: uppercase;
+      letter-spacing: 0.8px; margin-top: 2px;
+    }
+
+    /* ---------- FOOTER ---------- */
+    .footer {
+      margin-top: 40px;
+      padding-top: 14px;
+      border-top: 1px dashed #ccc;
+      font-size: 9.5px;
+      color: #888;
+      text-align: center;
+      line-height: 1.6;
+      page-break-inside: avoid;
+    }
+    .footer strong { color: #555; }
+    .footer .strip {
+      margin-top: 8px;
+      display: inline-block;
+      padding: 4px 12px;
+      border: 1px dashed #bbb;
+      font-size: 10px;
+      color: #666;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LETTERHEAD -->
+  <div class="letterhead">
+    <div class="seal">BARANGAY<br/>SEAL</div>
+    <div class="letterhead-text">
+      <div class="republic">Republic of the Philippines</div>
+      <div class="province">Province of Misamis Oriental</div>
+      <div class="municipality">Municipality of Opol</div>
+      <div class="barangay">BARANGAY BAGOCBOC</div>
+      <div class="office">Office of the Barangay Treasurer</div>
+    </div>
+    <div class="seal">DILG<br/>SEAL</div>
+  </div>
+  <div class="rule-thick"></div>
+
+  <!-- TITLE -->
+  <div class="title-block">
+    <h1>Official Tax Receipt</h1>
+    <div class="subtitle">Acknowledgement of Payment</div>
+  </div>
+
+  <!-- RECEIPT NUMBER BAND -->
+  <div class="receipt-band">
+    <div>
+      <div class="lbl">Receipt Number</div>
+      <div class="val">${tax.receipt_number || "N/A"}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="lbl">Date Issued</div>
+      <div class="val" style="font-size:13px; color:#0f172a;">${formattedDate} • ${formattedTime}</div>
+    </div>
+  </div>
+
+  <!-- RECEIPT BODY -->
+  <div class="receipt-body">
+
+    <p class="lead">
+      Received from <strong>${tax.taxpayer_name || "N/A"}</strong>
+      the sum of <strong>₱${amountFormatted}</strong>
+      (${amountInWords}) in payment of
+      <strong>${tax.tax_type || "N/A"}</strong>.
+    </p>
+
+    <div class="row">
+      <div class="label">Taxpayer Name</div>
+      <div class="dots"></div>
+      <div class="value">${tax.taxpayer_name || "N/A"}</div>
+    </div>
+
+    <div class="row">
+      <div class="label">Tax Type</div>
+      <div class="dots"></div>
+      <div class="value">${tax.tax_type || "N/A"}</div>
+    </div>
+
+    <div class="row">
+      <div class="label">Payment Method</div>
+      <div class="dots"></div>
+      <div class="value">${tax.payment_method || "Cash"}</div>
+    </div>
+
+    ${tax.remarks
+        ? `
+    <div class="row">
+      <div class="label">Remarks</div>
+      <div class="dots"></div>
+      <div class="value" style="font-family:'Georgia',serif;font-weight:normal">${tax.remarks}</div>
+    </div>`
         : ""
       }
-      </table>
 
-      <div class="amount-section">
-        <div class="label">Total Amount Paid</div>
-        <div class="amount">₱ ${parseFloat(tax.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-      </div>
-
-      <div class="signatures">
-        <div class="sig-block">
-          <div class="line"></div>
-          <div class="name">Barangay Treasurer</div>
-          <div class="role">Authorized Personnel</div>
-        </div>
-        <div class="sig-block">
-          <div class="line"></div>
-          <div class="name">${tax.taxpayer_name || "Taxpayer"}</div>
-          <div class="role">Payor / Received By</div>
-        </div>
-      </div>
-
-      <div class="footer-note">
-        This is a system-generated tax receipt from the Barangay Bagocboc Management System.<br/>
-        Thank you for your payment. Please keep this receipt for your records.
-      </div>
+    <div class="amount-panel">
+      <div class="lbl">Total Amount Paid</div>
+      <div class="amt">₱ ${amountFormatted}</div>
+      <div class="words">${amountInWords}</div>
     </div>
-  `;
 
-    printHTML(html);
+    <div class="status-wrap">
+      <span class="status">${tax.status || "Paid"}</span>
+    </div>
+  </div>
+
+  <!-- SIGNATURES -->
+  <div class="signatures">
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">Juan D. Dela Cruz</div>
+      <div class="sig-title">Barangay Treasurer</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">${tax.taxpayer_name || "Taxpayer"}</div>
+      <div class="sig-title">Payor / Received By</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <strong>Barangay Bagocboc</strong> • Opol, Misamis Oriental<br/>
+    <span class="strip">Thank you for your payment</span><br/>
+    <em>This is a system-generated tax receipt. Please keep this for your records.</em>
+  </div>
+
+  <script>setTimeout(() => window.print(), 400);</script>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank", "width=900,height=800");
+    if (!w) {
+      toast.error("Please allow popups");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
-  const printHTML = (html: string) => {
-    const existing = document.getElementById("print-portal");
-    if (existing) existing.remove();
+  /* ============================================================
+     Number → words helper (for "Amount in words" line)
+     ============================================================ */
+  const numberToWords = (num: number): string => {
+    if (num === 0) return "Zero Pesos Only";
+    const ones = [
+      "", "One", "Two", "Three", "Four", "Five", "Six", "Seven",
+      "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen",
+      "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen",
+      "Nineteen",
+    ];
+    const tens = [
+      "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty",
+      "Seventy", "Eighty", "Ninety",
+    ];
+    const chunk = (n: number): string => {
+      if (n === 0) return "";
+      if (n < 20) return ones[n];
+      if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
+      return ones[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + chunk(n % 100) : "");
+    };
 
-    const portal = document.createElement("div");
-    portal.id = "print-portal";
-    portal.innerHTML = html;
-    document.body.appendChild(portal);
+    let n = Math.floor(num);
+    const cents = Math.round((num - n) * 100);
+    let words = "";
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.print();
+    const scales = [
+      { value: 1_000_000_000, name: "Billion" },
+      { value: 1_000_000, name: "Million" },
+      { value: 1_000, name: "Thousand" },
+    ];
 
-        const cleanup = () => {
-          const el = document.getElementById("print-portal");
-          if (el) el.remove();
-          window.removeEventListener("afterprint", cleanup);
-        };
-        window.addEventListener("afterprint", cleanup);
-      });
-    });
+    for (const s of scales) {
+      if (n >= s.value) {
+        const count = Math.floor(n / s.value);
+        words += chunk(count) + " " + s.name + " ";
+        n %= s.value;
+      }
+    }
+    words += chunk(n);
+    words = words.trim() || "Zero";
+
+    let result = `${words} Pesos`;
+    if (cents > 0) result += ` and ${chunk(cents)} Centavos`;
+    return result + " Only";
   };
 
   if (isLoading) {
@@ -654,6 +787,7 @@ export default function FrontDeskTaxPage() {
                           <button
                             onClick={() => handlePrintReceipt(tax)}
                             className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
+                            title="Print Receipt"
                           >
                             <Printer className="w-4 h-4" />
                           </button>
@@ -663,6 +797,7 @@ export default function FrontDeskTaxPage() {
                               setShowViewModal(true);
                             }}
                             className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
+                            title="View Details"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -674,21 +809,22 @@ export default function FrontDeskTaxPage() {
               </table>
             </div>
 
-            {/* ✅ Pagination */}
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              totalItems={filteredTaxes.length}
-              itemsPerPage={itemsPerPage}
-              onPageChange={setCurrentPage}
-              onItemsPerPageChange={setItemsPerPage}
-              showItemsPerPage={false}
-            />
+            {filteredTaxes.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredTaxes.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
+                showItemsPerPage={false}
+              />
+            )}
           </>
         )}
       </div>
 
-      {/* Create Tax Modal */}
+      {/* CREATE MODAL */}
       <Modal
         isOpen={showTaxModal}
         onClose={() => {
@@ -710,91 +846,107 @@ export default function FrontDeskTaxPage() {
         />
       </Modal>
 
-      {/* View Modal */}
-      <Modal
+      {/* VIEW DETAILS MODAL (uses shared component) */}
+      <ReportDetailModal
         isOpen={showViewModal}
         onClose={() => {
           setShowViewModal(false);
           setSelectedTax(null);
         }}
         title="Tax Payment Details"
-      >
-        {selectedTax && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Receipt #
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedTax.receipt_number}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Taxpayer
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedTax.taxpayer_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Tax Type
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedTax.tax_type}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Amount
-                </p>
-                <p className="font-medium text-theme-text">
-                  {formatCurrency(selectedTax.amount)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Payment Method
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedTax.payment_method}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Date
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedTax.paid_at
-                    ? formatDate(selectedTax.paid_at)
-                    : formatDate(selectedTax.created_at)}
-                </p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-xs text-theme-textSecondary font-medium">
-                  Remarks
-                </p>
-                <p className="font-medium text-theme-text">
-                  {selectedTax.remarks || "No remarks"}
-                </p>
-              </div>
+        badge={
+          selectedTax
+            ? {
+              label: selectedTax.status || "paid",
+              className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+            }
+            : undefined
+        }
+        headerIcon={Receipt}
+        subtitle={
+          selectedTax && (
+            <div>
+              <p className="font-semibold text-theme-text text-base">
+                {selectedTax.receipt_number}
+              </p>
+              <p className="text-xs">{selectedTax.taxpayer_name}</p>
             </div>
-            <div className="flex justify-end">
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  setSelectedTax(null);
-                }}
-                className="px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+          )
+        }
+        sections={
+          selectedTax
+            ? [
+              {
+                title: "Payment Information",
+                icon: FileText,
+                rows: [
+                  {
+                    label: "Receipt Number",
+                    value: selectedTax.receipt_number,
+                    icon: Hash,
+                    span: 2,
+                  },
+                  {
+                    label: "Tax Type",
+                    value: selectedTax.tax_type,
+                    icon: Tag,
+                  },
+                  {
+                    label: "Payment Method",
+                    value: selectedTax.payment_method,
+                    icon: DollarSign,
+                  },
+                  {
+                    label: "Amount Paid",
+                    value: formatCurrency(selectedTax.amount),
+                    icon: DollarSign,
+                  },
+                  {
+                    label: "Status",
+                    value: selectedTax.status || "Paid",
+                    icon: Receipt,
+                  },
+                  {
+                    label: "Date Paid",
+                    value: selectedTax.paid_at
+                      ? formatDate(selectedTax.paid_at)
+                      : formatDate(selectedTax.created_at),
+                    icon: CalendarIcon,
+                    span: 2,
+                  },
+                  {
+                    label: "Remarks",
+                    value: selectedTax.remarks || "No remarks",
+                    span: 2,
+                  },
+                ],
+              },
+              {
+                title: "Taxpayer",
+                icon: UserIcon,
+                rows: [
+                  {
+                    label: "Taxpayer Name",
+                    value: selectedTax.taxpayer_name,
+                    icon: UserIcon,
+                    span: 2,
+                  },
+                ],
+              },
+            ]
+            : []
+        }
+        footerActions={
+          <button
+            onClick={() => {
+              if (selectedTax) handlePrintReceipt(selectedTax);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
+          >
+            <Printer className="w-4 h-4" /> Print Receipt
+          </button>
+        }
+      />
     </div>
   );
 }

@@ -20,16 +20,16 @@ const TOTAL_HEIGHT = BOUNDARY_MAX_LAT - BOUNDARY_MIN_LAT; // 0.0200
 const TOTAL_WIDTH = BOUNDARY_MAX_LNG - BOUNDARY_MIN_LNG;  // 0.0250
 
 // ============================================
-// GRID LAYOUT — 3 columns × 2 rows
+// GRID LAYOUT — 3 columns × 3 rows = 9 zones
 // ============================================
 const GRID_WIDTH_RATIO = 0.2;
-const GRID_HEIGHT_RATIO = 0.2;
+const GRID_HEIGHT_RATIO = 0.3; // ✅ bumped from 0.2 → 0.3 to fit 3 rows
 
 const GRID_WIDTH = TOTAL_WIDTH * GRID_WIDTH_RATIO;
 const GRID_HEIGHT = TOTAL_HEIGHT * GRID_HEIGHT_RATIO;
 
 const COLS = 3;
-const ROWS = 2;
+const ROWS = 3; // ✅ was 2, now 3
 const ZONE_WIDTH = GRID_WIDTH / COLS;
 const ZONE_HEIGHT = GRID_HEIGHT / ROWS;
 
@@ -37,9 +37,8 @@ const ZONE_HEIGHT = GRID_HEIGHT / ROWS;
 const GRID_CENTER_LAT = (BOUNDARY_MIN_LAT + BOUNDARY_MAX_LAT) / 2;
 const GRID_CENTER_LNG = (BOUNDARY_MIN_LNG + BOUNDARY_MAX_LNG) / 2;
 
-// 👇 Offset the grid to the left by some fraction of the total width.
-// Increase LEFTWARD_OFFSET to push it further left.
-const LEFTWARD_OFFSET = 0.1; // 15% of the boundary width to the left
+// Offset the grid to the left by some fraction of the total width.
+const LEFTWARD_OFFSET = 0.1;
 const SHIFTED_CENTER_LNG = GRID_CENTER_LNG - TOTAL_WIDTH * LEFTWARD_OFFSET;
 
 const GRID_MIN_LAT = GRID_CENTER_LAT - GRID_HEIGHT / 2;
@@ -70,6 +69,9 @@ const ZONE_COORDINATES: Record<string, [number, number][]> = {
   "Zone 4": makeZoneAt(1, 0),
   "Zone 5": makeZoneAt(1, 1),
   "Zone 6": makeZoneAt(1, 2),
+  "Zone 7": makeZoneAt(2, 0), // ✅ new
+  "Zone 8": makeZoneAt(2, 1), // ✅ new
+  "Zone 9": makeZoneAt(2, 2), // ✅ new
 };
 
 // ============================================
@@ -111,6 +113,25 @@ export const zoneBoundaries: Record<string, any> = {
     color: "#EC4899",
     fillColor: "rgba(236, 72, 153, 0.35)",
     coordinates: ZONE_COORDINATES["Zone 6"],
+  },
+  // ✅ New zones 7-9
+  "Zone 7": {
+    label: "Zone 7 - Bagocboc South",
+    color: "#06B6D4",
+    fillColor: "rgba(6, 182, 212, 0.35)",
+    coordinates: ZONE_COORDINATES["Zone 7"],
+  },
+  "Zone 8": {
+    label: "Zone 8 - Bagocboc Central",
+    color: "#84CC16",
+    fillColor: "rgba(132, 204, 22, 0.35)",
+    coordinates: ZONE_COORDINATES["Zone 8"],
+  },
+  "Zone 9": {
+    label: "Zone 9 - Bagocboc North",
+    color: "#F97316",
+    fillColor: "rgba(249, 115, 22, 0.35)",
+    coordinates: ZONE_COORDINATES["Zone 9"],
   },
 };
 

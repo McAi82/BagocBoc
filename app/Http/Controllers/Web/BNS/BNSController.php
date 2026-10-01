@@ -185,7 +185,7 @@ class BNSController extends Controller
     }
 
     /**
-     * Get zone statistics for GIS map
+     * ✅ Get zone statistics for GIS map (single zone)
      */
     public function getZoneStatistics($zoneId)
     {
@@ -225,16 +225,55 @@ class BNSController extends Controller
             $maleCount = $residents->where('gender', 'Male')->count();
             $femaleCount = $residents->where('gender', 'Female')->count();
 
-            $ageGroups = ['0-12' => 0, '13-18' => 0, '19-35' => 0, '36-60' => 0, '60+' => 0];
+            // ✅ Detailed 15-bucket age distribution
+            $ageGroups = [
+                '1-2'      => 0,
+                '3-4'      => 0,
+                '5-9'      => 0,
+                '10-14'    => 0,
+                '15-19'    => 0,
+                '20-24'    => 0,
+                '25-29'    => 0,
+                '30-34'    => 0,
+                '35-39'    => 0,
+                '40-44'    => 0,
+                '45-49'    => 0,
+                '50-54'    => 0,
+                '55-59'    => 0,
+                '60-64'    => 0,
+                '65 above' => 0,
+            ];
+
             foreach ($residents as $resident) {
                 $age = $resident->age;
                 if ($age === null) continue;
-                if ($age <= 12) $ageGroups['0-12']++;
-                elseif ($age <= 18) $ageGroups['13-18']++;
-                elseif ($age <= 35) $ageGroups['19-35']++;
-                elseif ($age <= 60) $ageGroups['36-60']++;
-                else $ageGroups['60+']++;
+
+                if ($age <= 2)       $ageGroups['1-2']++;
+                elseif ($age <= 4)   $ageGroups['3-4']++;
+                elseif ($age <= 9)   $ageGroups['5-9']++;
+                elseif ($age <= 14)  $ageGroups['10-14']++;
+                elseif ($age <= 19)  $ageGroups['15-19']++;
+                elseif ($age <= 24)  $ageGroups['20-24']++;
+                elseif ($age <= 29)  $ageGroups['25-29']++;
+                elseif ($age <= 34)  $ageGroups['30-34']++;
+                elseif ($age <= 39)  $ageGroups['35-39']++;
+                elseif ($age <= 44)  $ageGroups['40-44']++;
+                elseif ($age <= 49)  $ageGroups['45-49']++;
+                elseif ($age <= 54)  $ageGroups['50-54']++;
+                elseif ($age <= 59)  $ageGroups['55-59']++;
+                elseif ($age <= 64)  $ageGroups['60-64']++;
+                else                 $ageGroups['65 above']++;
             }
+
+            // ✅ Births (residents born this year)
+            $births = Resident::whereIn('id', $residentIds)
+                ->whereYear('birth_date', now()->year)
+                ->count();
+
+            // ✅ Deaths (residents with status = deceased)
+            $deaths = Resident::whereIn('id', $residentIds)
+                ->where('status', 'deceased')
+                ->count();
 
             $statistics = [
                 'zone_id' => $zone->id,
@@ -246,6 +285,8 @@ class BNSController extends Controller
                 'male_population' => $maleCount,
                 'female_population' => $femaleCount,
                 'age_groups' => $ageGroups,
+                'births' => $births,   // ✅ new
+                'deaths' => $deaths,   // ✅ new
                 'last_updated' => now()->toISOString(),
             ];
 
@@ -257,7 +298,7 @@ class BNSController extends Controller
     }
 
     /**
-     * Get all zone statistics
+     * ✅ Get all zone statistics (used by GIS map sidebar)
      */
     public function getAllZoneStatistics()
     {
@@ -276,7 +317,8 @@ class BNSController extends Controller
                     ->pluck('resident_households.resident_id')
                     ->unique();
 
-                $populationCount = Resident::whereIn('id', $residentIds)->count();
+                $residents = Resident::whereIn('id', $residentIds)->get();
+                $populationCount = $residents->count();
 
                 $geotagged = HouseGeotag::whereIn('household_id', function ($query) use ($householdIds) {
                     $query->select('id')->from('households')->whereIn('address_id', $householdIds);
@@ -284,12 +326,68 @@ class BNSController extends Controller
 
                 $geotaggingCoverage = $householdCount > 0 ? round(($geotagged / $householdCount) * 100) : 0;
 
+                // ✅ Detailed 15-bucket age distribution
+                $ageGroups = [
+                    '1-2'      => 0,
+                    '3-4'      => 0,
+                    '5-9'      => 0,
+                    '10-14'    => 0,
+                    '15-19'    => 0,
+                    '20-24'    => 0,
+                    '25-29'    => 0,
+                    '30-34'    => 0,
+                    '35-39'    => 0,
+                    '40-44'    => 0,
+                    '45-49'    => 0,
+                    '50-54'    => 0,
+                    '55-59'    => 0,
+                    '60-64'    => 0,
+                    '65 above' => 0,
+                ];
+
+                foreach ($residents as $resident) {
+                    $age = $resident->age;
+                    if ($age === null) continue;
+
+                    if ($age <= 2)       $ageGroups['1-2']++;
+                    elseif ($age <= 4)   $ageGroups['3-4']++;
+                    elseif ($age <= 9)   $ageGroups['5-9']++;
+                    elseif ($age <= 14)  $ageGroups['10-14']++;
+                    elseif ($age <= 19)  $ageGroups['15-19']++;
+                    elseif ($age <= 24)  $ageGroups['20-24']++;
+                    elseif ($age <= 29)  $ageGroups['25-29']++;
+                    elseif ($age <= 34)  $ageGroups['30-34']++;
+                    elseif ($age <= 39)  $ageGroups['35-39']++;
+                    elseif ($age <= 44)  $ageGroups['40-44']++;
+                    elseif ($age <= 49)  $ageGroups['45-49']++;
+                    elseif ($age <= 54)  $ageGroups['50-54']++;
+                    elseif ($age <= 59)  $ageGroups['55-59']++;
+                    elseif ($age <= 64)  $ageGroups['60-64']++;
+                    else                 $ageGroups['65 above']++;
+                }
+
+                // ✅ Births & Deaths
+                $births = Resident::whereIn('id', $residentIds)
+                    ->whereYear('birth_date', now()->year)
+                    ->count();
+
+                $deaths = Resident::whereIn('id', $residentIds)
+                    ->where('status', 'deceased')
+                    ->count();
+
                 $statistics[] = [
                     'zone_id' => $zone->id,
                     'zone_name' => $zone->name,
                     'total_population' => $populationCount,
                     'total_households' => $householdCount,
                     'geotagging_coverage' => $geotaggingCoverage,
+                    'health_concerns_percentage' => 0,
+                    'male_population' => $residents->where('gender', 'Male')->count(),
+                    'female_population' => $residents->where('gender', 'Female')->count(),
+                    'age_groups' => $ageGroups,
+                    'births' => $births,   // ✅ new
+                    'deaths' => $deaths,   // ✅ new
+                    'last_updated' => now()->toISOString(),
                 ];
             }
 
@@ -617,7 +715,6 @@ class BNSController extends Controller
                     'details' => 'Generated all 6 demographic reports',
                 ]);
 
-                // ✅ Notify Captains and Secretary
                 $this->notifyRoles(
                     ['Barangay Captain', 'Barangay Secretary'],
                     '📊 New Demographic Report Available',
@@ -651,7 +748,6 @@ class BNSController extends Controller
                     'details' => "Generated {$demographic} demographic report",
                 ]);
 
-                // ✅ Notify Captains and Secretary
                 $this->notifyRoles(
                     ['Barangay Captain', 'Barangay Secretary'],
                     '📊 New Demographic Report Available',
