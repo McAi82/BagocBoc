@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Web/Clearance/ClearanceController.php
 
 namespace App\Http\Controllers\Web\Clearance;
 
@@ -6,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Clearance;
 use App\Models\ClearanceConfiguration;
 use App\Models\Resident;
+use App\Traits\GeneratesReferenceNumbers;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -15,11 +17,8 @@ use Illuminate\Support\Facades\Log;
 
 class ClearanceController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, GeneratesReferenceNumbers;
 
-    /**
-     * List all clearances
-     */
     public function index(Request $request)
     {
         $query = Clearance::with(['resident', 'processedBy']);
@@ -44,10 +43,6 @@ class ClearanceController extends Controller
         return $this->respondSuccess($clearances);
     }
 
-    /**
-     * STEP 1: Issue/Request Clearance
-     * ✅ Notifies Front Desk and Secretary of new request
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -66,14 +61,13 @@ class ClearanceController extends Controller
         $clearance = Clearance::create([
             'resident_id' => $request->resident_id,
             'processed_by_user_id' => Auth::id(),
-            'reference_number' => $this->generateReferenceNumber(),
+            'reference_number' => $this->generateReference('CLR', Clearance::class),
             'purpose' => $request->purpose,
             'amount' => $amount,
             'status' => 'pending',
             'valid_until' => now()->addYear(),
         ]);
 
-        // ✅ Notify Front Desk + Secretary
         $resident = Resident::find($request->resident_id);
         $residentName = $resident ? "{$resident->first_name} {$resident->last_name}" : "Resident";
 
@@ -94,9 +88,6 @@ class ClearanceController extends Controller
         );
     }
 
-    /**
-     * Show clearance
-     */
     public function show($id)
     {
         $clearance = Clearance::with(['resident', 'processedBy'])->find($id);
@@ -108,10 +99,6 @@ class ClearanceController extends Controller
         return $this->respondSuccess($clearance);
     }
 
-    /**
-     * STEP 2: Approve Clearance
-     * ✅ Notifies resident
-     */
     public function approve($id)
     {
         $clearance = Clearance::find($id);
@@ -130,7 +117,6 @@ class ClearanceController extends Controller
             'approved_at' => now(),
         ]);
 
-        // ✅ Notify resident
         $this->notifyResident(
             $clearance,
             'Barangay Clearance Approved',
@@ -142,10 +128,6 @@ class ClearanceController extends Controller
         return $this->respondSuccess($clearance, 'Clearance approved successfully');
     }
 
-    /**
-     * STEP 3: Generate Document
-     * ✅ Notifies resident that document is ready
-     */
     public function generateDocument(Request $request, $id)
     {
         $clearance = Clearance::find($id);
@@ -189,7 +171,6 @@ class ClearanceController extends Controller
             'processed_by_user_id' => Auth::id(),
         ]);
 
-        // ✅ Notify resident that document is ready
         $this->notifyResident(
             $clearance,
             'Barangay Clearance Ready',
@@ -204,10 +185,6 @@ class ClearanceController extends Controller
         );
     }
 
-    /**
-     * STEP 4: Release Document
-     * ✅ Notifies resident
-     */
     public function release($id)
     {
         $clearance = Clearance::find($id);
@@ -227,7 +204,6 @@ class ClearanceController extends Controller
             'processed_by_user_id' => Auth::id(),
         ]);
 
-        // ✅ Notify resident
         $this->notifyResident(
             $clearance,
             'Barangay Clearance Released',
@@ -239,9 +215,6 @@ class ClearanceController extends Controller
         return $this->respondSuccess($clearance, 'Clearance released successfully');
     }
 
-    /**
-     * STEP 5: Receive Document
-     */
     public function receive($id)
     {
         $clearance = Clearance::find($id);
@@ -262,9 +235,6 @@ class ClearanceController extends Controller
         ], 'Clearance received successfully');
     }
 
-    /**
-     * Download Document
-     */
     public function download($id)
     {
         $clearance = Clearance::find($id);
@@ -293,10 +263,6 @@ class ClearanceController extends Controller
         );
     }
 
-    /**
-     * Reject Clearance
-     * ✅ Notifies resident
-     */
     public function reject(Request $request, $id)
     {
         $clearance = Clearance::find($id);
@@ -323,7 +289,6 @@ class ClearanceController extends Controller
             'processed_by_user_id' => Auth::id(),
         ]);
 
-        // ✅ Notify resident
         $this->notifyResident(
             $clearance,
             'Barangay Clearance Rejected',
@@ -334,9 +299,6 @@ class ClearanceController extends Controller
         return $this->respondSuccess($clearance, 'Clearance rejected');
     }
 
-    /**
-     * Get flow status
-     */
     public function getFlowStatus($id)
     {
         $clearance = Clearance::with(['resident'])->find($id);
@@ -376,9 +338,7 @@ class ClearanceController extends Controller
         $resident = $clearance->resident;
         $config = ClearanceConfiguration::first();
 
-        if ($content) {
-            // use provided content
-        } else {
+        if (!$content) {
             $content = "BARANGAY CLEARANCE\n==================\n\n";
             $content .= "Clearance Number: " . $clearance->reference_number . "\n";
             $content .= "Resident: " . ($resident ? $resident->first_name . ' ' . $resident->last_name : 'N/A') . "\n";
@@ -443,24 +403,6 @@ class ClearanceController extends Controller
         return $this->respondSuccess($config, 'Configuration updated successfully');
     }
 
-    private function generateReferenceNumber()
-    {
-        $year = date('Y');
-        $prefix = 'CLR';
-        $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
-        $reference = "{$prefix}-{$year}-{$random}";
-
-        while (Clearance::where('reference_number', $reference)->exists()) {
-            $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
-            $reference = "{$prefix}-{$year}-{$random}";
-        }
-
-        return $reference;
-    }
-
-    /**
-     * ✅ Notify the resident who owns the clearance
-     */
     private function notifyResident(
         Clearance $clearance,
         string $title,

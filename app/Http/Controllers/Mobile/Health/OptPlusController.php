@@ -1,21 +1,21 @@
 <?php
+// app/Http/Controllers/Mobile/Health/OptPlusController.php
 
 namespace App\Http\Controllers\Mobile\Health;
 
 use App\Http\Controllers\Controller;
 use App\Models\OptPlusAssessment;
-use App\Models\Resident;
 use App\Models\RecordActivityLog;
+use App\Traits\ResolvesZones;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class OptPlusController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, ResolvesZones;
 
     public function index(Request $request)
     {
@@ -38,10 +38,6 @@ class OptPlusController extends Controller
         return $this->respondSuccess($assessments);
     }
 
-    /**
-     * Store new OPT Plus assessment
-     * ✅ Zone-scoped notification to BHWs
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -70,12 +66,10 @@ class OptPlusController extends Controller
             'details' => "Added OPT Plus assessment for {$residentName}"
         ]);
 
-        // ✅ ZONE-SCOPED NOTIFICATION
         try {
             $zoneId = $this->resolveZoneForResident($assessment->resident_id);
 
             if ($zoneId) {
-                // Only BHWs in the resident's zone get notified
                 $this->notifyBHWsInZone(
                     $zoneId,
                     '📊 New OPT Plus Assessment',
@@ -160,20 +154,5 @@ class OptPlusController extends Controller
         ]);
 
         return $this->respondSuccess(null, 'OPT Plus assessment deleted successfully');
-    }
-
-    /**
-     * Resolve the zone ID for a resident via their active household
-     */
-    private function resolveZoneForResident(int $residentId): ?int
-    {
-        $zoneId = DB::table('resident_households')
-            ->join('households', 'resident_households.household_id', '=', 'households.id')
-            ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
-            ->where('resident_households.resident_id', $residentId)
-            ->where('resident_households.status', 'active')
-            ->value('household_addresses.zone');
-
-        return $zoneId ? (int) $zoneId : null;
     }
 }

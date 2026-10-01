@@ -9,9 +9,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use App\Traits\HandlesNotifications;
 
 class NotificationController extends Controller
 {
+
+    use HandlesNotifications;
     /**
      * Get user notifications
      */
@@ -131,38 +134,109 @@ class NotificationController extends Controller
      * Send notification (admin)
      */
     public function send(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'title' => 'required|string|max:255',
-        'message' => 'required|string',
-        'category' => 'required|string',
-        'user_ids' => 'required|array',
-        'user_ids.*' => 'exists:users,id',
-        'deep_link' => 'nullable|string',
-        'priority' => 'nullable|in:low,normal,high',
-    ]);
+    {
+        $validator = Validator::make($request->all(), [
+            'title' => 'required|string|max:255',
+            'message' => 'required|string',
+            'category' => 'required|string',
+            'user_ids' => 'required|array',
+            'user_ids.*' => 'exists:users,id',
+            'deep_link' => 'nullable|string',
+            'priority' => 'nullable|in:low,normal,high',
+        ]);
 
-    if ($validator->fails()) {
-        return $this->respondError('Validation error', $validator->errors(), 422);
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
+
+        $notification = Notification::create([
+            'sender_user_id' => Auth::id(),
+            'title' => $request->title,
+            'message' => $request->message,
+            'category' => $request->category,
+            'deep_link' => $request->deep_link,
+            'priority' => $request->priority ?? 'normal',
+        ]);
+
+        foreach ($request->user_ids as $userId) {
+            NotificationRecipient::create([
+                'notification_id' => $notification->id,
+                'user_id' => $userId,
+                'is_read' => false,
+            ]);
+        }
+
+        return $this->respondSuccess($notification, 'Notification sent successfully', 201);
     }
+    public function poll(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'since_id' => 'nullable|integer|min:0',
+            'limit'    => 'nullable|integer|min:1|max:50',
+        ]);
 
-    $notification = Notification::create([
-        'sender_user_id' => Auth::id(),
-        'title' => $request->title,
-        'message' => $request->message,
-        'category' => $request->category,
-        'deep_link' => $request->deep_link,
-        'priority' => $request->priority ?? 'normal',
-    ]);
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
 
-    foreach ($request->user_ids as $userId) {
-        NotificationRecipient::create([
-            'notification_id' => $notification->id,
-            'user_id' => $userId,
-            'is_read' => false,
+        $userId  = Auth::id();
+        $sinceId = (int) $request->input('since_id', 0);
+        $limit   = (int) $request->input('limit', 20);
+
+        // Unread count (always returned)
+        $unreadCount = DB::table('notification_recipients')
+            ->where('user_id', $userId)
+            ->where('is_read', false)
+            ->count();
+
+        // Latest notification ID this user can see — used as the new "since_id"
+        $latestId = (int) DB::table('notification_recipients')
+            ->where('user_id', $userId)
+            ->max('notification_id');
+
+        // If nothing new since last poll, return early (cheap response)
+        if ($sinceId > 0 && $sinceId >= $latestId) {
+            return $this->respondSuccess([
+                'notifications' => [],
+                'unread_count'  => $unreadCount,
+                'latest_id'     => $latestId,
+                'has_new'       => false,
+            ]);
+        }
+
+        // Only fetch notifications newer than since_id
+        $query = DB::table('notifications')
+            ->join(
+                'notification_recipients',
+                'notifications.id',
+                '=',
+                'notification_recipients.notification_id',
+            )
+            ->where('notification_recipients.user_id', $userId)
+            ->orderBy('notifications.id', 'desc')
+            ->select([
+                'notifications.id',
+                'notifications.title',
+                'notifications.message',
+                'notifications.category',
+                'notifications.deep_link',
+                'notifications.priority',
+                'notifications.created_at',
+                'notification_recipients.is_read',
+                'notification_recipients.read_at',
+            ]);
+
+        if ($sinceId > 0) {
+            $query->where('notifications.id', '>', $sinceId);
+        }
+
+        $notifications = $query->limit($limit)->get();
+
+        return $this->respondSuccess([
+            'notifications' => $notifications,
+            'unread_count'  => $unreadCount,
+            'latest_id'     => $latestId,
+            'has_new'       => $notifications->isNotEmpty(),
         ]);
     }
-
-    return $this->respondSuccess($notification, 'Notification sent successfully', 201);
-}
 }

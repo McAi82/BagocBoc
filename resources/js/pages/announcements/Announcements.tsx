@@ -26,13 +26,20 @@ import {
   Image,
   Link as LinkIcon,
   Send,
+  Lock,
 } from "lucide-react";
 import { api } from "../../api/apiClient";
+import { useAuthStore } from "../../stores/authStore";
 import { formatDate, getStatusColor } from "../../utils/format";
 import Spinner from "../../components/ui/Spinner";
 import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
 import toast from "react-hot-toast";
+
+/* ============================================================
+   ROLE CONSTANTS
+   ============================================================ */
+const MANAGE_ROLES = ["Super Admin", "Barangay Captain"];
 
 const TARGET_GROUPS = [
   {
@@ -87,18 +94,58 @@ const TARGET_GROUPS = [
 ];
 
 const PRIORITIES = [
-  { value: "low", label: "Low", description: "General information", color: "green" },
-  { value: "medium", label: "Medium", description: "Important notice", color: "yellow" },
-  { value: "high", label: "High", description: "Urgent announcement", color: "red" },
+  {
+    value: "low",
+    label: "Low",
+    description: "General information",
+    color: "green",
+  },
+  {
+    value: "medium",
+    label: "Medium",
+    description: "Important notice",
+    color: "yellow",
+  },
+  {
+    value: "high",
+    label: "High",
+    description: "Urgent announcement",
+    color: "red",
+  },
 ];
 
 const STATUSES = [
-  { value: "Published", label: "Published", description: "Visible to residents immediately", color: "green" },
-  { value: "Draft", label: "Draft", description: "Save as draft, publish later", color: "gray" },
-  { value: "Archived", label: "Archived", description: "Hidden from residents", color: "slate" },
+  {
+    value: "Published",
+    label: "Published",
+    description: "Visible to residents immediately",
+    color: "green",
+  },
+  {
+    value: "Draft",
+    label: "Draft",
+    description: "Save as draft, publish later",
+    color: "gray",
+  },
+  {
+    value: "Archived",
+    label: "Archived",
+    description: "Hidden from residents",
+    color: "slate",
+  },
 ];
 
 export default function Announcements() {
+  /* ============================================================
+     ROLE CHECK
+     ============================================================ */
+  const user = useAuthStore((s) => s.user);
+  const userRoles = user?.roles?.map((r: any) => r.name) || [];
+  const canManage = userRoles.some((role) => MANAGE_ROLES.includes(role));
+
+  /* ============================================================
+     STATE
+     ============================================================ */
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
@@ -130,11 +177,16 @@ export default function Announcements() {
     image_url: "",
   });
 
-  // ✅ Reset page on filter change
+  /* ============================================================
+     EFFECTS
+     ============================================================ */
+
+  // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter, priorityFilter, itemsPerPage]);
 
+  // Close target dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -148,6 +200,9 @@ export default function Announcements() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  /* ============================================================
+     HELPERS
+     ============================================================ */
   const extractData = (data: any): any[] => {
     if (!data) return [];
     if (Array.isArray(data)) return data;
@@ -199,7 +254,9 @@ export default function Announcements() {
     fetchAnnouncements();
   }, []);
 
-  // ✅ Filtered announcements
+  /* ============================================================
+     FILTERED ANNOUNCEMENTS
+     ============================================================ */
   const filteredAnnouncements = useMemo(() => {
     if (!Array.isArray(announcements) || announcements.length === 0) return [];
     let filtered = [...announcements];
@@ -229,7 +286,9 @@ export default function Announcements() {
     return filtered;
   }, [announcements, searchQuery, statusFilter, priorityFilter]);
 
-  // ✅ Pagination calculations
+  /* ============================================================
+     PAGINATION
+     ============================================================ */
   const totalPages = Math.max(
     1,
     Math.ceil(filteredAnnouncements.length / itemsPerPage),
@@ -244,11 +303,13 @@ export default function Announcements() {
     [filteredAnnouncements, startIndex, endIndex],
   );
 
-  // ✅ Clamp
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [totalPages, currentPage]);
 
+  /* ============================================================
+     FORM HANDLERS
+     ============================================================ */
   const resetForm = () => {
     setFormData({
       title: "",
@@ -267,13 +328,18 @@ export default function Announcements() {
     const errors: Record<string, string> = {};
     if (!formData.title?.trim()) errors.title = "Title is required";
     if (!formData.message?.trim()) errors.message = "Message is required";
-    if (!formData.target_group) errors.target_group = "Target group is required";
+    if (!formData.target_group)
+      errors.target_group = "Target group is required";
     if (!formData.priority) errors.priority = "Priority is required";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleCreate = async () => {
+    if (!canManage) {
+      toast.error("You don't have permission to create announcements");
+      return;
+    }
     if (!validateForm()) {
       toast.error("Please fix the errors below");
       return;
@@ -315,6 +381,10 @@ export default function Announcements() {
   };
 
   const handleUpdate = async () => {
+    if (!canManage) {
+      toast.error("You don't have permission to update announcements");
+      return;
+    }
     if (!selectedAnnouncement) return;
     if (!validateForm()) {
       toast.error("Please fix the errors below");
@@ -358,6 +428,10 @@ export default function Announcements() {
   };
 
   const handleDelete = async () => {
+    if (!canManage) {
+      toast.error("You don't have permission to delete announcements");
+      return;
+    }
     if (!selectedAnnouncement) return;
     setIsSubmitting(true);
     try {
@@ -374,6 +448,7 @@ export default function Announcements() {
   };
 
   const handleEdit = (announcement: any) => {
+    if (!canManage) return;
     setSelectedAnnouncement(announcement);
     setFormData({
       title: announcement.title || "",
@@ -394,6 +469,9 @@ export default function Announcements() {
     setShowViewModal(true);
   };
 
+  /* ============================================================
+     STYLE HELPERS
+     ============================================================ */
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
       high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -441,6 +519,9 @@ export default function Announcements() {
     return colors[value] || colors["All"];
   };
 
+  /* ============================================================
+     RENDER — LOADING / ERROR
+     ============================================================ */
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -473,6 +554,9 @@ export default function Announcements() {
     );
   }
 
+  /* ============================================================
+     RENDER — MAIN
+     ============================================================ */
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -480,18 +564,29 @@ export default function Announcements() {
         <div>
           <h1 className="text-2xl font-bold text-theme-text">Announcements</h1>
           <p className="text-sm text-theme-textSecondary mt-1">
-            Manage community announcements
+            {canManage
+              ? "Create and manage announcements for all residents"
+              : "Stay updated with barangay announcements"}
           </p>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setShowCreateModal(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
-        >
-          <Plus className="w-4 h-4" /> Create Announcement
-        </button>
+
+        {/* ✅ Only managers can create */}
+        {canManage ? (
+          <button
+            onClick={() => {
+              resetForm();
+              setShowCreateModal(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Create Announcement
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-2 bg-theme-background border border-theme rounded-lg text-theme-textSecondary text-sm">
+            <Lock className="w-4 h-4" />
+            View-only access
+          </div>
+        )}
       </div>
 
       {/* Stats */}
@@ -522,7 +617,7 @@ export default function Announcements() {
         </div>
       </div>
 
-      {/* Filters + Items per page */}
+      {/* Filters */}
       <div className="bg-theme-surface rounded-xl border border-theme p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
@@ -596,18 +691,22 @@ export default function Announcements() {
               No Announcements Found
             </h3>
             <p className="text-sm text-theme-textSecondary max-w-md">
-              No announcements have been created yet.
+              {canManage
+                ? "No announcements have been created yet."
+                : "There are no announcements to display right now."}
             </p>
-            <button
-              onClick={() => {
-                resetForm();
-                setShowCreateModal(true);
-              }}
-              className="mt-2 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
-            >
-              <Plus className="w-4 h-4 inline mr-2" /> Create Your First
-              Announcement
-            </button>
+            {canManage && (
+              <button
+                onClick={() => {
+                  resetForm();
+                  setShowCreateModal(true);
+                }}
+                className="mt-2 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
+              >
+                <Plus className="w-4 h-4 inline mr-2" /> Create Your First
+                Announcement
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -626,18 +725,24 @@ export default function Announcements() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${getPriorityColor(announcement.priority)}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${getPriorityColor(
+                            announcement.priority,
+                          )}`}
                         >
                           {getPriorityIcon(announcement.priority)}
                           {announcement.priority}
                         </span>
                         <span
-                          className={`inline-block px-2 py-0.5 text-xs rounded-full ${getStatusColor(announcement.status)}`}
+                          className={`inline-block px-2 py-0.5 text-xs rounded-full ${getStatusColor(
+                            announcement.status,
+                          )}`}
                         >
                           {announcement.status}
                         </span>
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTargetColor(announcement.target_group)}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTargetColor(
+                            announcement.target_group,
+                          )}`}
                         >
                           <TargetIcon className="w-3 h-3" />
                           {announcement.target_group}
@@ -650,6 +755,8 @@ export default function Announcements() {
                         {announcement.message}
                       </p>
                     </div>
+
+                    {/* ✅ Action buttons — always allow View; Edit/Delete only for managers */}
                     <div className="flex gap-1 ml-4">
                       <button
                         onClick={() => handleView(announcement)}
@@ -658,25 +765,31 @@ export default function Announcements() {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => handleEdit(announcement)}
-                        className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
-                        title="Edit"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedAnnouncement(announcement);
-                          setShowDeleteModal(true);
-                        }}
-                        className="p-1.5 text-theme-textSecondary hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                      {canManage && (
+                        <>
+                          <button
+                            onClick={() => handleEdit(announcement)}
+                            className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedAnnouncement(announcement);
+                              setShowDeleteModal(true);
+                            }}
+                            className="p-1.5 text-theme-textSecondary hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
+
                   <div className="mt-4 flex items-center gap-4 text-xs text-theme-textSecondary">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
@@ -696,7 +809,6 @@ export default function Announcements() {
             })}
           </div>
 
-          {/* ✅ Pagination */}
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
@@ -708,589 +820,601 @@ export default function Announcements() {
         </div>
       )}
 
-      {/* ============================================ */}
-      {/* CREATE MODAL */}
-      {/* ============================================ */}
-      <Modal
-        isOpen={showCreateModal}
-        onClose={() => {
-          setShowCreateModal(false);
-          resetForm();
-        }}
-        title="Create Announcement"
-        size="lg"
-      >
-        <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-start gap-3">
-            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700 dark:text-blue-400">
-              Create announcements to notify residents about important barangay
-              events, programs, and advisories.
-            </p>
-          </div>
+      {/* ============================================================ */}
+      {/* CREATE MODAL — managers only                                */}
+      {/* ============================================================ */}
+      {canManage && (
+        <Modal
+          isOpen={showCreateModal}
+          onClose={() => {
+            setShowCreateModal(false);
+            resetForm();
+          }}
+          title="Create Announcement"
+          size="lg"
+        >
+          <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-start gap-3">
+              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700 dark:text-blue-400">
+                This announcement will be delivered to{" "}
+                <strong>all users</strong> via in-app notifications. The target
+                group is used for filtering and record-keeping.
+              </p>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) =>
-                setFormData({ ...formData, title: e.target.value })
-              }
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                formErrors.title ? "border-red-500" : "border-theme"
-              }`}
-              placeholder="e.g., Barangay Assembly Meeting"
-            />
-            {formErrors.title && (
-              <p className="text-sm text-red-500 mt-1">{formErrors.title}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Message <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={formData.message}
-              onChange={(e) =>
-                setFormData({ ...formData, message: e.target.value })
-              }
-              rows={4}
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                formErrors.message ? "border-red-500" : "border-theme"
-              }`}
-              placeholder="Write your announcement message here..."
-            />
-            {formErrors.message && (
-              <p className="text-sm text-red-500 mt-1">{formErrors.message}</p>
-            )}
-            <p className="text-xs text-theme-textSecondary mt-1">
-              {formData.message.length} characters
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Target Audience <span className="text-red-500">*</span>
-            </label>
-            <div className="relative" ref={targetDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setShowTargetDropdown(!showTargetDropdown)}
-                className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors flex items-center justify-between ${
-                  formErrors.target_group ? "border-red-500" : "border-theme"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const info = getTargetGroupInfo(formData.target_group);
-                    const Icon = info.icon;
-                    return (
-                      <>
-                        <div
-                          className={`p-1.5 rounded-lg ${getTargetColor(formData.target_group)}`}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <span className="font-medium">{info.label}</span>
-                      </>
-                    );
-                  })()}
-                </div>
-                <ChevronDown
-                  className={`w-4 h-4 text-theme-textSecondary transition-transform ${
-                    showTargetDropdown ? "rotate-180" : ""
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Title <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+                className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.title ? "border-red-500" : "border-theme"
                   }`}
-                />
-              </button>
-
-              {showTargetDropdown && (
-                <div className="absolute z-50 left-0 right-0 mt-2 bg-theme-surface border border-theme rounded-lg shadow-lg max-h-80 overflow-y-auto">
-                  {TARGET_GROUPS.map((group) => {
-                    const Icon = group.icon;
-                    const isSelected = formData.target_group === group.value;
-                    return (
-                      <button
-                        key={group.value}
-                        type="button"
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            target_group: group.value,
-                          });
-                          setShowTargetDropdown(false);
-                        }}
-                        className={`w-full px-4 py-3 text-left hover:bg-theme-hover transition-colors border-b border-theme last:border-0 flex items-center gap-3 ${
-                          isSelected ? "bg-theme-primary/10" : ""
-                        }`}
-                      >
-                        <div
-                          className={`p-2 rounded-lg border ${getTargetColor(group.value)}`}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-theme-text">
-                            {group.label}
-                          </p>
-                          <p className="text-xs text-theme-textSecondary">
-                            {group.description}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <CheckCircle className="w-5 h-5 text-theme-primary flex-shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                placeholder="e.g., Barangay Assembly Meeting"
+              />
+              {formErrors.title && (
+                <p className="text-sm text-red-500 mt-1">{formErrors.title}</p>
               )}
             </div>
-            {formErrors.target_group && (
-              <p className="text-sm text-red-500 mt-1">
-                {formErrors.target_group}
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Message <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={formData.message}
+                onChange={(e) =>
+                  setFormData({ ...formData, message: e.target.value })
+                }
+                rows={4}
+                className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.message ? "border-red-500" : "border-theme"
+                  }`}
+                placeholder="Write your announcement message here..."
+              />
+              {formErrors.message && (
+                <p className="text-sm text-red-500 mt-1">
+                  {formErrors.message}
+                </p>
+              )}
+              <p className="text-xs text-theme-textSecondary mt-1">
+                {formData.message.length} characters
               </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Target Audience <span className="text-red-500">*</span>
+              </label>
+              <div className="relative" ref={targetDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowTargetDropdown(!showTargetDropdown)}
+                  className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors flex items-center justify-between ${formErrors.target_group ? "border-red-500" : "border-theme"
+                    }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const info = getTargetGroupInfo(formData.target_group);
+                      const Icon = info.icon;
+                      return (
+                        <>
+                          <div
+                            className={`p-1.5 rounded-lg ${getTargetColor(
+                              formData.target_group,
+                            )}`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <span className="font-medium">{info.label}</span>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <ChevronDown
+                    className={`w-4 h-4 text-theme-textSecondary transition-transform ${showTargetDropdown ? "rotate-180" : ""
+                      }`}
+                  />
+                </button>
+
+                {showTargetDropdown && (
+                  <div className="absolute z-50 left-0 right-0 mt-2 bg-theme-surface border border-theme rounded-lg shadow-lg max-h-80 overflow-y-auto">
+                    {TARGET_GROUPS.map((group) => {
+                      const Icon = group.icon;
+                      const isSelected = formData.target_group === group.value;
+                      return (
+                        <button
+                          key={group.value}
+                          type="button"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              target_group: group.value,
+                            });
+                            setShowTargetDropdown(false);
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-theme-hover transition-colors border-b border-theme last:border-0 flex items-center gap-3 ${isSelected ? "bg-theme-primary/10" : ""
+                            }`}
+                        >
+                          <div
+                            className={`p-2 rounded-lg border ${getTargetColor(
+                              group.value,
+                            )}`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-theme-text">
+                              {group.label}
+                            </p>
+                            <p className="text-xs text-theme-textSecondary">
+                              {group.description}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <CheckCircle className="w-5 h-5 text-theme-primary flex-shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {formErrors.target_group && (
+                <p className="text-sm text-red-500 mt-1">
+                  {formErrors.target_group}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Priority <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {PRIORITIES.map((priority) => {
+                  const isSelected = formData.priority === priority.value;
+                  const colorClasses: Record<string, string> = {
+                    low: isSelected
+                      ? "bg-green-500 text-white border-green-500"
+                      : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-green-50 dark:hover:bg-green-900/20",
+                    medium: isSelected
+                      ? "bg-yellow-500 text-white border-yellow-500"
+                      : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-yellow-50 dark:hover:bg-yellow-900/20",
+                    high: isSelected
+                      ? "bg-red-500 text-white border-red-500"
+                      : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-red-50 dark:hover:bg-red-900/20",
+                  };
+                  return (
+                    <button
+                      key={priority.value}
+                      type="button"
+                      onClick={() =>
+                        setFormData({ ...formData, priority: priority.value })
+                      }
+                      className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${colorClasses[priority.value]}`}
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
+                        {priority.value === "high" && (
+                          <BellRing className="w-3.5 h-3.5" />
+                        )}
+                        {priority.value === "medium" && (
+                          <Bell className="w-3.5 h-3.5" />
+                        )}
+                        {priority.value === "low" && (
+                          <Bell className="w-3.5 h-3.5" />
+                        )}
+                        {priority.label}
+                      </div>
+                      <p className="text-xs mt-0.5 opacity-80">
+                        {priority.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Status
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {STATUSES.map((status) => {
+                  const isSelected = formData.status === status.value;
+                  return (
+                    <button
+                      key={status.value}
+                      type="button"
+                      onClick={() =>
+                        setFormData({ ...formData, status: status.value })
+                      }
+                      className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${isSelected
+                        ? "bg-theme-primary text-white border-theme-primary"
+                        : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-theme-hover"
+                        }`}
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
+                        {status.value === "Published" && (
+                          <CheckCircle className="w-3.5 h-3.5" />
+                        )}
+                        {status.value === "Draft" && (
+                          <FileText className="w-3.5 h-3.5" />
+                        )}
+                        {status.value === "Archived" && (
+                          <Inbox className="w-3.5 h-3.5" />
+                        )}
+                        {status.label}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Expiry Date{" "}
+                <span className="text-theme-textSecondary text-xs font-normal">
+                  (Optional)
+                </span>
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                <input
+                  type="datetime-local"
+                  value={formData.expires_at}
+                  onChange={(e) =>
+                    setFormData({ ...formData, expires_at: e.target.value })
+                  }
+                  className="w-full pl-10 pr-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Action URL{" "}
+                <span className="text-theme-textSecondary text-xs font-normal">
+                  (Optional)
+                </span>
+              </label>
+              <div className="relative">
+                <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                <input
+                  type="url"
+                  value={formData.action_url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, action_url: e.target.value })
+                  }
+                  className="w-full pl-10 pr-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
+                  placeholder="https://example.com/register"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Image URL{" "}
+                <span className="text-theme-textSecondary text-xs font-normal">
+                  (Optional)
+                </span>
+              </label>
+              <div className="relative">
+                <Image className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                <input
+                  type="url"
+                  value={formData.image_url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, image_url: e.target.value })
+                  }
+                  className="w-full pl-10 pr-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
+                  placeholder="https://example.com/image.jpg"
+                />
+              </div>
+            </div>
+
+            {(formData.title || formData.message) && (
+              <div className="p-4 bg-theme-background border border-theme rounded-lg">
+                <p className="text-xs font-medium text-theme-textSecondary mb-2 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> Preview
+                </p>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${getPriorityColor(
+                      formData.priority,
+                    )}`}
+                  >
+                    {getPriorityIcon(formData.priority)}
+                    {formData.priority}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTargetColor(
+                      formData.target_group,
+                    )}`}
+                  >
+                    <Target className="w-3 h-3" />
+                    {formData.target_group}
+                  </span>
+                </div>
+                <p className="font-semibold text-theme-text">
+                  {formData.title || "Untitled"}
+                </p>
+                <p className="text-sm text-theme-textSecondary mt-1 line-clamp-2">
+                  {formData.message || "No message"}
+                </p>
+              </div>
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Priority <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {PRIORITIES.map((priority) => {
-                const isSelected = formData.priority === priority.value;
-                const colorClasses: Record<string, string> = {
-                  low: isSelected
-                    ? "bg-green-500 text-white border-green-500"
-                    : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-green-50 dark:hover:bg-green-900/20",
-                  medium: isSelected
-                    ? "bg-yellow-500 text-white border-yellow-500"
-                    : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-yellow-50 dark:hover:bg-yellow-900/20",
-                  high: isSelected
-                    ? "bg-red-500 text-white border-red-500"
-                    : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-red-50 dark:hover:bg-red-900/20",
-                };
-                return (
-                  <button
-                    key={priority.value}
-                    type="button"
-                    onClick={() =>
-                      setFormData({ ...formData, priority: priority.value })
-                    }
-                    className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${colorClasses[priority.value]}`}
-                  >
-                    <div className="flex items-center justify-center gap-1.5">
-                      {priority.value === "high" && (
-                        <BellRing className="w-3.5 h-3.5" />
-                      )}
-                      {priority.value === "medium" && (
-                        <Bell className="w-3.5 h-3.5" />
-                      )}
-                      {priority.value === "low" && (
-                        <Bell className="w-3.5 h-3.5" />
-                      )}
-                      {priority.label}
-                    </div>
-                    <p className="text-xs mt-0.5 opacity-80">
-                      {priority.description}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-theme">
+            <button
+              onClick={() => {
+                setShowCreateModal(false);
+                resetForm();
+              }}
+              className="px-4 py-2.5 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={isSubmitting}
+              className="flex items-center gap-2 px-6 py-2.5 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 font-medium"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Creating...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" /> Publish Announcement
+                </>
+              )}
+            </button>
           </div>
+        </Modal>
+      )}
 
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Status
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {STATUSES.map((status) => {
-                const isSelected = formData.status === status.value;
-                return (
-                  <button
-                    key={status.value}
-                    type="button"
-                    onClick={() =>
-                      setFormData({ ...formData, status: status.value })
-                    }
-                    className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-                      isSelected
+      {/* ============================================================ */}
+      {/* EDIT MODAL — managers only                                  */}
+      {/* ============================================================ */}
+      {canManage && (
+        <Modal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            resetForm();
+            setSelectedAnnouncement(null);
+          }}
+          title="Edit Announcement"
+          size="lg"
+        >
+          <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Title <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+                className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.title ? "border-red-500" : "border-theme"
+                  }`}
+              />
+              {formErrors.title && (
+                <p className="text-sm text-red-500 mt-1">{formErrors.title}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Message <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={formData.message}
+                onChange={(e) =>
+                  setFormData({ ...formData, message: e.target.value })
+                }
+                rows={4}
+                className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${formErrors.message ? "border-red-500" : "border-theme"
+                  }`}
+              />
+              {formErrors.message && (
+                <p className="text-sm text-red-500 mt-1">
+                  {formErrors.message}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Target Audience <span className="text-red-500">*</span>
+              </label>
+              <div className="relative" ref={targetDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowTargetDropdown(!showTargetDropdown)}
+                  className="w-full px-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const info = getTargetGroupInfo(formData.target_group);
+                      const Icon = info.icon;
+                      return (
+                        <>
+                          <div
+                            className={`p-1.5 rounded-lg ${getTargetColor(
+                              formData.target_group,
+                            )}`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <span className="font-medium">{info.label}</span>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <ChevronDown
+                    className={`w-4 h-4 text-theme-textSecondary transition-transform ${showTargetDropdown ? "rotate-180" : ""
+                      }`}
+                  />
+                </button>
+
+                {showTargetDropdown && (
+                  <div className="absolute z-50 left-0 right-0 mt-2 bg-theme-surface border border-theme rounded-lg shadow-lg max-h-80 overflow-y-auto">
+                    {TARGET_GROUPS.map((group) => {
+                      const Icon = group.icon;
+                      const isSelected = formData.target_group === group.value;
+                      return (
+                        <button
+                          key={group.value}
+                          type="button"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              target_group: group.value,
+                            });
+                            setShowTargetDropdown(false);
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-theme-hover transition-colors border-b border-theme last:border-0 flex items-center gap-3 ${isSelected ? "bg-theme-primary/10" : ""
+                            }`}
+                        >
+                          <div
+                            className={`p-2 rounded-lg border ${getTargetColor(
+                              group.value,
+                            )}`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-theme-text">
+                              {group.label}
+                            </p>
+                            <p className="text-xs text-theme-textSecondary">
+                              {group.description}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <CheckCircle className="w-5 h-5 text-theme-primary flex-shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Priority <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {PRIORITIES.map((priority) => {
+                  const isSelected = formData.priority === priority.value;
+                  const colorClasses: Record<string, string> = {
+                    low: isSelected
+                      ? "bg-green-500 text-white border-green-500"
+                      : "bg-theme-surface text-theme-textSecondary border-theme",
+                    medium: isSelected
+                      ? "bg-yellow-500 text-white border-yellow-500"
+                      : "bg-theme-surface text-theme-textSecondary border-theme",
+                    high: isSelected
+                      ? "bg-red-500 text-white border-red-500"
+                      : "bg-theme-surface text-theme-textSecondary border-theme",
+                  };
+                  return (
+                    <button
+                      key={priority.value}
+                      type="button"
+                      onClick={() =>
+                        setFormData({ ...formData, priority: priority.value })
+                      }
+                      className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${colorClasses[priority.value]}`}
+                    >
+                      {priority.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Status
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {STATUSES.map((status) => {
+                  const isSelected = formData.status === status.value;
+                  return (
+                    <button
+                      key={status.value}
+                      type="button"
+                      onClick={() =>
+                        setFormData({ ...formData, status: status.value })
+                      }
+                      className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${isSelected
                         ? "bg-theme-primary text-white border-theme-primary"
                         : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-theme-hover"
-                    }`}
-                  >
-                    <div className="flex items-center justify-center gap-1.5">
-                      {status.value === "Published" && (
-                        <CheckCircle className="w-3.5 h-3.5" />
-                      )}
-                      {status.value === "Draft" && (
-                        <FileText className="w-3.5 h-3.5" />
-                      )}
-                      {status.value === "Archived" && (
-                        <Inbox className="w-3.5 h-3.5" />
-                      )}
+                        }`}
+                    >
                       {status.label}
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Expiry Date{" "}
-              <span className="text-theme-textSecondary text-xs font-normal">
-                (Optional)
-              </span>
-            </label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Expiry Date
+              </label>
               <input
                 type="datetime-local"
                 value={formData.expires_at}
                 onChange={(e) =>
                   setFormData({ ...formData, expires_at: e.target.value })
                 }
-                className="w-full pl-10 pr-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
+                className="w-full px-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Action URL{" "}
-              <span className="text-theme-textSecondary text-xs font-normal">
-                (Optional)
-              </span>
-            </label>
-            <div className="relative">
-              <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
-              <input
-                type="url"
-                value={formData.action_url}
-                onChange={(e) =>
-                  setFormData({ ...formData, action_url: e.target.value })
-                }
-                className="w-full pl-10 pr-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
-                placeholder="https://example.com/register"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Image URL{" "}
-              <span className="text-theme-textSecondary text-xs font-normal">
-                (Optional)
-              </span>
-            </label>
-            <div className="relative">
-              <Image className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
-              <input
-                type="url"
-                value={formData.image_url}
-                onChange={(e) =>
-                  setFormData({ ...formData, image_url: e.target.value })
-                }
-                className="w-full pl-10 pr-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
-                placeholder="https://example.com/image.jpg"
-              />
-            </div>
-          </div>
-
-          {(formData.title || formData.message) && (
-            <div className="p-4 bg-theme-background border border-theme rounded-lg">
-              <p className="text-xs font-medium text-theme-textSecondary mb-2 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> Preview
-              </p>
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${getPriorityColor(formData.priority)}`}
-                >
-                  {getPriorityIcon(formData.priority)}
-                  {formData.priority}
-                </span>
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTargetColor(formData.target_group)}`}
-                >
-                  <Target className="w-3 h-3" />
-                  {formData.target_group}
-                </span>
-              </div>
-              <p className="font-semibold text-theme-text">
-                {formData.title || "Untitled"}
-              </p>
-              <p className="text-sm text-theme-textSecondary mt-1 line-clamp-2">
-                {formData.message || "No message"}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-theme">
-          <button
-            onClick={() => {
-              setShowCreateModal(false);
-              resetForm();
-            }}
-            className="px-4 py-2.5 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-6 py-2.5 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 font-medium"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Creating...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" /> Publish Announcement
-              </>
-            )}
-          </button>
-        </div>
-      </Modal>
-
-      {/* ============================================ */}
-      {/* EDIT MODAL */}
-      {/* ============================================ */}
-      <Modal
-        isOpen={showEditModal}
-        onClose={() => {
-          setShowEditModal(false);
-          resetForm();
-          setSelectedAnnouncement(null);
-        }}
-        title="Edit Announcement"
-        size="lg"
-      >
-        <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) =>
-                setFormData({ ...formData, title: e.target.value })
-              }
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                formErrors.title ? "border-red-500" : "border-theme"
-              }`}
-            />
-            {formErrors.title && (
-              <p className="text-sm text-red-500 mt-1">{formErrors.title}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Message <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={formData.message}
-              onChange={(e) =>
-                setFormData({ ...formData, message: e.target.value })
-              }
-              rows={4}
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                formErrors.message ? "border-red-500" : "border-theme"
-              }`}
-            />
-            {formErrors.message && (
-              <p className="text-sm text-red-500 mt-1">{formErrors.message}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Target Audience <span className="text-red-500">*</span>
-            </label>
-            <div className="relative" ref={targetDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setShowTargetDropdown(!showTargetDropdown)}
-                className="w-full px-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const info = getTargetGroupInfo(formData.target_group);
-                    const Icon = info.icon;
-                    return (
-                      <>
-                        <div
-                          className={`p-1.5 rounded-lg ${getTargetColor(formData.target_group)}`}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <span className="font-medium">{info.label}</span>
-                      </>
-                    );
-                  })()}
-                </div>
-                <ChevronDown
-                  className={`w-4 h-4 text-theme-textSecondary transition-transform ${
-                    showTargetDropdown ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-
-              {showTargetDropdown && (
-                <div className="absolute z-50 left-0 right-0 mt-2 bg-theme-surface border border-theme rounded-lg shadow-lg max-h-80 overflow-y-auto">
-                  {TARGET_GROUPS.map((group) => {
-                    const Icon = group.icon;
-                    const isSelected = formData.target_group === group.value;
-                    return (
-                      <button
-                        key={group.value}
-                        type="button"
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            target_group: group.value,
-                          });
-                          setShowTargetDropdown(false);
-                        }}
-                        className={`w-full px-4 py-3 text-left hover:bg-theme-hover transition-colors border-b border-theme last:border-0 flex items-center gap-3 ${
-                          isSelected ? "bg-theme-primary/10" : ""
-                        }`}
-                      >
-                        <div
-                          className={`p-2 rounded-lg border ${getTargetColor(group.value)}`}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-theme-text">
-                            {group.label}
-                          </p>
-                          <p className="text-xs text-theme-textSecondary">
-                            {group.description}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <CheckCircle className="w-5 h-5 text-theme-primary flex-shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+          <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-theme">
+            <button
+              onClick={() => {
+                setShowEditModal(false);
+                resetForm();
+                setSelectedAnnouncement(null);
+              }}
+              className="px-4 py-2.5 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleUpdate}
+              disabled={isSubmitting}
+              className="flex items-center gap-2 px-6 py-2.5 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 font-medium"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Updating...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" /> Save Changes
+                </>
               )}
-            </div>
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Priority <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {PRIORITIES.map((priority) => {
-                const isSelected = formData.priority === priority.value;
-                const colorClasses: Record<string, string> = {
-                  low: isSelected
-                    ? "bg-green-500 text-white border-green-500"
-                    : "bg-theme-surface text-theme-textSecondary border-theme",
-                  medium: isSelected
-                    ? "bg-yellow-500 text-white border-yellow-500"
-                    : "bg-theme-surface text-theme-textSecondary border-theme",
-                  high: isSelected
-                    ? "bg-red-500 text-white border-red-500"
-                    : "bg-theme-surface text-theme-textSecondary border-theme",
-                };
-                return (
-                  <button
-                    key={priority.value}
-                    type="button"
-                    onClick={() =>
-                      setFormData({ ...formData, priority: priority.value })
-                    }
-                    className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${colorClasses[priority.value]}`}
-                  >
-                    {priority.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Status
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {STATUSES.map((status) => {
-                const isSelected = formData.status === status.value;
-                return (
-                  <button
-                    key={status.value}
-                    type="button"
-                    onClick={() =>
-                      setFormData({ ...formData, status: status.value })
-                    }
-                    className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-                      isSelected
-                        ? "bg-theme-primary text-white border-theme-primary"
-                        : "bg-theme-surface text-theme-textSecondary border-theme hover:bg-theme-hover"
-                    }`}
-                  >
-                    {status.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-theme-text mb-1.5">
-              Expiry Date
-            </label>
-            <input
-              type="datetime-local"
-              value={formData.expires_at}
-              onChange={(e) =>
-                setFormData({ ...formData, expires_at: e.target.value })
-              }
-              className="w-full px-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
-            />
-          </div>
-        </div>
+        </Modal>
+      )}
 
-        <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-theme">
-          <button
-            onClick={() => {
-              setShowEditModal(false);
-              resetForm();
-              setSelectedAnnouncement(null);
-            }}
-            className="px-4 py-2.5 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleUpdate}
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-6 py-2.5 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 font-medium"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Updating...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" /> Save Changes
-              </>
-            )}
-          </button>
-        </div>
-      </Modal>
-
-      {/* VIEW MODAL */}
+      {/* ============================================================ */}
+      {/* VIEW MODAL — all users                                       */}
+      {/* ============================================================ */}
       <Modal
         isOpen={showViewModal}
         onClose={() => {
@@ -1304,18 +1428,24 @@ export default function Announcements() {
           <div className="space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
               <span
-                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${getPriorityColor(selectedAnnouncement.priority)}`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${getPriorityColor(
+                  selectedAnnouncement.priority,
+                )}`}
               >
                 {getPriorityIcon(selectedAnnouncement.priority)}
                 {selectedAnnouncement.priority}
               </span>
               <span
-                className={`inline-block px-2 py-0.5 text-xs rounded-full ${getStatusColor(selectedAnnouncement.status)}`}
+                className={`inline-block px-2 py-0.5 text-xs rounded-full ${getStatusColor(
+                  selectedAnnouncement.status,
+                )}`}
               >
                 {selectedAnnouncement.status}
               </span>
               <span
-                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTargetColor(selectedAnnouncement.target_group)}`}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTargetColor(
+                  selectedAnnouncement.target_group,
+                )}`}
               >
                 <Target className="w-3 h-3" />
                 {selectedAnnouncement.target_group}
@@ -1360,58 +1490,62 @@ export default function Announcements() {
         )}
       </Modal>
 
-      {/* DELETE MODAL */}
-      <Modal
-        isOpen={showDeleteModal}
-        onClose={() => {
-          setShowDeleteModal(false);
-          setSelectedAnnouncement(null);
-        }}
-        title="Delete Announcement"
-      >
-        <div className="space-y-4">
-          <p className="text-theme-textSecondary">
-            Are you sure you want to delete this announcement? This action
-            cannot be undone.
-          </p>
-          {selectedAnnouncement && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-              <p className="font-medium text-theme-text">
-                {selectedAnnouncement.title}
-              </p>
-              <p className="text-sm text-theme-textSecondary line-clamp-2">
-                {selectedAnnouncement.message}
-              </p>
+      {/* ============================================================ */}
+      {/* DELETE MODAL — managers only                                 */}
+      {/* ============================================================ */}
+      {canManage && (
+        <Modal
+          isOpen={showDeleteModal}
+          onClose={() => {
+            setShowDeleteModal(false);
+            setSelectedAnnouncement(null);
+          }}
+          title="Delete Announcement"
+        >
+          <div className="space-y-4">
+            <p className="text-theme-textSecondary">
+              Are you sure you want to delete this announcement? This action
+              cannot be undone.
+            </p>
+            {selectedAnnouncement && (
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                <p className="font-medium text-theme-text">
+                  {selectedAnnouncement.title}
+                </p>
+                <p className="text-sm text-theme-textSecondary line-clamp-2">
+                  {selectedAnnouncement.message}
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setSelectedAnnouncement(null);
+                }}
+                className="px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" /> Delete
+                  </>
+                )}
+              </button>
             </div>
-          )}
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => {
-                setShowDeleteModal(false);
-                setSelectedAnnouncement(null);
-              }}
-              className="px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="w-4 h-4" /> Delete
-                </>
-              )}
-            </button>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
     </div>
   );
 }

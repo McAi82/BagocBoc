@@ -33,10 +33,10 @@ class OtpMail extends Mailable
      */
     public function envelope(): Envelope
     {
-        $subject = $this->purpose === 'password_reset' 
+        $subject = $this->purpose === 'password_reset'
             ? 'Barangay Bagocboc - Password Reset OTP'
             : 'Barangay Bagocboc - OTP Verification Code';
-            
+
         return new Envelope(
             subject: $subject,
         );
@@ -56,6 +56,19 @@ class OtpMail extends Mailable
                 'purpose' => $this->purpose,
             ],
         );
+    }
+
+    // app/Mail/OtpMail.php
+    public function build()
+    {
+        $subjects = [
+            'is_first_login'  => 'Your Login Verification Code',
+            'password_reset'  => 'Your Password Reset Code',
+            'change_password' => 'Your Password Change Verification Code',
+        ];
+
+        return $this->subject($subjects[$this->purpose] ?? 'Your OTP Code')
+            ->view('emails.otp');
     }
 
     /**

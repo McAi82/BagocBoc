@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ThemeProvider from "./components/core/ThemeProvider";
 import Layout from "./components/core/Layout";
 import ProtectedRoute from "./components/core/ProtectedRoute";
+import { NotificationProvider } from "./contexts/NotificationContext";
 import BNSRecordDetails from "./pages/bns/reports/BNSRecordDetails";
 
 // ============================================
@@ -126,534 +127,496 @@ const queryClient = new QueryClient({
     },
 });
 
-function App() {
-    const HEALTH_ROLES = ["Midwife", "Nurse Deployment Program", "Super Admin"];
+// ============================================
+// ROLE CONSTANTS
+// ============================================
 
+const SUPER_ADMIN = "Super Admin";
+const CAPTAIN = "Barangay Captain";
+const SECRETARY = "Barangay Secretary";
+const TREASURER = "Barangay Treasurer";
+const FRONT_DESK = "Front Desk Clerk";
+const MIDWIFE = "Midwife";
+const NDP = "Nurse Deployment Program";
+const BNS = "Barangay Nutrition Scholar";
+
+// ✅ Reusable role lists — Super Admin included everywhere
+const HEALTH_ROLES = [MIDWIFE, NDP, SUPER_ADMIN];
+const POPULATION_ROLES = [CAPTAIN, SECRETARY, SUPER_ADMIN];
+const CERT_ROLES = [SECRETARY, SUPER_ADMIN];
+const FINANCE_ROLES = [SECRETARY, TREASURER, SUPER_ADMIN];
+const MAP_ROLES = [CAPTAIN, SUPER_ADMIN];
+const CONFIRM_ROLES = [SECRETARY, FRONT_DESK, SUPER_ADMIN];
+const REPORT_VIEW_ROLES = [
+    SECRETARY,
+    TREASURER,
+    CAPTAIN,
+    SUPER_ADMIN,
+];
+
+function App() {
     return (
         <QueryClientProvider client={queryClient}>
             <ThemeProvider>
-                <BrowserRouter>
-                    <Toaster
-                        position="top-right"
-                        toastOptions={{
-                            duration: 4000,
-                            style: {
-                                background: "var(--theme-surface)",
-                                color: "var(--theme-text)",
-                                border: "1px solid var(--theme-border)",
-                            },
-                        }}
-                    />
-                    <Routes>
-                        {/* ============================================ */}
-                        {/* PUBLIC ROUTES */}
-                        {/* ============================================ */}
-                        <Route path="/" element={<Navigate to="/login" replace />} />
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/otp" element={<OtpVerification />} />
-                        <Route path="/create-password" element={<CreateNewPassword />} />
-
-                        {/* ============================================ */}
-                        {/* PROTECTED ROUTES */}
-                        {/* ============================================ */}
-                        <Route
-                            path="/barangay-bagocboc"
-                            element={
-                                <ProtectedRoute>
-                                    <Layout />
-                                </ProtectedRoute>
-                            }
-                        >
-                            {/* Dashboard Index - Redirects based on role */}
-                            <Route index element={<DashboardIndex />} />
+                <NotificationProvider interval={20000}>
+                    <BrowserRouter>
+                        <Toaster
+                            position="top-right"
+                            toastOptions={{
+                                duration: 4000,
+                                style: {
+                                    background: "var(--theme-surface)",
+                                    color: "var(--theme-text)",
+                                    border: "1px solid var(--theme-border)",
+                                },
+                            }}
+                        />
+                        <Routes>
+                            {/* ============================================ */}
+                            {/* PUBLIC ROUTES */}
+                            {/* ============================================ */}
+                            <Route path="/" element={<Navigate to="/login" replace />} />
+                            <Route path="/login" element={<Login />} />
+                            <Route path="/otp" element={<OtpVerification />} />
+                            <Route path="/create-password" element={<CreateNewPassword />} />
 
                             {/* ============================================ */}
-                            {/* SUPER ADMIN ROUTES */}
+                            {/* PROTECTED ROUTES */}
                             {/* ============================================ */}
                             <Route
-                                path="superadmin"
+                                path="/barangay-bagocboc"
                                 element={
-                                    <ProtectedRoute allowedRoles={["Super Admin"]}>
-                                        <SystemOverview />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* CAPTAIN ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="captain"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Captain"]}>
-                                        <CaptainDashboard />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* SECRETARY ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="secretary"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Secretary"]}>
-                                        <SecretaryDashboard />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="secretary/registry"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Secretary"]}>
-                                        <SecretaryRegistry />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="secretary/clearance-log"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Secretary"]}>
-                                        <ClearanceLog />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="secretary/certificate-reports"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Secretary"]}>
-                                        <CertificateReports />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* TREASURER ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="treasurer"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Treasurer"]}>
-                                        <TreasurerDashboard />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* FRONT DESK ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="frontdesk"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Front Desk Clerk"]}>
-                                        <FrontDeskDashboard />
+                                    <ProtectedRoute>
+                                        <Layout />
                                     </ProtectedRoute>
                                 }
                             >
-                                <Route index element={<Navigate to="queue" replace />} />
-                                <Route path="queue" element={<FrontDeskQueuePage />} />
-                                <Route path="requests" element={<FrontDeskRequestsPage />} />
+                                {/* Dashboard Index - Redirects based on role */}
+                                <Route index element={<DashboardIndex />} />
+
+                                {/* ============================================ */}
+                                {/* SUPER ADMIN ROUTES */}
+                                {/* ============================================ */}
                                 <Route
-                                    path="appointments"
-                                    element={<FrontDeskAppointmentsPage />}
+                                    path="superadmin"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[SUPER_ADMIN]}>
+                                            <SystemOverview />
+                                        </ProtectedRoute>
+                                    }
                                 />
-                                <Route path="residents" element={<FrontDeskResidentsPage />} />
-                                <Route path="claims" element={<FrontDeskClaimSlipsPage />} />
-                                <Route path="tax" element={<FrontDeskTaxPage />} />
+
+                                {/* ============================================ */}
+                                {/* CAPTAIN ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="captain"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[CAPTAIN, SUPER_ADMIN]}>
+                                            <CaptainDashboard />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* SECRETARY ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="secretary"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[SECRETARY, SUPER_ADMIN]}>
+                                            <SecretaryDashboard />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="secretary/registry"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[SECRETARY, SUPER_ADMIN]}>
+                                            <SecretaryRegistry />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="secretary/clearance-log"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[SECRETARY, SUPER_ADMIN]}>
+                                            <ClearanceLog />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="secretary/certificate-reports"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[SECRETARY, SUPER_ADMIN]}>
+                                            <CertificateReports />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* TREASURER ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="treasurer"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[TREASURER, SUPER_ADMIN]}>
+                                            <TreasurerDashboard />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* FRONT DESK ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="frontdesk"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[FRONT_DESK, SUPER_ADMIN]}>
+                                            <FrontDeskDashboard />
+                                        </ProtectedRoute>
+                                    }
+                                >
+                                    <Route index element={<Navigate to="queue" replace />} />
+                                    <Route path="queue" element={<FrontDeskQueuePage />} />
+                                    <Route path="requests" element={<FrontDeskRequestsPage />} />
+                                    <Route
+                                        path="appointments"
+                                        element={<FrontDeskAppointmentsPage />}
+                                    />
+                                    <Route path="residents" element={<FrontDeskResidentsPage />} />
+                                    <Route path="claims" element={<FrontDeskClaimSlipsPage />} />
+                                    <Route path="tax" element={<FrontDeskTaxPage />} />
+                                </Route>
+
+                                {/* ============================================ */}
+                                {/* HEALTH ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="health"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <HealthDashboard />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                <Route
+                                    path="health/reports"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <HealthReports />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                <Route
+                                    path="health/records"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <PatientRecords />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/records/:id"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <PatientDetails />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/records/pregnant"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <PregnantRecords />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/records/children"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <ChildrenRecords />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/records/lactating"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <LactatingRecords />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/records/senior"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <SeniorRecords />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/records/other"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <NcdRecords />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                <Route
+                                    path="health/patients/new"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <PatientRegistration />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/patients/new-form"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <PatientRecordForm />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/patients/search"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <PatientSearch />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                <Route
+                                    path="health/checkups"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <CheckupHistory />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="health/checkups/new/:patientId"
+                                    element={
+                                        <ProtectedRoute allowedRoles={HEALTH_ROLES}>
+                                            <CheckupForm />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* BNS ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="bns"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[BNS, SUPER_ADMIN]}>
+                                            <BNSDashboard />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="bns/reports"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[BNS, SUPER_ADMIN]}>
+                                            <CollectedRecords />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="bns/reports/consolidate/:type"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[BNS, SUPER_ADMIN]}>
+                                            <DemographicConsolidation />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="bns/reports/generate"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[BNS, SUPER_ADMIN]}>
+                                            <ReportGenerator />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="bns/reports/records/:id"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[BNS, SUPER_ADMIN]}>
+                                            <BNSRecordDetails />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="bns/gis"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[BNS, SUPER_ADMIN]}>
+                                            <GISMap />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* RESIDENTS ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="populations/residents"
+                                    element={
+                                        <ProtectedRoute allowedRoles={POPULATION_ROLES}>
+                                            <Residents />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="residents/new"
+                                    element={
+                                        <ProtectedRoute allowedRoles={POPULATION_ROLES}>
+                                            <RegistrationForm />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="residents/:id"
+                                    element={
+                                        <ProtectedRoute allowedRoles={POPULATION_ROLES}>
+                                            <ResidentProfile />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="resident-confirmations"
+                                    element={
+                                        <ProtectedRoute allowedRoles={CONFIRM_ROLES}>
+                                            <ResidentConfirmation />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* HOUSEHOLDS ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="populations/households"
+                                    element={
+                                        <ProtectedRoute allowedRoles={POPULATION_ROLES}>
+                                            <Households />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="households/:id"
+                                    element={
+                                        <ProtectedRoute allowedRoles={POPULATION_ROLES}>
+                                            <HouseholdProfile />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* CERTIFICATIONS & CLEARANCE */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="certifications"
+                                    element={
+                                        <ProtectedRoute allowedRoles={CERT_ROLES}>
+                                            <Certifications />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="clearance"
+                                    element={
+                                        <ProtectedRoute allowedRoles={CERT_ROLES}>
+                                            <Clearance />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* FINANCIAL ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="payments"
+                                    element={
+                                        <ProtectedRoute allowedRoles={FINANCE_ROLES}>
+                                            <Payments />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="financial-reports"
+                                    element={
+                                        <ProtectedRoute allowedRoles={REPORT_VIEW_ROLES}>
+                                            <FinancialReports />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* ANNOUNCEMENTS */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="announcements"
+                                    element={
+                                        <ProtectedRoute>
+                                            <Announcements />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* MAP VIEW */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="map"
+                                    element={
+                                        <ProtectedRoute allowedRoles={MAP_ROLES}>
+                                            <MapView />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* SETTINGS ROUTES */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="settings"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[SUPER_ADMIN, CAPTAIN]}>
+                                            <Settings />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="settings/profile"
+                                    element={
+                                        <ProtectedRoute>
+                                            <ProfileSettings />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="settings/system"
+                                    element={
+                                        <ProtectedRoute allowedRoles={[SUPER_ADMIN]}>
+                                            <SystemSettings />
+                                        </ProtectedRoute>
+                                    }
+                                />
                             </Route>
 
                             {/* ============================================ */}
-                            {/* HEALTH ROUTES */}
+                            {/* 404 NOT FOUND */}
                             {/* ============================================ */}
-                            <Route
-                                path="health"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <HealthDashboard />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            <Route
-                                path="health/reports"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <HealthReports />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            <Route
-                                path="health/records"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <PatientRecords />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/records/:id"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <PatientDetails />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/records/pregnant"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <PregnantRecords />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/records/children"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <ChildrenRecords />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/records/lactating"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <LactatingRecords />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/records/senior"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <SeniorRecords />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/records/other"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <NcdRecords />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            <Route
-                                path="health/patients/new"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <PatientRegistration />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/patients/new-form"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <PatientRecordForm />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/patients/search"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <PatientSearch />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            <Route
-                                path="health/checkups"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <CheckupHistory />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="health/checkups/new/:patientId"
-                                element={
-                                    <ProtectedRoute allowedRoles={HEALTH_ROLES}>
-                                        <CheckupForm />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* BNS ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="bns"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Nutrition Scholar", "Super Admin"]}
-                                    >
-                                        <BNSDashboard />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="bns/reports"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Nutrition Scholar", "Super Admin"]}
-                                    >
-                                        <CollectedRecords />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="bns/reports/consolidate/:type"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Nutrition Scholar", "Super Admin"]}
-                                    >
-                                        <DemographicConsolidation />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="bns/reports/generate"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Nutrition Scholar", "Super Admin"]}
-                                    >
-                                        <ReportGenerator />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            <Route
-                                path="bns/reports/records/:id"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Nutrition Scholar", "Super Admin"]}
-                                    >
-                                        <BNSRecordDetails />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="bns/gis"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Nutrition Scholar", "Super Admin"]}
-                                    >
-                                        <GISMap />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* RESIDENTS ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="populations/residents"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={[
-                                            "Barangay Captain",
-                                            "Barangay Secretary",
-                                            "Super Admin",
-                                        ]}
-                                    >
-                                        <Residents />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="residents/new"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={[
-                                            "Barangay Captain",
-                                            "Barangay Secretary",
-                                            "Super Admin",
-                                        ]}
-                                    >
-                                        <RegistrationForm />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="residents/:id"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={[
-                                            "Barangay Captain",
-                                            "Barangay Secretary",
-                                            "Super Admin",
-                                        ]}
-                                    >
-                                        <ResidentProfile />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="resident-confirmations"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={[
-                                            "Barangay Secretary",
-                                            "Front Desk Clerk",
-                                            "Zone Leader",
-                                            "Super Admin",
-                                        ]}
-                                    >
-                                        <ResidentConfirmation />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* HOUSEHOLDS ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="populations/households"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={[
-                                            "Barangay Captain",
-                                            "Barangay Secretary",
-                                            "Super Admin",
-                                        ]}
-                                    >
-                                        <Households />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="households/:id"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={[
-                                            "Barangay Captain",
-                                            "Barangay Secretary",
-                                            "Super Admin",
-                                        ]}
-                                    >
-                                        <HouseholdProfile />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* CERTIFICATIONS & CLEARANCE */}
-                            {/* ============================================ */}
-                            <Route
-                                path="certifications"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Secretary"]}>
-                                        <Certifications />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="clearance"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Barangay Secretary"]}>
-                                        <Clearance />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* FINANCIAL ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="payments"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Secretary", "Barangay Treasurer"]}
-                                    >
-                                        <Payments />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="financial-reports"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={[
-                                            "Barangay Secretary",
-                                            "Barangay Treasurer",
-                                            "Barangay Captain",
-                                            "Super Admin",
-                                        ]}
-                                    >
-                                        <FinancialReports />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* ANNOUNCEMENTS */}
-                            {/* ============================================ */}
-                            <Route
-                                path="announcements"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Captain", "Barangay Secretary"]}
-                                    >
-                                        <Announcements />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* MAP VIEW */}
-                            {/* ============================================ */}
-                            <Route
-                                path="map"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Barangay Captain", "Super Admin"]}
-                                    >
-                                        <MapView />
-                                    </ProtectedRoute>
-                                }
-                            />
-
-                            {/* ============================================ */}
-                            {/* SETTINGS ROUTES */}
-                            {/* ============================================ */}
-                            <Route
-                                path="settings"
-                                element={
-                                    <ProtectedRoute
-                                        allowedRoles={["Super Admin", "Barangay Captain"]}
-                                    >
-                                        <Settings />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="settings/profile"
-                                element={
-                                    <ProtectedRoute>
-                                        <ProfileSettings />
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="settings/system"
-                                element={
-                                    <ProtectedRoute allowedRoles={["Super Admin"]}>
-                                        <SystemSettings />
-                                    </ProtectedRoute>
-                                }
-                            />
-                        </Route>
-
-                        {/* ============================================ */}
-                        {/* 404 NOT FOUND */}
-                        {/* ============================================ */}
-                        <Route path="*" element={<NotFound />} />
-                    </Routes>
-                </BrowserRouter>
+                            <Route path="*" element={<NotFound />} />
+                        </Routes>
+                    </BrowserRouter>
+                </NotificationProvider>
             </ThemeProvider>
         </QueryClientProvider>
     );

@@ -1,6 +1,6 @@
 // components/core/Sidebar.tsx
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -38,12 +38,18 @@ import {
   UserCheck,
   Map,
   Settings2,
+  ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { useThemeStore } from "../../stores/themeStore";
 import { useNetworkStore } from "../../stores/networkStore";
 import { api } from "../../api/apiClient";
 import toast from "react-hot-toast";
+
+// ============================================
+// TYPES
+// ============================================
 
 interface SidebarProps {
   isOpen: boolean;
@@ -65,27 +71,53 @@ interface NavGroup {
   children: NavItem[];
 }
 
+// ============================================
+// ROLE CONSTANTS
+// ============================================
+
+const SUPER_ADMIN = "Super Admin";
+const CAPTAIN = "Barangay Captain";
+const SECRETARY = "Barangay Secretary";
+const TREASURER = "Barangay Treasurer";
+const FRONT_DESK = "Front Desk Clerk";
+const MIDWIFE = "Midwife";
+const NDP = "Nurse Deployment Program";
+const BNS = "Barangay Nutrition Scholar";
+const ZONE_LEADER = "Zone Leader";
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const { mode } = useThemeStore();
   const networkStatus = useNetworkStore((state) => state.status);
-  const [expandedGroups, setExpandedGroups] = useState<string[]>([
-    "main",
-    "health",
-  ]);
+
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const userRoles = user?.roles?.map((r) => r.name) || [];
-  console.log("Sidebar: User roles", userRoles);
+  // ============================================
+  // STABLE DERIVED VALUES
+  // ============================================
 
-  const hasRole = (roles: string[] = []) => {
-    if (roles.length === 0) return true;
-    return roles.some((role) => userRoles.includes(role));
-  };
+  const userRoles = useMemo(
+    () => user?.roles?.map((r) => r.name) || [],
+    [user?.roles],
+  );
+
+  const isSuperAdmin = useMemo(
+    () => userRoles.includes(SUPER_ADMIN),
+    [userRoles],
+  );
+
+  // ============================================
+  // HELPERS
+  // ============================================
 
   const toggleGroup = (name: string) => {
     setExpandedGroups((prev) =>
@@ -112,6 +144,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   };
 
   const getRoleName = () => {
+    if (isSuperAdmin) return "Super Admin";
     return userRoles[0] || "User";
   };
 
@@ -135,68 +168,246 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const isExpanded = isOpen || isHovered;
 
   // ============================================
-  // NAVIGATION CONFIGURATION
+  // NAVIGATION CONFIG — STRICT SCOPE
   // ============================================
 
   const navConfig = useMemo(() => {
     const items: (NavItem | NavGroup)[] = [];
 
-    // ============================================
-    // 1. DASHBOARD - All web users except Midwife (they have their own)
-    // ============================================
-    if (
-      hasRole([
-        "Barangay Secretary",
-        "Barangay Treasurer",
-      ]) &&
-      !hasRole(["Midwife", "Nurse Deployment Program"])
-    ) {
+    // ---------- Resolve scope ----------
+    const scope: string = isSuperAdmin
+      ? "superadmin"
+      : userRoles.includes(CAPTAIN)
+        ? "captain"
+        : userRoles.includes(SECRETARY)
+          ? "secretary"
+          : userRoles.includes(TREASURER)
+            ? "treasurer"
+            : userRoles.includes(FRONT_DESK)
+              ? "frontdesk"
+              : userRoles.includes(MIDWIFE)
+                ? "midwife"
+                : userRoles.includes(NDP)
+                  ? "ndp"
+                  : userRoles.includes(BNS)
+                    ? "bns"
+                    : userRoles.includes(ZONE_LEADER)
+                      ? "zoneleader"
+                      : "unknown";
+
+    if (import.meta.env.DEV) {
+      console.log("Sidebar scope:", scope, "| roles:", userRoles);
+    }
+
+    // ============================================================
+    // 🛡️ SUPER ADMIN — Everything
+    // ============================================================
+    if (scope === "superadmin") {
       items.push({
-        name: `${getRoleName().split(" ")[1]} Dashboard`,
-        path: "/barangay-bagocboc",
+        name: "Overview",
         icon: LayoutDashboard,
+        children: [
+          {
+            name: "System Dashboard",
+            path: "/barangay-bagocboc/superadmin",
+            icon: Shield,
+          },
+          {
+            name: "Captain Dashboard",
+            path: "/barangay-bagocboc/captain",
+            icon: LayoutDashboard,
+          },
+          {
+            name: "Secretary Dashboard",
+            path: "/barangay-bagocboc/secretary",
+            icon: LayoutDashboard,
+          },
+          {
+            name: "Treasurer Dashboard",
+            path: "/barangay-bagocboc/treasurer",
+            icon: LayoutDashboard,
+          },
+        ],
       });
+
+      items.push({
+        name: "Population",
+        icon: Users,
+        children: [
+          {
+            name: "Residents",
+            path: "/barangay-bagocboc/populations/residents",
+            icon: Users,
+          },
+          {
+            name: "Households",
+            path: "/barangay-bagocboc/populations/households",
+            icon: Home,
+          },
+          {
+            name: "Confirmations",
+            path: "/barangay-bagocboc/resident-confirmations",
+            icon: UserCheck,
+          },
+          {
+            name: "GIS Map",
+            path: "/barangay-bagocboc/map",
+            icon: MapPin,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Services",
+        icon: FileCheck,
+        children: [
+          {
+            name: "Front Desk",
+            path: "/barangay-bagocboc/frontdesk",
+            icon: Calendar,
+          },
+          {
+            name: "Certifications",
+            path: "/barangay-bagocboc/certifications",
+            icon: FileCheck,
+          },
+          {
+            name: "Barangay Clearance",
+            path: "/barangay-bagocboc/clearance",
+            icon: FileSignature,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Health",
+        icon: Heart,
+        children: [
+          {
+            name: "Health Dashboard",
+            path: "/barangay-bagocboc/health",
+            icon: LayoutDashboard,
+          },
+          {
+            name: "All Patient Records",
+            path: "/barangay-bagocboc/health/records",
+            icon: FileText,
+          },
+          {
+            name: "Checkup History",
+            path: "/barangay-bagocboc/health/checkups",
+            icon: Stethoscope,
+          },
+          {
+            name: "Health Reports",
+            path: "/barangay-bagocboc/health/reports",
+            icon: BarChart3,
+          },
+          {
+            name: "BNS Dashboard",
+            path: "/barangay-bagocboc/bns",
+            icon: BarChart3,
+          },
+          {
+            name: "BNS Records",
+            path: "/barangay-bagocboc/bns/reports",
+            icon: ClipboardList,
+          },
+          {
+            name: "BNS GIS Map",
+            path: "/barangay-bagocboc/bns/gis",
+            icon: Map,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Finance",
+        icon: Wallet,
+        children: [
+          {
+            name: "Payments",
+            path: "/barangay-bagocboc/payments",
+            icon: CreditCard,
+          },
+          {
+            name: "SCD Reports",
+            path: "/barangay-bagocboc/financial-reports",
+            icon: PhilippinePeso,
+          },
+          {
+            name: "Resident Registry",
+            path: "/barangay-bagocboc/secretary/registry",
+            icon: Users,
+          },
+          {
+            name: "Clearance Log",
+            path: "/barangay-bagocboc/secretary/clearance-log",
+            icon: FileText,
+          },
+          {
+            name: "Certificate Reports",
+            path: "/barangay-bagocboc/secretary/certificate-reports",
+            icon: BarChart3,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Communication",
+        icon: Megaphone,
+        children: [
+          {
+            name: "Announcements",
+            path: "/barangay-bagocboc/announcements",
+            icon: Megaphone,
+          },
+        ],
+      });
+
+      items.push({
+        name: "System",
+        icon: Settings,
+        children: [
+          {
+            name: "System Settings",
+            path: "/barangay-bagocboc/settings/system",
+            icon: Settings2,
+          },
+          {
+            name: "Profile Settings",
+            path: "/barangay-bagocboc/settings/profile",
+            icon: User,
+          },
+        ],
+      });
+
+      return items;
     }
 
-    // ============================================
-    // 2. CAPTAIN DASHBOARD - Barangay Captain only
-    // ============================================
-    if (hasRole(["Barangay Captain"])) {
+    // ============================================================
+    // 🎯 BARANGAY CAPTAIN
+    // ============================================================
+    if (scope === "captain") {
       items.push({
-        name: `${getRoleName().split(" ")[1]} Dashboard`,
-        path: "/barangay-bagocboc/captain",
+        name: "Overview",
         icon: LayoutDashboard,
+        children: [
+          {
+            name: "Captain Dashboard",
+            path: "/barangay-bagocboc/captain",
+            icon: LayoutDashboard,
+          },
+          {
+            name: "Map View",
+            path: "/barangay-bagocboc/map",
+            icon: MapPin,
+          },
+        ],
       });
-    }
 
-    // ============================================
-    // 3. SUPER ADMIN - System Overview
-    // ============================================
-    if (hasRole(["Super Admin"])) {
       items.push({
-        name: "System Overview",
-        path: "/barangay-bagocboc/superadmin",
-        icon: Shield,
-      });
-    }
-
-    // ============================================
-    // 4. MAP VIEW - Captain & Super Admin only
-    // ============================================
-    if (hasRole(["Barangay Captain", "Super Admin"])) {
-      items.push({
-        name: "Map View",
-        path: "/barangay-bagocboc/map",
-        icon: MapPin,
-      });
-    }
-
-    // ============================================
-    // 5. POPULATIONS - Captain, Secretary
-    // ============================================
-    if (hasRole(["Barangay Captain", "Barangay Secretary", "Super Admin"])) {
-      items.push({
-        name: "Populations",
+        name: "Population",
         icon: Users,
         children: [
           {
@@ -211,38 +422,247 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           },
         ],
       });
-    }
-
-    // ============================================
-    // 6. CERTIFICATIONS - Secretary only
-    // ============================================
-    if (hasRole(["Barangay Secretary"])) {
-      items.push({
-        name: "Certifications",
-        path: "/barangay-bagocboc/certifications",
-        icon: FileCheck,
-      });
 
       items.push({
-        name: "Barangay Clearance",
-        path: "/barangay-bagocboc/clearance",
-        icon: FileSignature,
-      });
-    }
-
-    // ============================================
-    // 7. FRONT DESK - Front Desk Clerk only
-    // ============================================
-    if (hasRole(["Front Desk Clerk"])) {
-      items.push({
-        name: "Front Desk",
-        icon: Calendar,
+        name: "Finance",
+        icon: Wallet,
         children: [
           {
-            name: "Dashboard",
+            name: "SCD Reports",
+            path: "/barangay-bagocboc/financial-reports",
+            icon: PhilippinePeso,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Communication",
+        icon: Megaphone,
+        children: [
+          {
+            name: "Announcements",
+            path: "/barangay-bagocboc/announcements",
+            icon: Megaphone,
+          },
+        ],
+      });
+
+      items.push({
+        name: "System",
+        icon: Settings,
+        children: [
+          {
+            name: "Profile Settings",
+            path: "/barangay-bagocboc/settings/profile",
+            icon: User,
+          },
+        ],
+      });
+
+      return items;
+    }
+
+    // ============================================================
+    // 🎯 BARANGAY SECRETARY
+    // ============================================================
+    if (scope === "secretary") {
+      items.push({
+        name: "Overview",
+        icon: LayoutDashboard,
+        children: [
+          {
+            name: "Secretary Dashboard",
+            path: "/barangay-bagocboc/secretary",
+            icon: LayoutDashboard,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Population",
+        icon: Users,
+        children: [
+          {
+            name: "Residents",
+            path: "/barangay-bagocboc/populations/residents",
+            icon: Users,
+          },
+          {
+            name: "Households",
+            path: "/barangay-bagocboc/populations/households",
+            icon: Home,
+          },
+          {
+            name: "Confirmations",
+            path: "/barangay-bagocboc/resident-confirmations",
+            icon: UserCheck,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Services",
+        icon: FileCheck,
+        children: [
+          {
+            name: "Certifications",
+            path: "/barangay-bagocboc/certifications",
+            icon: FileCheck,
+          },
+          {
+            name: "Barangay Clearance",
+            path: "/barangay-bagocboc/clearance",
+            icon: FileSignature,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Reports",
+        icon: PieChart,
+        children: [
+          {
+            name: "Resident Registry",
+            path: "/barangay-bagocboc/secretary/registry",
+            icon: Users,
+          },
+          {
+            name: "Clearance Log",
+            path: "/barangay-bagocboc/secretary/clearance-log",
+            icon: FileText,
+          },
+          {
+            name: "Certificate Reports",
+            path: "/barangay-bagocboc/secretary/certificate-reports",
+            icon: BarChart3,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Finance",
+        icon: Wallet,
+        children: [
+          {
+            name: "Payments",
+            path: "/barangay-bagocboc/payments",
+            icon: CreditCard,
+          },
+          {
+            name: "SCD Reports",
+            path: "/barangay-bagocboc/financial-reports",
+            icon: PhilippinePeso,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Communication",
+        icon: Megaphone,
+        children: [
+          {
+            name: "Announcements",
+            path: "/barangay-bagocboc/announcements",
+            icon: Megaphone,
+          },
+        ],
+      });
+
+      items.push({
+        name: "System",
+        icon: Settings,
+        children: [
+          {
+            name: "Profile Settings",
+            path: "/barangay-bagocboc/settings/profile",
+            icon: User,
+          },
+        ],
+      });
+
+      return items;
+    }
+
+    // ============================================================
+    // 🎯 BARANGAY TREASURER
+    // ============================================================
+    if (scope === "treasurer") {
+      items.push({
+        name: "Overview",
+        icon: LayoutDashboard,
+        children: [
+          {
+            name: "Treasurer Dashboard",
+            path: "/barangay-bagocboc/treasurer",
+            icon: LayoutDashboard,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Finance",
+        icon: Wallet,
+        children: [
+          {
+            name: "Payments",
+            path: "/barangay-bagocboc/payments",
+            icon: CreditCard,
+          },
+          {
+            name: "SCD Reports",
+            path: "/barangay-bagocboc/financial-reports",
+            icon: PhilippinePeso,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Communication",
+        icon: Megaphone,
+        children: [
+          {
+            name: "Announcements",
+            path: "/barangay-bagocboc/announcements",
+            icon: Megaphone,
+          },
+        ],
+      });
+
+      items.push({
+        name: "System",
+        icon: Settings,
+        children: [
+          {
+            name: "Profile Settings",
+            path: "/barangay-bagocboc/settings/profile",
+            icon: User,
+          },
+        ],
+      });
+
+      return items;
+    }
+
+    // ============================================================
+    // 🎯 FRONT DESK CLERK
+    // ============================================================
+    if (scope === "frontdesk") {
+      items.push({
+        name: "Overview",
+        icon: LayoutDashboard,
+        children: [
+          {
+            name: "Front Desk Dashboard",
             path: "/barangay-bagocboc/frontdesk",
             icon: LayoutDashboard,
           },
+        ],
+      });
+
+      items.push({
+        name: "Operations",
+        icon: Calendar,
+        children: [
           {
             name: "Queue",
             path: "/barangay-bagocboc/frontdesk/queue",
@@ -273,52 +693,61 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             path: "/barangay-bagocboc/frontdesk/tax",
             icon: Receipt,
           },
-        ],
-      });
-    }
-
-    // ============================================
-    // 8. BNS DASHBOARD - Barangay Nutrition Scholar
-    // ============================================
-    if (hasRole(["Barangay Nutrition Scholar", "Super Admin"])) {
-      items.push({
-        name: "BNS",
-        icon: BarChart3,
-        children: [
           {
-            name: "Dashboard",
-            path: "/barangay-bagocboc/bns",
-            icon: LayoutDashboard,
-          },
-          {
-            name: "BHW Records",
-            path: "/barangay-bagocboc/bns/reports",
-            icon: ClipboardList,
-          },
-          {
-            name: "GIS Map",
-            path: "/barangay-bagocboc/bns/gis",
-            icon: Map,
+            name: "Confirmations",
+            path: "/barangay-bagocboc/resident-confirmations",
+            icon: UserCheck,
           },
         ],
       });
-    }
 
-    // ============================================
-    // 9. HEALTH - Midwife, BNS, Super Admin
-    // ============================================
-    if (hasRole(["Midwife", "Nurse Deployment Program", "Super Admin"])) {
       items.push({
-        name: "Health",
-        icon: Heart,
+        name: "Communication",
+        icon: Megaphone,
         children: [
           {
-            name: hasRole(["Nurse Deployment Program"]) && !hasRole(["Midwife"])
-              ? "NDP Dashboard"
-              : "Midwife Dashboard",
+            name: "Announcements",
+            path: "/barangay-bagocboc/announcements",
+            icon: Megaphone,
+          },
+        ],
+      });
+
+      items.push({
+        name: "System",
+        icon: Settings,
+        children: [
+          {
+            name: "Profile Settings",
+            path: "/barangay-bagocboc/settings/profile",
+            icon: User,
+          },
+        ],
+      });
+
+      return items;
+    }
+
+    // ============================================================
+    // 🎯 MIDWIFE / NDP
+    // ============================================================
+    if (scope === "midwife" || scope === "ndp") {
+      items.push({
+        name: "Overview",
+        icon: LayoutDashboard,
+        children: [
+          {
+            name: scope === "ndp" ? "NDP Dashboard" : "Midwife Dashboard",
             path: "/barangay-bagocboc/health",
             icon: LayoutDashboard,
           },
+        ],
+      });
+
+      items.push({
+        name: "Health Records",
+        icon: Heart,
+        children: [
           {
             name: "All Records",
             path: "/barangay-bagocboc/health/records",
@@ -349,6 +778,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             path: "/barangay-bagocboc/health/records/other",
             icon: Activity,
           },
+        ],
+      });
+
+      items.push({
+        name: "Checkups",
+        icon: Stethoscope,
+        children: [
           {
             name: "Checkup History",
             path: "/barangay-bagocboc/health/checkups",
@@ -364,157 +800,157 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             path: "/barangay-bagocboc/health/patients/search",
             icon: Search,
           },
+        ],
+      });
+
+      items.push({
+        name: "Reports",
+        icon: BarChart3,
+        children: [
           {
-            name: "Reports",
+            name: "Health Reports",
             path: "/barangay-bagocboc/health/reports",
             icon: BarChart3,
           },
         ],
       });
-    }
 
-    // ============================================
-    // 10. FINANCIAL - Secretary & Treasurer
-    // ============================================
-    if (hasRole(["Barangay Secretary", "Barangay Treasurer"])) {
       items.push({
-        name: "Payments",
-        path: "/barangay-bagocboc/payments",
-        icon: CreditCard,
-      });
-    }
-
-    // ============================================
-    // 11. SECRETARY REPORTS - Secretary only
-    // ============================================
-    if (hasRole(["Barangay Secretary"])) {
-      items.push({
-        name: "Secretary Reports",
-        icon: PieChart,
+        name: "Communication",
+        icon: Megaphone,
         children: [
           {
-            name: "Resident Registry",
-            path: "/barangay-bagocboc/secretary/registry",
-            icon: Users,
-          },
-          {
-            name: "Clearance Log",
-            path: "/barangay-bagocboc/secretary/clearance-log",
-            icon: FileText,
-          },
-          {
-            name: "Certificate Reports",
-            path: "/barangay-bagocboc/secretary/certificate-reports",
-            icon: BarChart3,
+            name: "Announcements",
+            path: "/barangay-bagocboc/announcements",
+            icon: Megaphone,
           },
         ],
       });
-    }
 
-    // ============================================
-    // 12. FINANCIAL REPORTS - Treasurer, Captain, Secretary, Super Admin
-    // ============================================
-    if (
-      hasRole([
-        "Barangay Treasurer",
-        "Super Admin",
-        "Barangay Captain",
-        "Barangay Secretary",
-      ])
-    ) {
       items.push({
-        name: "SCD Reports",
-        path: "/barangay-bagocboc/financial-reports",
-        icon: PhilippinePeso,
-      });
-    }
-
-    // ============================================
-    // 13. ANNOUNCEMENTS - Captain & Secretary
-    // ============================================
-    if (hasRole(["Barangay Captain", "Barangay Secretary"])) {
-      items.push({
-        name: "Announcements",
-        path: "/barangay-bagocboc/announcements",
-        icon: Megaphone,
-      });
-    }
-
-    // ============================================
-    // 14. RESIDENT CONFIRMATIONS - Secretary, Front Desk, Zone Leader
-    // ============================================
-    if (
-      hasRole([
-        "Barangay Secretary",
-        "Front Desk Clerk",
-        "Zone Leader",
-        "Super Admin",
-      ])
-    ) {
-      items.push({
-        name: "Confirmations",
-        path: "/barangay-bagocboc/resident-confirmations",
-        icon: UserCheck,
-      });
-    }
-
-    // ============================================
-    // 15. SETTINGS - Super Admin & Captain
-    // ============================================
-    if (hasRole(["Super Admin", "Barangay Captain"])) {
-      const settingsChildren = [];
-
-      // Profile Settings - everyone
-      settingsChildren.push({
-        name: "Profile Settings",
-        path: "/barangay-bagocboc/settings/profile",
-        icon: User,
-      });
-
-      // ✅ System Settings - Super Admin only (unified)
-      if (hasRole(["Super Admin"])) {
-        settingsChildren.push({
-          name: "System Settings",
-          path: "/barangay-bagocboc/settings/system",
-          icon: Settings2,
-        });
-      }
-
-      // Main Settings
-      items.push({
-        name: "Settings",
+        name: "System",
         icon: Settings,
-        children: settingsChildren,
+        children: [
+          {
+            name: "Profile Settings",
+            path: "/barangay-bagocboc/settings/profile",
+            icon: User,
+          },
+        ],
       });
+
+      return items;
     }
+
+    // ============================================================
+    // 🎯 BARANGAY NUTRITION SCHOLAR
+    // ============================================================
+    if (scope === "bns") {
+      items.push({
+        name: "Overview",
+        icon: LayoutDashboard,
+        children: [
+          {
+            name: "BNS Dashboard",
+            path: "/barangay-bagocboc/bns",
+            icon: LayoutDashboard,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Nutrition",
+        icon: BarChart3,
+        children: [
+          {
+            name: "BHW Records",
+            path: "/barangay-bagocboc/bns/reports",
+            icon: ClipboardList,
+          },
+          {
+            name: "GIS Map",
+            path: "/barangay-bagocboc/bns/gis",
+            icon: Map,
+          },
+        ],
+      });
+
+      items.push({
+        name: "Communication",
+        icon: Megaphone,
+        children: [
+          {
+            name: "Announcements",
+            path: "/barangay-bagocboc/announcements",
+            icon: Megaphone,
+          },
+        ],
+      });
+
+      items.push({
+        name: "System",
+        icon: Settings,
+        children: [
+          {
+            name: "Profile Settings",
+            path: "/barangay-bagocboc/settings/profile",
+            icon: User,
+          },
+        ],
+      });
+
+      return items;
+    }
+
+    // ============================================================
+    // 🎯 UNKNOWN ROLE — fallback
+    // ============================================================
+    items.push({
+      name: "System",
+      icon: Settings,
+      children: [
+        {
+          name: "Profile Settings",
+          path: "/barangay-bagocboc/settings/profile",
+          icon: User,
+        },
+      ],
+    });
 
     return items;
-  }, [userRoles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, userRoles.join("|")]);
 
   // ============================================
-  // AUTO-EXPAND GROUPS BASED ON CURRENT PATH
+  // AUTO-EXPAND ACTIVE GROUP (safe — no loops)
   // ============================================
   useEffect(() => {
     const currentPath = location.pathname;
+    const activeGroups: string[] = [];
+
     navConfig.forEach((item) => {
       if ("children" in item) {
         const hasActiveChild = item.children.some((child) =>
           currentPath.startsWith(child.path),
         );
-        if (hasActiveChild && !expandedGroups.includes(item.name)) {
-          setExpandedGroups((prev) => [...prev, item.name]);
-        }
+        if (hasActiveChild) activeGroups.push(item.name);
       }
+    });
+
+    if (activeGroups.length === 0) return;
+
+    setExpandedGroups((prev) => {
+      const needsUpdate = activeGroups.some((g) => !prev.includes(g));
+      if (!needsUpdate) return prev; // ← breaks the loop
+      return Array.from(new Set([...prev, ...activeGroups]));
     });
   }, [location.pathname, navConfig]);
 
   // ============================================
-  // RENDER FUNCTIONS
+  // RENDER HELPERS
   // ============================================
 
   const renderNavItem = (item: NavItem, depth = 0) => {
-    if (item.roles && !hasRole(item.roles)) return null;
-
     const isActive = location.pathname === item.path;
 
     return (
@@ -529,22 +965,14 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         }
       >
         <item.icon className="w-5 h-5 flex-shrink-0" />
-        {isExpanded && <span>{item.name}</span>}
+        {isExpanded && <span className="truncate">{item.name}</span>}
       </NavLink>
     );
   };
 
   const renderNavGroup = (group: NavGroup) => {
-    if (group.roles && !hasRole(group.roles)) return null;
-
     const isExpandedGroup = expandedGroups.includes(group.name);
-    const visibleChildren = group.children.filter(
-      (child) => !child.roles || hasRole(child.roles),
-    );
-
-    if (visibleChildren.length === 0) return null;
-
-    const hasActiveChild = visibleChildren.some((child) =>
+    const hasActiveChild = group.children.some((child) =>
       location.pathname.startsWith(child.path),
     );
 
@@ -570,7 +998,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         </button>
         {isExpandedGroup && isExpanded && (
           <div className="space-y-1">
-            {visibleChildren.map((child) => renderNavItem(child, 1))}
+            {group.children.map((child) => renderNavItem(child, 1))}
           </div>
         )}
       </div>
@@ -583,7 +1011,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -591,7 +1018,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`fixed left-0 top-0 z-50 h-screen bg-theme-sidebar border-r border-theme transition-all duration-300 ${isExpanded ? "w-64" : "w-20"
           } lg:relative lg:z-0`}
@@ -619,9 +1045,27 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           </button>
         </div>
 
+        {/* Super Admin badge */}
+        {isSuperAdmin && isExpanded && (
+          <div className="mx-3 mt-3 px-3 py-2 bg-gradient-to-r from-purple-500/10 to-purple-600/5 border border-purple-300/40 dark:border-purple-700/40 rounded-lg flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wide">
+                Super Admin
+              </p>
+              <p className="text-[10px] text-theme-textSecondary truncate">
+                Full system access
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Navigation */}
-        <nav className="h-[calc(100vh-8rem)] overflow-y-auto px-3 py-4 space-y-1 custom-scrollbar">
-          {navConfig.map((item, index) => {
+        <nav
+          className={`${isSuperAdmin ? "h-[calc(100vh-11rem)]" : "h-[calc(100vh-8rem)]"
+            } overflow-y-auto px-3 py-4 space-y-1 custom-scrollbar`}
+        >
+          {navConfig.map((item) => {
             if ("children" in item) {
               return renderNavGroup(item as NavGroup);
             }
@@ -629,15 +1073,18 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           })}
         </nav>
 
-        {/* Footer - User Profile */}
+        {/* Footer */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-theme bg-theme-surface">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 overflow-hidden">
               <div className="relative flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-theme-primary/20 flex items-center justify-center">
-                  <span className="text-sm font-bold text-theme-primary">
-                    {getInitials()}
-                  </span>
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center ${isSuperAdmin
+                    ? "bg-purple-500/20 text-purple-600 dark:text-purple-400"
+                    : "bg-theme-primary/20 text-theme-primary"
+                    }`}
+                >
+                  <span className="text-sm font-bold">{getInitials()}</span>
                 </div>
                 <span
                   className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-theme-surface ${getStatusColor()}`}

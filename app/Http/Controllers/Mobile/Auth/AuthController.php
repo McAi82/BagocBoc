@@ -22,9 +22,6 @@ class AuthController extends Controller
 {
     use SendsNotifications;
 
-    /**
-     * Mobile user login
-     */
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -119,7 +116,6 @@ class AuthController extends Controller
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        // ✅ CRITICAL: Verify the email matches a registered resident
         $resident = Resident::where('email', strtolower(trim($request->email)))->first();
 
         if (!$resident) {
@@ -130,7 +126,6 @@ class AuthController extends Controller
             );
         }
 
-        // ✅ Verify first/last name matches
         if (
             strtolower(trim($resident->first_name)) !== strtolower(trim($request->first_name)) ||
             strtolower(trim($resident->last_name)) !== strtolower(trim($request->last_name))
@@ -142,7 +137,6 @@ class AuthController extends Controller
             );
         }
 
-        // ✅ Check if account already exists
         if (User::where('resident_id', $resident->id)->exists()) {
             return $this->respondError(
                 'An account already exists for this resident. Please use the "Forgot Password" option.',
@@ -163,7 +157,6 @@ class AuthController extends Controller
                 'email_verified_at' => now(),
             ]);
 
-            // Sync phone number if resident doesn't have one
             if (!$resident->phone_number && $request->phone_number) {
                 $resident->update(['phone_number' => $request->phone_number]);
             }
@@ -175,7 +168,6 @@ class AuthController extends Controller
 
             DB::commit();
 
-            // ✅ Notify Front Desk + Secretary
             $this->notifyRoles(
                 ['Front Desk Clerk', 'Barangay Secretary'],
                 '👤 New Resident Registration',
@@ -199,9 +191,6 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Send OTP to user via email
-     */
     public function sendOtp(User $user, string $purpose)
     {
         Log::info("MOBILE OTP SEND TRIGGERED for user: {$user->id}");
@@ -235,9 +224,6 @@ class AuthController extends Controller
         ], 'OTP sent to your email address.');
     }
 
-    /**
-     * Verify OTP
-     */
     public function verifyOtp(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -297,9 +283,6 @@ class AuthController extends Controller
         ], 'OTP verified. Login successful', 200);
     }
 
-    /**
-     * Reset password
-     */
     public function resetPassword(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -320,7 +303,6 @@ class AuthController extends Controller
 
         $user->tokens()->delete();
 
-        // ✅ Notify user their password was reset
         $this->notifyUser(
             $user->id,
             '🔐 Password Reset',
@@ -332,9 +314,6 @@ class AuthController extends Controller
         return $this->respondSuccess(null, 'Password reset successfully. Please login again.', 200);
     }
 
-    /**
-     * Check email for OTP
-     */
     public function checkEmail(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -355,9 +334,6 @@ class AuthController extends Controller
         return $this->sendOtp($user, $request->purpose);
     }
 
-    /**
-     * Get current user
-     */
     public function user(Request $request)
     {
         $user = $request->user()->load('roles', 'resident');
@@ -367,9 +343,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Logout
-     */
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();

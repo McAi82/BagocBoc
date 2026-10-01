@@ -7,25 +7,17 @@ use App\Http\Controllers\Web\Dashboard\DashboardController;
 use App\Http\Controllers\Web\Dashboard\SystemOverviewController;
 use App\Http\Controllers\Web\Residents\ResidentController;
 use App\Http\Controllers\Web\Households\HouseholdController;
-use App\Http\Controllers\Web\Households\HouseholdCensusController;
-use App\Http\Controllers\Web\Households\HouseholdInfoController;
 use App\Http\Controllers\Web\Certifications\CertificationController;
 use App\Http\Controllers\Web\Clearance\ClearanceController;
-use App\Http\Controllers\Web\Financial\PaymentController;
-use App\Http\Controllers\Web\Financial\TaxController;
+use App\Http\Controllers\Web\Financial\FinanceController;
 use App\Http\Controllers\Web\Financial\FinancialReportController;
-use App\Http\Controllers\Web\Financial\TransactionController;
-use App\Http\Controllers\Web\Financial\PenaltyController;
 use App\Http\Controllers\Web\FrontDesk\FrontDeskController;
 use App\Http\Controllers\Web\Announcements\AnnouncementController;
 use App\Http\Controllers\Web\Settings\UserController;
-use App\Http\Controllers\Web\Settings\RoleController;
-use App\Http\Controllers\Web\Settings\BarangayInfoController;
-use App\Http\Controllers\Web\Settings\BarangayZoneController;
+use App\Http\Controllers\Web\Settings\SystemSettingsController;
 use App\Http\Controllers\Web\Settings\AdminUserController;
 use App\Http\Controllers\Web\Settings\PersonnelController;
 use App\Http\Controllers\Web\Print\PrintController;
-use App\Http\Controllers\Web\Records\RecordActivityLogController;
 use App\Http\Controllers\Web\Records\RecordsController;
 use App\Http\Controllers\Web\Geo\HouseGeotagController;
 use App\Http\Controllers\Web\Notifications\NotificationController;
@@ -98,7 +90,20 @@ Route::post('/account-activation/request', [AccountActivationController::class, 
 
 Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
 
+    Route::prefix('/notifications')->group(function () {
+        Route::get('/', [NotificationController::class, 'index']);
+        Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+        Route::get('/poll', [NotificationController::class, 'poll']);   // ✅ NEW
+        Route::post('/mark-read', [NotificationController::class, 'markRead']);
+        Route::post('/mark-all-read', [NotificationController::class, 'markAllRead']);
+        Route::post('/send', [NotificationController::class, 'send']);
+        Route::delete('/{id}', [NotificationController::class, 'destroy']);
+    });
+
     Route::post('/{id}/generate-pdf-server', [CertificationController::class, 'generatePdfServer']);
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
+    Route::post('/auth/change-password/request-otp', [AuthController::class, 'requestChangePasswordOtp']);
+    Route::post('/auth/change-password/verify',      [AuthController::class, 'changePasswordWithOtp']);
 
     // ============================================
     // 3.1 USER & AUTH
@@ -122,11 +127,11 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
     Route::post('/users/{id}/toggle-status', [UserController::class, 'toggleStatus']);
 
-    Route::get('/roles', [RoleController::class, 'index']);
-    Route::get('/roles/{id}', [RoleController::class, 'show']);
-    Route::post('/roles', [RoleController::class, 'store']);
-    Route::put('/roles/{id}', [RoleController::class, 'update']);
-    Route::delete('/roles/{id}', [RoleController::class, 'destroy']);
+    Route::get('/roles', [SystemSettingsController::class, 'indexRoles']);
+    Route::get('/roles/{id}', [SystemSettingsController::class, 'showRole']);
+    Route::post('/roles', [SystemSettingsController::class, 'storeRole']);
+    Route::put('/roles/{id}', [SystemSettingsController::class, 'updateRole']);
+    Route::delete('/roles/{id}', [SystemSettingsController::class, 'destroyRole']);
 
     // ============================================
     // 3.4 RESIDENTS
@@ -164,13 +169,13 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
 
     // NOTE: "/households-info/encoder/{userId}" must come before
     // "/households-info/{id}" for the same reason as above.
-    Route::get('/households-info', [HouseholdInfoController::class, 'index']);
-    Route::get('/households-info/encoder/{userId}', [HouseholdInfoController::class, 'getByEncoder']);
-    Route::get('/households-info/{id}', [HouseholdInfoController::class, 'show']);
+    Route::get('/households-info', [HouseholdController::class, 'info']);
+    Route::get('/households-info/encoder/{userId}', [HouseholdController::class, 'infoByEncoder']);
+    Route::get('/households-info/{id}', [HouseholdController::class, 'infoShow']);
 
-    Route::post('/census/record', [HouseholdCensusController::class, 'store']);
-    Route::get('/census/records', [HouseholdCensusController::class, 'index']);
-    Route::get('/census/records/{id}', [HouseholdCensusController::class, 'show']);
+    Route::post('/census/record', [HouseholdController::class, 'storeCensus']);
+    Route::get('/census/records', [HouseholdController::class, 'indexCensus']);
+    Route::get('/census/records/{id}', [HouseholdController::class, 'showCensus']);
 
     // ============================================
     // CAPTAIN
@@ -208,7 +213,7 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
         Route::post('/{id}/approve', [CertificationController::class, 'approve']);
         Route::post('/{id}/reject', [CertificationController::class, 'reject']);
         Route::post('/{id}/generate-document', [CertificationController::class, 'generateDocument']);
-        Route::post('/{id}/upload-pdf', [CertificationController::class, 'uploadPdf']); // ✅ ADD THIS
+        Route::post('/{id}/upload-pdf', [CertificationController::class, 'uploadPdf']);
         Route::post('/{id}/release', [CertificationController::class, 'release']);
         Route::post('/{id}/receive', [CertificationController::class, 'receive']);
         Route::get('/{id}/download', [CertificationController::class, 'download']);
@@ -244,20 +249,20 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     // 3.9 PAYMENTS
     // ============================================
     Route::prefix('/payments')->group(function () {
-        Route::get('/', [PaymentController::class, 'index']);
-        Route::post('/', [PaymentController::class, 'store']);
-        Route::get('/{id}', [PaymentController::class, 'show']);
-        Route::get('/{id}/receipt', [PaymentController::class, 'receipt']);
+        Route::get('/', [FinanceController::class, 'indexPayments']);
+        Route::post('/', [FinanceController::class, 'storePayment']);
+        Route::get('/{id}', [FinanceController::class, 'showPayment']);
+        Route::get('/{id}/receipt', [FinanceController::class, 'paymentReceipt']);
     });
 
     // ============================================
     // 3.10 TAX PAYMENTS
     // ============================================
     Route::prefix('/tax-payments')->group(function () {
-        Route::get('/', [TaxController::class, 'index']);
-        Route::post('/', [TaxController::class, 'store']);
-        Route::get('/{id}', [TaxController::class, 'show']);
-        Route::get('/{id}/receipt', [TaxController::class, 'receipt']);
+        Route::get('/', [FinanceController::class, 'indexTax']);
+        Route::post('/', [FinanceController::class, 'storeTax']);
+        Route::get('/{id}', [FinanceController::class, 'showTax']);
+        Route::get('/{id}/receipt', [FinanceController::class, 'taxReceipt']);
     });
 
     // ============================================
@@ -265,20 +270,20 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     // ============================================
     // NOTE: "/summary" must come before "/{id}" or it'll be treated as an id.
     Route::prefix('/transactions')->group(function () {
-        Route::get('/', [TransactionController::class, 'index']);
-        Route::get('/summary', [TransactionController::class, 'summary']);
-        Route::get('/{id}', [TransactionController::class, 'show']);
+        Route::get('/', [FinanceController::class, 'indexTransactions']);
+        Route::get('/summary', [FinanceController::class, 'transactionSummary']);
+        Route::get('/{id}', [FinanceController::class, 'showTransaction']);
     });
 
     // ============================================
     // 3.12 PENALTIES
     // ============================================
     Route::prefix('/penalties')->group(function () {
-        Route::get('/', [PenaltyController::class, 'index']);
-        Route::post('/', [PenaltyController::class, 'store']);
-        Route::get('/{id}', [PenaltyController::class, 'show']);
-        Route::put('/{id}', [PenaltyController::class, 'update']);
-        Route::delete('/{id}', [PenaltyController::class, 'destroy']);
+        Route::get('/', [FinanceController::class, 'indexPenalties']);
+        Route::post('/', [FinanceController::class, 'storePenalty']);
+        Route::get('/{id}', [FinanceController::class, 'showPenalty']);
+        Route::put('/{id}', [FinanceController::class, 'updatePenalty']);
+        Route::delete('/{id}', [FinanceController::class, 'destroyPenalty']);
     });
 
     // ============================================
@@ -373,11 +378,14 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     // ============================================
     // NOTE: "/public" must come before "/{id}" or it'll be treated as an id.
     Route::prefix('/announcements')->group(function () {
-        Route::get('/', [AnnouncementController::class, 'index']);
-        Route::get('/public', [AnnouncementController::class, 'getPublic']);
-        Route::get('/{id}', [AnnouncementController::class, 'show']);
-        Route::post('/', [AnnouncementController::class, 'store']);
-        Route::put('/{id}', [AnnouncementController::class, 'update']);
+        // ✅ Static routes first
+        Route::get('/',        [AnnouncementController::class, 'index']);
+        Route::get('/public',  [AnnouncementController::class, 'getPublic']);
+        Route::post('/',       [AnnouncementController::class, 'store']);
+
+        // ✅ Wildcard routes after
+        Route::get('/{id}',    [AnnouncementController::class, 'show']);
+        Route::put('/{id}',    [AnnouncementController::class, 'update']);
         Route::delete('/{id}', [AnnouncementController::class, 'destroy']);
     });
 
@@ -397,19 +405,19 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     // 3.18 BARANGAY INFO
     // ============================================
     Route::prefix('/barangay-info')->group(function () {
-        Route::get('/', [BarangayInfoController::class, 'index']);
-        Route::put('/', [BarangayInfoController::class, 'update']);
+        Route::get('/', [SystemSettingsController::class, 'showBarangayInfo']);
+        Route::put('/', [SystemSettingsController::class, 'updateBarangayInfo']);
     });
 
     // ============================================
     // 3.19 BARANGAY ZONES
     // ============================================
     Route::prefix('/barangay-zones')->group(function () {
-        Route::get('/', [BarangayZoneController::class, 'index']);
-        Route::get('/{id}', [BarangayZoneController::class, 'show']);
-        Route::post('/', [BarangayZoneController::class, 'store']);
-        Route::put('/{id}', [BarangayZoneController::class, 'update']);
-        Route::delete('/{id}', [BarangayZoneController::class, 'destroy']);
+        Route::get('/', [SystemSettingsController::class, 'indexZones']);
+        Route::get('/{id}', [SystemSettingsController::class, 'showZone']);
+        Route::post('/', [SystemSettingsController::class, 'storeZone']);
+        Route::put('/{id}', [SystemSettingsController::class, 'updateZone']);
+        Route::delete('/{id}', [SystemSettingsController::class, 'destroyZone']);
     });
 
     // ============================================
@@ -427,12 +435,12 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     // 3.21 ACTIVITY LOGS
     // ============================================
     Route::prefix('/activity-logs')->group(function () {
-        Route::get('/', [RecordActivityLogController::class, 'index']);
-        Route::get('/encoder/{userId}', [RecordActivityLogController::class, 'getByEncoder']);
-        Route::get('/record/{recordId}/{recordType}', [RecordActivityLogController::class, 'getByRecord']);
-        Route::get('/{id}', [RecordActivityLogController::class, 'show']);
-        Route::post('/', [RecordActivityLogController::class, 'store']);
-        Route::delete('/{id}', [RecordActivityLogController::class, 'destroy']);
+        Route::get('/', [RecordsController::class, 'indexLogs']);
+        Route::get('/encoder/{userId}', [RecordsController::class, 'logsByEncoder']);
+        Route::get('/record/{recordId}/{recordType}', [RecordsController::class, 'logsByRecord']);
+        Route::get('/{id}', [RecordsController::class, 'showLog']);
+        Route::post('/', [RecordsController::class, 'storeLog']);
+        Route::delete('/{id}', [RecordsController::class, 'destroyLog']);
     });
 
     // ============================================
@@ -469,7 +477,7 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
 
         // Patients - Static routes first
         Route::get('/patients', [PatientController::class, 'index']);
-        Route::post('/patients', [PatientController::class, 'store']); // ✅ ADDED
+        Route::post('/patients', [PatientController::class, 'store']);
         Route::post('/patients/search', [PatientController::class, 'searchResident']);
         Route::get('/checkups', [PatientController::class, 'getAllCheckups']);
 

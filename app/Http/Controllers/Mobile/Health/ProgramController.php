@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Mobile/Health/ProgramController.php
 
 namespace App\Http\Controllers\Mobile\Health;
 
@@ -13,6 +14,10 @@ use Illuminate\Support\Facades\Log;
 class ProgramController extends Controller
 {
     use SendsNotifications;
+
+    // ============================================================
+    // BNS WRITE PATH
+    // ============================================================
 
     public function index(Request $request)
     {
@@ -30,10 +35,6 @@ class ProgramController extends Controller
         return $this->respondSuccess($programs);
     }
 
-    /**
-     * Create program
-     * ✅ Notifies BHWs, BNS, and Residents
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -51,7 +52,6 @@ class ProgramController extends Controller
 
         $program = Program::create($request->all());
 
-        // ✅ Notify BHWs, BNS, and Residents if program is active/planned
         if (in_array($request->status, ['planned', 'ongoing'])) {
             $this->notifyRoles(
                 ['Barangay Health Worker', 'Barangay Nutrition Scholar', 'Resident'],
@@ -69,8 +69,11 @@ class ProgramController extends Controller
 
     public function show($id)
     {
-        $program = Program::with(['participants', 'participants.resident'])
-            ->find($id);
+        $program = Program::with([
+            'participants',
+            'participants.resident',
+            'participants.nutritionAssessments',
+        ])->find($id);
 
         if (!$program) {
             return $this->respondNotFound('Program not found');
@@ -79,10 +82,6 @@ class ProgramController extends Controller
         return $this->respondSuccess($program);
     }
 
-    /**
-     * Update program
-     * ✅ Notifies on status change
-     */
     public function update(Request $request, $id)
     {
         $program = Program::find($id);
@@ -107,7 +106,6 @@ class ProgramController extends Controller
         $previousStatus = $program->status;
         $program->update($request->all());
 
-        // ✅ Notify on meaningful status transitions
         if ($request->filled('status') && $previousStatus !== $request->status) {
             if ($request->status === 'cancelled') {
                 $this->notifyRoles(
@@ -155,5 +153,29 @@ class ProgramController extends Controller
 
         $program->delete();
         return $this->respondSuccess(null, 'Program deleted successfully');
+    }
+
+    // ============================================================
+    // RESIDENT READ-ONLY PATH (was Mobile\Programs\ProgramController)
+    // ============================================================
+
+    /**
+     * List only the programs a resident can see: ongoing or planned.
+     * Same shape as the write-side index, just pre-filtered.
+     */
+    public function publicIndex(Request $request)
+    {
+        $query = Program::where(function ($q) {
+            $q->where('status', 'ongoing')
+                ->orWhere('status', 'planned');
+        })->withCount('participants');
+
+        if ($request->has('type')) {
+            $query->where('program_type', $request->type);
+        }
+
+        $programs = $query->latest()->get();
+
+        return $this->respondSuccess($programs);
     }
 }

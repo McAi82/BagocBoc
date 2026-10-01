@@ -1,13 +1,13 @@
 <?php
+// app/Http/Controllers/Web/Certifications/CertificationController.php
 
 namespace App\Http\Controllers\Web\Certifications;
 
 use App\Http\Controllers\Controller;
 use App\Models\Certification;
 use App\Models\CertificationType;
-use App\Models\Resident;
 use App\Models\CertificateRequester;
-use App\Models\User;
+use App\Traits\GeneratesReferenceNumbers;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 
 class CertificationController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, GeneratesReferenceNumbers;
 
     // ============================================
     // LIST / SHOW
@@ -78,24 +78,20 @@ class CertificationController extends Controller
                 'pdf_url' => $cert->pdf_url,
                 'pdf_download_url' => $cert->pdf_download_url,
 
-                // ✅ one-time download state
                 'download_token' => $cert->download_token,
                 'download_token_expires_at' => $cert->download_token_expires_at,
                 'downloaded_at' => $cert->downloaded_at,
                 'is_downloadable' => $cert->is_downloadable,
                 'has_been_downloaded' => $cert->has_been_downloaded,
 
-                // ✅ payment fields (this is what was missing)
                 'payment_method' => $cert->payment_method,
                 'payment_status' => $cert->payment_status,
                 'payment_reference' => $cert->payment_reference,
 
-                // ✅ ZL clearance fields
                 'zl_clearance_status' => $cert->zl_clearance_status,
                 'zl_clearance_notes' => $cert->zl_clearance_notes,
                 'zl_clearance_date' => $cert->zl_clearance_date,
 
-                // ✅ submission channel
                 'submission_channel' => $cert->submission_channel,
 
                 'remarks' => $cert->remarks,
@@ -235,7 +231,7 @@ class CertificationController extends Controller
             'purpose' => $request->purpose,
             'details' => $request->details,
             'file_url' => 'certificates/default.pdf',
-            'reference_number' => $this->generateReferenceNumber(),
+            'reference_number' => $this->generateReference('CERT', Certification::class),
             'status' => 'Pending',
         ]);
 
@@ -325,7 +321,7 @@ class CertificationController extends Controller
     }
 
     // ============================================
-    // DOCUMENT GENERATION (server-side fallback)
+    // DOCUMENT GENERATION
     // ============================================
 
     public function generateDocument(Request $request, $id)
@@ -382,7 +378,6 @@ class CertificationController extends Controller
         }
 
         try {
-            // Delete previous PDF if present
             if (
                 $certification->document_path
                 && Storage::disk('public')->exists($certification->document_path)
@@ -396,13 +391,11 @@ class CertificationController extends Controller
             $file = $request->file('pdf');
             Storage::disk('public')->put($filename, file_get_contents($file->getRealPath()));
 
-            // ✅ Compute the new status
             $newStatus = $certification->status;
             if ($newStatus === 'Approved') {
                 $newStatus = 'Ready for Release';
             }
 
-            // ✅ Update the record explicitly
             $certification->document_path = $filename;
             $certification->document_name = $request->document_name
                 ?? ($certification->certificationType?->name . '_' . $safeRef . '.pdf');
@@ -410,7 +403,6 @@ class CertificationController extends Controller
             $certification->processed_by_user_id = Auth::id();
             $certification->status = $newStatus;
 
-            // ✅ If the certificate is already released, generate a one-time token
             if ($certification->status === 'Released' && !$certification->download_token) {
                 $certification->download_token = bin2hex(random_bytes(32));
                 $certification->download_token_expires_at = now()->addHours(72);
@@ -455,7 +447,6 @@ class CertificationController extends Controller
             return $this->respondError('No document has been uploaded for this certification.', null, 422);
         }
 
-        // Clear the previous download state and generate a new token
         $certification->update([
             'downloaded_at' => null,
             'download_token' => null,
@@ -464,7 +455,6 @@ class CertificationController extends Controller
 
         $certification->generateDownloadToken(72);
 
-        // Notify the resident with a new link
         $this->notifyResident(
             $certification,
             'Certificate Reissued — New One-Time Download Link',
@@ -499,10 +489,8 @@ class CertificationController extends Controller
             'released_at' => now(),
         ]);
 
-        // ✅ Generate a one-time download token (valid for 72 hours)
         $certification->generateDownloadToken(72);
 
-        // ✅ Send the one-time link to the resident
         $this->notifyResident(
             $certification,
             'Certificate Ready — One-Time Download Link',
@@ -604,41 +592,6 @@ class CertificationController extends Controller
     // ============================================
     // PRIVATE HELPERS
     // ============================================
-
-    private function generateCertificatePDF($certification)
-    {
-        $requester = $certification->requester;
-        $resident = $requester ? $requester->resident : null;
-        $type = $certification->certificationType;
-
-        $content = "CERTIFICATE\n===========\n\n";
-        $content .= "Certificate Number: " . $certification->reference_number . "\n";
-        $content .= "Resident: " . ($resident ? $resident->first_name . ' ' . $resident->last_name : 'N/A') . "\n";
-        $content .= "Certificate Type: " . ($type ? $type->name : 'N/A') . "\n";
-        $content .= "Purpose: " . ($certification->purpose ?? 'N/A') . "\n";
-        $content .= "Date Issued: " . now()->format('Y-m-d H:i:s') . "\n";
-        $content .= "\n---\nThis is a system-generated certificate.\n";
-
-        $fileName = 'certificates/' . $certification->reference_number . '.txt';
-        Storage::disk('public')->put($fileName, $content);
-
-        return $fileName;
-    }
-
-    private function generateReferenceNumber()
-    {
-        $year = date('Y');
-        $prefix = 'CERT';
-        $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
-        $reference = "{$prefix}-{$year}-{$random}";
-
-        while (Certification::where('reference_number', $reference)->exists()) {
-            $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
-            $reference = "{$prefix}-{$year}-{$random}";
-        }
-
-        return $reference;
-    }
 
     private function notifyResident(
         Certification $certification,

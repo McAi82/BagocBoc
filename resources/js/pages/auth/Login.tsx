@@ -1,18 +1,15 @@
 // pages/auth/Login.tsx
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Mail,
   Lock,
   Eye,
   EyeOff,
-  User,
-  ChevronDown,
   Loader2,
   LogIn,
   MapPin,
-  Check,
   AlertCircle,
   ShieldCheck,
   Monitor,
@@ -23,78 +20,8 @@ import { api } from "../../api/apiClient";
 import toast from "react-hot-toast";
 import logo from "../../assets/barangay-logo.png";
 
-// Web accessible accounts only
-const DEMO_ACCOUNTS = [
-  {
-    email: "superadmin@gmail.com",
-    password: "password",
-    role: "Super Admin",
-    description: "Full system access",
-    color: "text-purple-600",
-    bg: "bg-purple-50",
-  },
-  {
-    email: "captain@gmail.com",
-    password: "password",
-    role: "Barangay Captain",
-    description: "Barangay Captain access",
-    color: "text-[#2C6E8E]",
-    bg: "bg-[#EAF3F7]",
-  },
-  {
-    email: "secretary@gmail.com",
-    password: "password",
-    role: "Barangay Secretary",
-    description: "Records & documents",
-    color: "text-[#245234]",
-    bg: "bg-[#E8F0E9]",
-  },
-  {
-    email: "frontdesk@gmail.com",
-    password: "password",
-    role: "Front Desk Clerk",
-    description: "Front desk services",
-    color: "text-[#B9841D]",
-    bg: "bg-[#FBEFD4]",
-  },
-  {
-    email: "treasurer@gmail.com",
-    password: "password",
-    role: "Barangay Treasurer",
-    description: "Financial management",
-    color: "text-[#B1552E]",
-    bg: "bg-[#F5E5DA]",
-  },
-  {
-    email: "bns@gmail.com",
-    password: "password",
-    role: "Barangay Nutrition Scholar",
-    description: "Nutrition and health records",
-    color: "text-green-600",
-    bg: "bg-green-50",
-  },
-  {
-    email: "midwife@gmail.com",
-    password: "password",
-    role: "Midwife",
-    description: "Health records management",
-    color: "text-pink-600",
-    bg: "bg-pink-50",
-  },
-  {
-    email: "ndp@gmail.com",
-    password: "password",
-    role: "Nurse Deployment Program",
-    description: "Health records management",
-    color: "text-teal-600",
-    bg: "bg-teal-50",
-  },
-];
-
 /* ------------------------------------------------------------------ */
 /* Rolling-hills backdrop (echoes the farmland in the barangay seal)   */
-/* Each layer is a repeating wave. Its period divides 600 so that      */
-/* translating the 200%-wide SVG by -50% loops with no visible seam.   */
 /* ------------------------------------------------------------------ */
 const wave = (period: number, amp: number, base: number) => {
   const half = period / 2;
@@ -115,7 +42,6 @@ const STYLES = `
 .bl-root { font-family: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; color-scheme: light; }
 .bl-serif { font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif; }
 
-/* Keep inputs light even when the browser is in dark mode or autofills */
 .bl-input:-webkit-autofill,
 .bl-input:-webkit-autofill:hover,
 .bl-input:-webkit-autofill:focus {
@@ -131,29 +57,24 @@ const STYLES = `
 @keyframes bl-halo   { 0% { opacity: .55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.75); } }
 @keyframes bl-drift  { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 @keyframes bl-sun    { 0%,100% { opacity: .22; transform: translateX(-50%) scale(1); } 50% { opacity: .34; transform: translateX(-50%) scale(1.08); } }
-@keyframes bl-pop    { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes bl-modal  { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes bl-fade   { from { opacity: 0; } to { opacity: 1; } }
 @keyframes bl-shake  { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
 @keyframes bl-draw   { to { stroke-dashoffset: 0; } }
 @keyframes bl-ping   { 0% { transform: scale(.6); opacity: .5; } 100% { transform: scale(1.5); opacity: 0; } }
 
-/* Entrances use "backwards" fill so they never fight hover transforms afterwards */
 .bl-in     { animation: bl-rise .65s cubic-bezier(.22,1,.36,1) backwards; }
 .bl-card   { animation: bl-card .85s cubic-bezier(.22,1,.36,1) backwards; }
 .bl-seal   { animation: bl-seal 1s cubic-bezier(.22,1,.36,1) .3s backwards; }
 .bl-halo   { animation: bl-halo 4.5s cubic-bezier(.2,.6,.3,1) infinite; }
 .bl-drift  { animation: bl-drift linear infinite; }
 .bl-sun    { animation: bl-sun 9s ease-in-out infinite; }
-.bl-pop    { animation: bl-pop .2s cubic-bezier(.22,1,.36,1); transform-origin: top; }
-.bl-item   { animation: bl-rise .35s cubic-bezier(.22,1,.36,1) backwards; }
 .bl-modal  { animation: bl-modal .28s cubic-bezier(.22,1,.36,1); }
 .bl-fade   { animation: bl-fade .2s ease-out; }
 .bl-shake  { animation: bl-shake .45s ease-in-out; }
 .bl-check path { stroke-dasharray: 26; stroke-dashoffset: 26; animation: bl-draw .5s .2s ease-out forwards; }
 .bl-ping   { animation: bl-ping 1.6s ease-out .5s 2; }
 
-/* Sign-in button: light sweep on hover */
 .bl-btn { position: relative; overflow: hidden; }
 .bl-btn::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -173,7 +94,9 @@ const STYLES = `
 }
 `;
 
-const delay = (ms: number): React.CSSProperties => ({ animationDelay: `${ms}ms` });
+const delay = (ms: number): React.CSSProperties => ({
+  animationDelay: `${ms}ms`,
+});
 
 const inputBase =
   "bl-input w-full h-12 pl-11 rounded-xl border bg-white text-[15px] text-[#1B2A20] placeholder:text-stone-400 outline-none transition-[border-color,box-shadow] duration-200 hover:border-stone-400 focus:ring-4";
@@ -195,14 +118,12 @@ export default function Login() {
   }>({});
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
-  const [showDemoDropdown, setShowDemoDropdown] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [isForgotLoading, setIsForgotLoading] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Load saved email from localStorage
   useEffect(() => {
@@ -213,21 +134,7 @@ export default function Login() {
     }
   }, []);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setShowDemoDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Escape closes the modal first, then the dropdown
+  // Escape closes the modal
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -235,8 +142,6 @@ export default function Login() {
         setShowForgotPassword(false);
         setForgotSuccess(false);
         setForgotEmail("");
-      } else {
-        setShowDemoDropdown(false);
       }
     };
     document.addEventListener("keydown", onKey);
@@ -254,17 +159,6 @@ export default function Login() {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => ({ ...prev, [name]: "", general: "" }));
-  };
-
-  const handleDemoSelect = (account: {
-    email: string;
-    password: string;
-    role: string;
-  }) => {
-    setForm({ email: account.email, password: account.password });
-    setShowDemoDropdown(false);
-    setErrors({});
-    toast.success(`Selected ${account.role} account`);
   };
 
   const openForgotPassword = () => {
@@ -286,7 +180,9 @@ export default function Login() {
     if (!form.password) fieldErrors.password = "Enter your password.";
     if (fieldErrors.email || fieldErrors.password) {
       setErrors(fieldErrors);
-      document.getElementById(fieldErrors.email ? "email" : "password")?.focus();
+      document
+        .getElementById(fieldErrors.email ? "email" : "password")
+        ?.focus();
       return;
     }
 
@@ -343,7 +239,6 @@ export default function Login() {
         toast.success("Login successful!");
       } else {
         if (data.message) {
-          // react-hot-toast has no toast.info(), so use the base toast()
           toast(data.message);
         } else {
           toast.error("Login failed. Please try again.");
@@ -393,7 +288,6 @@ export default function Login() {
         setForgotSuccess(true);
         toast.success("OTP sent to your email address!");
 
-        // Navigate to OTP page shortly after
         setTimeout(() => {
           navigate("/otp", {
             state: {
@@ -437,10 +331,10 @@ export default function Login() {
         <div
           className="hidden lg:flex flex-col items-center relative overflow-hidden text-white min-h-[640px]"
           style={{
-            background: "linear-gradient(165deg, #2A5236 0%, #17311F 55%, #0F2017 100%)",
+            background:
+              "linear-gradient(165deg, #2A5236 0%, #17311F 55%, #0F2017 100%)",
           }}
         >
-          {/* Furrow lines, like the fields on the seal */}
           <div
             aria-hidden
             className="absolute inset-0 opacity-[0.08] pointer-events-none"
@@ -449,14 +343,12 @@ export default function Login() {
                 "repeating-linear-gradient(115deg, rgba(255,255,255,0.5) 0px, rgba(255,255,255,0.5) 1px, transparent 1px, transparent 18px)",
             }}
           />
-          {/* Rising sun glow */}
           <div
             aria-hidden
             className="bl-sun absolute -top-20 left-1/2 w-80 h-80 rounded-full blur-3xl pointer-events-none"
             style={{ background: "#E0A72E" }}
           />
 
-          {/* Rolling hills */}
           <div
             aria-hidden
             className="absolute bottom-0 left-0 right-0 h-56 overflow-hidden pointer-events-none"
@@ -465,7 +357,10 @@ export default function Login() {
               <svg
                 key={i}
                 className="bl-drift absolute bottom-0 left-0 h-full"
-                style={{ width: "200%", animationDuration: `${layer.seconds}s` }}
+                style={{
+                  width: "200%",
+                  animationDuration: `${layer.seconds}s`,
+                }}
                 viewBox="0 0 1200 220"
                 preserveAspectRatio="none"
               >
@@ -474,7 +369,6 @@ export default function Login() {
             ))}
           </div>
 
-          {/* Seal + name */}
           <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-12 pt-12 pb-4 text-center">
             <div className="relative w-40 h-40 mb-8">
               <span
@@ -548,109 +442,9 @@ export default function Login() {
               </span>
             </div>
 
-            {/* Demo accounts */}
-            <div
-              className="bl-in relative"
-              style={delay(300)}
-              ref={dropdownRef}
-            >
-              <button
-                type="button"
-                onClick={() => setShowDemoDropdown((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={showDemoDropdown}
-                className={`group w-full h-12 px-3.5 flex items-center justify-between rounded-xl border bg-[#FAF9F3] transition-[border-color,background-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#245234]/[0.15] ${showDemoDropdown
-                    ? "border-[#245234]/50 bg-white"
-                    : "border-stone-300 hover:border-[#245234]/40 hover:bg-white"
-                  }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <span className="grid place-items-center w-7 h-7 rounded-full bg-[#E8F0E9] text-[#245234]">
-                    <User className="w-4 h-4" />
-                  </span>
-                  <span className="text-[15px] font-medium text-stone-700">
-                    Demo accounts
-                  </span>
-                  <span className="text-xs text-[#B9841D] bg-[#FBEFD4] px-2 py-0.5 rounded-full font-medium">
-                    Quick login
-                  </span>
-                </span>
-                <ChevronDown
-                  className={`w-5 h-5 text-stone-400 transition-transform duration-300 ${showDemoDropdown ? "rotate-180 text-[#245234]" : ""
-                    }`}
-                />
-              </button>
-
-              {showDemoDropdown && (
-                <div
-                  role="menu"
-                  className="bl-pop absolute top-full left-0 right-0 mt-2 z-50 bg-white border border-stone-200 rounded-2xl shadow-[0_24px_48px_-16px_rgba(18,36,26,0.30)] overflow-hidden"
-                >
-                  <div className="px-4 py-2.5 bg-[#F7F5EC] border-b border-stone-200">
-                    <p className="text-xs text-stone-500 font-medium">
-                      Pick a role to fill in the sign-in form
-                    </p>
-                  </div>
-                  <div className="max-h-72 overflow-y-auto">
-                    {DEMO_ACCOUNTS.map((account, index) => {
-                      const selected = form.email === account.email;
-                      return (
-                        <button
-                          key={account.email}
-                          type="button"
-                          role="menuitem"
-                          onClick={() => handleDemoSelect(account)}
-                          className="bl-item w-full px-4 py-2.5 text-left hover:bg-[#F7F5EC] focus-visible:bg-[#F7F5EC] focus-visible:outline-none transition-colors border-b border-stone-100 last:border-0 group flex items-center justify-between gap-3"
-                          style={delay(index * 30)}
-                        >
-                          <span className="flex items-center gap-3 min-w-0">
-                            <span
-                              className={`grid place-items-center w-9 h-9 rounded-full shrink-0 ${account.bg}`}
-                            >
-                              <User className={`w-4 h-4 ${account.color}`} />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-sm font-semibold text-stone-800 group-hover:text-[#245234] transition-colors truncate">
-                                {account.role}
-                              </span>
-                              <span className="block text-xs text-stone-500 truncate">
-                                {account.description}
-                              </span>
-                            </span>
-                          </span>
-                          {selected && (
-                            <Check className="w-4 h-4 text-[#245234] shrink-0" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="px-4 py-2 bg-[#F7F5EC] text-xs text-stone-500 text-center border-t border-stone-200 flex items-center justify-center gap-2">
-                    <Lock className="w-3 h-3 text-stone-400" />
-                    <span>
-                      Default password:{" "}
-                      <span className="font-mono font-semibold text-stone-700">
-                        password
-                      </span>
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div
-              className="bl-in flex items-center gap-3 my-6 text-xs text-stone-400"
-              style={delay(360)}
-            >
-              <span className="h-px flex-1 bg-stone-200" />
-              <span>or sign in with email</span>
-              <span className="h-px flex-1 bg-stone-200" />
-            </div>
-
             <form onSubmit={handleSubmit} noValidate className="space-y-5">
               {/* Email */}
-              <div className="bl-in" style={delay(420)}>
+              <div className="bl-in" style={delay(300)}>
                 <label
                   htmlFor="email"
                   className="block text-[13px] font-semibold text-stone-700 mb-1.5"
@@ -685,7 +479,7 @@ export default function Login() {
               </div>
 
               {/* Password */}
-              <div className="bl-in" style={delay(490)}>
+              <div className="bl-in" style={delay(370)}>
                 <label
                   htmlFor="password"
                   className="block text-[13px] font-semibold text-stone-700 mb-1.5"
@@ -717,7 +511,9 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
                     aria-pressed={showPassword}
                     className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center w-8 h-8 rounded-lg text-stone-400 hover:text-[#245234] hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#245234] transition-colors"
                   >
@@ -748,7 +544,7 @@ export default function Login() {
               {/* Remember me & Forgot password */}
               <div
                 className="bl-in flex items-center justify-between"
-                style={delay(550)}
+                style={delay(440)}
               >
                 <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer select-none">
                   <input
@@ -781,7 +577,7 @@ export default function Login() {
               )}
 
               {/* Submit */}
-              <div className="bl-in" style={delay(610)}>
+              <div className="bl-in" style={delay(510)}>
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -805,7 +601,7 @@ export default function Login() {
 
             <p
               className="bl-in mt-8 flex items-center justify-center gap-2 text-xs text-stone-400"
-              style={delay(680)}
+              style={delay(580)}
             >
               <ShieldCheck className="w-4 h-4 text-[#245234]/60" />
               For authorized barangay personnel only.

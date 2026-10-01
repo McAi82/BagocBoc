@@ -20,6 +20,7 @@ class User extends Authenticatable
         'last_login_at',
         'phone_verified_at',
         'email_verified_at',
+        'profile_photo_path',
     ];
 
     protected $hidden = [
@@ -33,6 +34,14 @@ class User extends Authenticatable
         'last_login_at' => 'datetime',
         'is_first_login' => 'boolean',
     ];
+
+    protected $appends = ['profile_photo_url'];
+
+    public function getProfilePhotoUrlAttribute(): ?string
+    {
+        if (!$this->profile_photo_path) return null;
+        return url(Storage::disk('public')->url($this->profile_photo_path));
+    }
 
     /**
      * Get the roles for the user.
@@ -64,8 +73,8 @@ class User extends Authenticatable
     public function notifications()
     {
         return $this->belongsToMany(Notification::class, 'notification_recipients', 'user_id', 'notification_id')
-                    ->withPivot('is_read', 'read_at')
-                    ->withTimestamps();
+            ->withPivot('is_read', 'read_at')
+            ->withTimestamps();
     }
 
     /**

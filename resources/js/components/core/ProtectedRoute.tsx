@@ -5,7 +5,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { api } from "../../api/apiClient";
 
-// ✅ Web accessible roles
+// ✅ Web accessible roles — accounts that can use the web app at all
 const WEB_ACCESSIBLE_ROLES = [
   "Super Admin",
   "Barangay Captain",
@@ -16,6 +16,8 @@ const WEB_ACCESSIBLE_ROLES = [
   "Nurse Deployment Program",
   "Barangay Nutrition Scholar",
 ];
+
+const SUPER_ADMIN = "Super Admin";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -96,6 +98,7 @@ export default function ProtectedRoute({
   }
 
   const userRoles = user.roles?.map((r) => r.name) || [];
+  const isSuperAdmin = userRoles.includes(SUPER_ADMIN);
 
   // ✅ Check web access
   const hasWebAccess = userRoles.some((role) =>
@@ -107,10 +110,24 @@ export default function ProtectedRoute({
     return <Navigate to="/login?error=web_access_denied" replace />;
   }
 
-  // Check role-based access
+  // ============================================
+  // ✅ SUPER ADMIN UNIVERSAL ACCESS
+  // ============================================
+  // If the user is a Super Admin, grant access to ANY route,
+  // regardless of what `allowedRoles` contains.
+  if (isSuperAdmin) {
+    return <>{children}</>;
+  }
+
+  // ============================================
+  // Regular role-based access
+  // ============================================
   if (allowedRoles.length > 0) {
     const hasRole = allowedRoles.some((role) => userRoles.includes(role));
     if (!hasRole) {
+      console.warn(
+        `ProtectedRoute: Access denied for roles [${userRoles.join(", ")}] to route requiring [${allowedRoles.join(", ")}]`,
+      );
       return <Navigate to="/barangay-bagocboc" replace />;
     }
   }

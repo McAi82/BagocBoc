@@ -6,25 +6,20 @@ use App\Http\Controllers\Mobile\Health\OptPlusController;
 use App\Http\Controllers\Mobile\Health\MaternalController;
 use App\Http\Controllers\Mobile\Health\NutritionAssessmentController;
 use App\Http\Controllers\Mobile\Health\ProgramController as HealthProgramController;
+use App\Http\Controllers\Mobile\Health\ProgramController as ResidentProgramController;
 use App\Http\Controllers\Mobile\Health\HealthStatsController;
-use App\Http\Controllers\Mobile\Census\HouseholdCensusController;
-use App\Http\Controllers\Mobile\Census\ResidentController;
+use App\Http\Controllers\Mobile\Census\HouseholdController as CensusHouseholdController;
+use App\Http\Controllers\Mobile\Resident\ResidentController as CensusResidentController;
+use App\Http\Controllers\Mobile\Resident\ResidentController as MobileResidentController;
 use App\Http\Controllers\Mobile\Resident\StatsController;
-use App\Http\Controllers\Mobile\Census\HouseholdInfoController;
 use App\Http\Controllers\Mobile\Geo\HouseGeotagController;
 use App\Http\Controllers\Mobile\Geo\BarangayZoneController;
-use App\Http\Controllers\Mobile\Programs\ProgramController;
-use App\Http\Controllers\Mobile\Resident\ResidentController as MobileResidentController;
-use App\Http\Controllers\Mobile\Zone\ZoneCheckInController;
-use App\Http\Controllers\Mobile\Zone\ZoneStatsController;
+use App\Http\Controllers\Mobile\Zone\ZoneController;
 use App\Http\Controllers\Mobile\Zone\CertificateRequestController;
 use App\Http\Controllers\Mobile\Zone\ClearanceGenerationController;
 use App\Http\Controllers\Mobile\Zone\ComplianceManagementController;
-use App\Http\Controllers\Mobile\Zone\RegistrationApprovalController;
 use App\Http\Controllers\Mobile\Notifications\NotificationController as MobileNotificationController;
-use App\Http\Controllers\Web\Records\RecordActivityLogController;
-use App\Http\Controllers\Web\Financial\PenaltyController;
-use App\Http\Controllers\Mobile\Financial\PaymentController as MobileFinancePaymentController;
+use App\Http\Controllers\Web\Records\RecordsController;
 use App\Http\Controllers\Mobile\QR\QRController;
 use App\Http\Controllers\Mobile\Certificates\CertificateDownloadController;
 use App\Http\Controllers\Web\Auth\AccountActivationController;
@@ -86,8 +81,6 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
     // RESIDENT PROFILE (All Mobile Users)
     // ============================================
 
-
-
     Route::prefix('/resident')->group(function () {
         // Profile
         Route::get('/profile', [MobileResidentController::class, 'profile']);
@@ -99,7 +92,6 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
         // ✅ Static routes BEFORE wildcard
         Route::get('/certificates', [MobileResidentController::class, 'myCertificates']);
         Route::get('/certificate-types', [MobileResidentController::class, 'getCertificateTypes']);
-        Route::get('/certificates', [MobileResidentController::class, 'myCertificates']);
         Route::post('/certificates', [MobileResidentController::class, 'requestCertificate']);
 
         // ✅ Wildcard routes AFTER static
@@ -147,7 +139,7 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
     // ============================================
 
     Route::prefix('/census')->group(function () {
-        Route::get('/stats', [HouseholdCensusController::class, 'getStats']);
+        Route::get('/stats', [CensusHouseholdController::class, 'getStats']);
     });
 
     // ============================================
@@ -161,41 +153,41 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
             // ✅ STATIC ROUTES FIRST
 
             // Residents - Static
-            Route::post('/resident', [ResidentController::class, 'store']);
-            Route::get('/residents', [ResidentController::class, 'index']);
-            Route::get('/residents/encoder/{userId}', [ResidentController::class, 'getByEncoder']);
+            Route::post('/resident', [CensusResidentController::class, 'store']);
+            Route::get('/residents', [CensusResidentController::class, 'index']);
+            Route::get('/residents/encoder/{userId}', [CensusResidentController::class, 'getByEncoder']);
 
             // Households - Static
-            Route::post('/households', [HouseholdInfoController::class, 'store']);
-            Route::get('/households', [HouseholdInfoController::class, 'index']);
-            Route::get('/households/search', [HouseholdInfoController::class, 'search']);
-            Route::post('/households/add-resident', [HouseholdInfoController::class, 'addResident']);
-            Route::post('/households/remove-resident', [HouseholdInfoController::class, 'removeResident']);
+            Route::post('/households', [CensusHouseholdController::class, 'store']);
+            Route::get('/households', [CensusHouseholdController::class, 'index']);
+            Route::get('/households/search', [CensusHouseholdController::class, 'search']);
+            Route::post('/households/add-resident', [CensusHouseholdController::class, 'addResident']);
+            Route::post('/households/remove-resident', [CensusHouseholdController::class, 'removeResident']);
 
             // Census Records - Static
-            Route::post('/add-record', [HouseholdCensusController::class, 'store']);
-            Route::get('/records', [HouseholdCensusController::class, 'index']);
+            Route::post('/add-record', [CensusHouseholdController::class, 'storeCensus']);
+            Route::get('/records', [CensusHouseholdController::class, 'indexCensus']);
 
             // Food Production - Static
-            Route::get('/food-production-types', [HouseholdCensusController::class, 'getFoodProductionTypes']);
+            Route::get('/food-production-types', [CensusHouseholdController::class, 'getFoodProductionTypes']);
 
             // Survey - Static
-            Route::post('/survey', [HouseholdCensusController::class, 'submitSurvey']);
+            Route::post('/survey', [CensusHouseholdController::class, 'submitSurvey']);
 
             // ✅ WILDCARD ROUTES AFTER STATIC
 
             // Residents - Wildcard
-            Route::get('/residents/{id}', [ResidentController::class, 'show']);
-            Route::put('/residents/{id}', [ResidentController::class, 'update']);
-            Route::delete('/residents/{id}', [ResidentController::class, 'destroy']);
+            Route::get('/residents/{id}', [CensusResidentController::class, 'show']);
+            Route::put('/residents/{id}', [CensusResidentController::class, 'update']);
+            Route::delete('/residents/{id}', [CensusResidentController::class, 'destroy']);
 
             // Households - Wildcard
-            Route::get('/households/{id}', [HouseholdInfoController::class, 'show']);
-            Route::put('/households/{id}', [HouseholdInfoController::class, 'update']);
-            Route::delete('/households/{id}', [HouseholdInfoController::class, 'destroy']);
+            Route::get('/households/{id}', [CensusHouseholdController::class, 'show']);
+            Route::put('/households/{id}', [CensusHouseholdController::class, 'update']);
+            Route::delete('/households/{id}', [CensusHouseholdController::class, 'destroy']);
 
             // Census Records - Wildcard
-            Route::get('/records/{id}', [HouseholdCensusController::class, 'show']);
+            Route::get('/records/{id}', [CensusHouseholdController::class, 'showCensus']);
         });
 
         // Geo / Geotagging
@@ -217,7 +209,7 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
 
         // Registration Submission
         Route::prefix('/registrations')->group(function () {
-            Route::post('/submit', [RegistrationApprovalController::class, 'submit']);
+            Route::post('/submit', [ZoneController::class, 'submit']);
         });
     });
 
@@ -273,15 +265,15 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
 
     Route::middleware(['role:Barangay Health Worker,Barangay Nutrition Scholar'])->group(function () {
         // Activity Logs
-        Route::get('/activity-logs/encoder/{userId}', [RecordActivityLogController::class, 'getByEncoder']);
-        Route::post('/activity-logs', [RecordActivityLogController::class, 'store']);
+        Route::get('/activity-logs/encoder/{userId}', [RecordsController::class, 'logsByEncoder']);
+        Route::post('/activity-logs', [RecordsController::class, 'storeLog']);
 
         // Residents (Read only) - STATIC FIRST
-        Route::get('/residents', [ResidentController::class, 'index']);
-        Route::get('/residents/encoder/{userId}', [ResidentController::class, 'getByEncoder']);
+        Route::get('/residents', [CensusResidentController::class, 'index']);
+        Route::get('/residents/encoder/{userId}', [CensusResidentController::class, 'getByEncoder']);
 
         // Residents (Read only) - WILDCARD AFTER
-        Route::get('/residents/{id}', [ResidentController::class, 'show']);
+        Route::get('/residents/{id}', [CensusResidentController::class, 'show']);
     });
 
     // ============================================
@@ -290,7 +282,7 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
 
     Route::middleware(['role:Barangay Health Worker,Zone Leader'])->group(function () {
         Route::prefix('/registrations')->group(function () {
-            Route::get('/status/{residentId}', [RegistrationApprovalController::class, 'getStatus']);
+            Route::get('/status/{residentId}', [ZoneController::class, 'getStatus']);
         });
     });
 
@@ -320,51 +312,51 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
         // Zone Management
         Route::prefix('/zone')->group(function () {
             // ✅ STATIC ROUTES FIRST
-            Route::post('/check-in', [ZoneCheckInController::class, 'store']);
-            Route::get('/check-ins', [ZoneCheckInController::class, 'index']);
-            Route::get('/check-ins/my', [ZoneCheckInController::class, 'myCheckIns']);
-            Route::get('/stats', [ZoneStatsController::class, 'index']);
+            Route::post('/check-in', [ZoneController::class, 'storeCheckIn']);
+            Route::get('/check-ins', [ZoneController::class, 'indexCheckIns']);
+            Route::get('/check-ins/my', [ZoneController::class, 'myCheckIns']);
+            Route::get('/stats', [ZoneController::class, 'indexStats']);
             Route::get('/certificate-requests', [CertificateRequestController::class, 'index']);
             Route::get('/compliance', [ComplianceManagementController::class, 'index']);
             Route::post('/compliance', [ComplianceManagementController::class, 'store']);
-            Route::get('/residents', [ResidentController::class, 'index']);
-            Route::get('/households', [HouseholdInfoController::class, 'index']);
-            Route::get('/census/records', [HouseholdCensusController::class, 'index']);
+            Route::get('/residents', [CensusResidentController::class, 'index']);
+            Route::get('/households', [CensusHouseholdController::class, 'index']);
+            Route::get('/census/records', [CensusHouseholdController::class, 'indexCensus']);
 
             // ✅ WILDCARD ROUTES AFTER STATIC
 
-            // Certificate Requests (FIXED: POST instead of GET for state-changing actions)
+            // Certificate Requests
             Route::post('/certificate-requests/{id}/approve', [CertificateRequestController::class, 'approve']);
             Route::post('/certificate-requests/{id}/reject', [CertificateRequestController::class, 'reject']);
 
-            Route::get('/check-ins/{id}', [ZoneCheckInController::class, 'show']);
+            Route::get('/check-ins/{id}', [ZoneController::class, 'showCheckIn']);
             Route::post('/clearance/{residentId}', [ClearanceGenerationController::class, 'generate']);
             Route::get('/clearance/{id}', [ClearanceGenerationController::class, 'show']);
             Route::post('/clearance/{id}/release', [ClearanceGenerationController::class, 'release']);
             Route::put('/compliance/{id}', [ComplianceManagementController::class, 'update']);
             Route::delete('/compliance/{id}', [ComplianceManagementController::class, 'destroy']);
-            Route::get('/residents/{id}', [ResidentController::class, 'show']);
-            Route::get('/households/{id}', [HouseholdInfoController::class, 'show']);
-            Route::get('/census/records/{id}', [HouseholdCensusController::class, 'show']);
+            Route::get('/residents/{id}', [CensusResidentController::class, 'show']);
+            Route::get('/households/{id}', [CensusHouseholdController::class, 'show']);
+            Route::get('/census/records/{id}', [CensusHouseholdController::class, 'showCensus']);
 
             // Registration Approval
             Route::prefix('/registrations')->group(function () {
-                Route::get('/pending', [RegistrationApprovalController::class, 'pending']);
-                Route::post('/{id}/approve', [RegistrationApprovalController::class, 'approve']);
-                Route::post('/{id}/reject', [RegistrationApprovalController::class, 'reject']);
+                Route::get('/pending', [ZoneController::class, 'pending']);
+                Route::post('/{id}/approve', [ZoneController::class, 'approve']);
+                Route::post('/{id}/reject', [ZoneController::class, 'reject']);
             });
 
             Route::prefix('/confirmations')->group(function () {
-                Route::get('/pending', [RegistrationApprovalController::class, 'pendingConfirmations']);
-                Route::post('/{id}/confirm', [RegistrationApprovalController::class, 'confirmConfirmation']);
-                Route::post('/{id}/reject', [RegistrationApprovalController::class, 'rejectConfirmation']);
+                Route::get('/pending', [ZoneController::class, 'pendingConfirmations']);
+                Route::post('/{id}/confirm', [ZoneController::class, 'confirmConfirmation']);
+                Route::post('/{id}/reject', [ZoneController::class, 'rejectConfirmation']);
             });
         });
 
         // View Residents & Households (Read only)
-        Route::get('/residents', [ResidentController::class, 'index']);
-        Route::get('/households', [HouseholdInfoController::class, 'index']);
-        Route::get('/households/{id}', [HouseholdInfoController::class, 'show']);
+        Route::get('/residents', [CensusResidentController::class, 'index']);
+        Route::get('/households', [CensusHouseholdController::class, 'index']);
+        Route::get('/households/{id}', [CensusHouseholdController::class, 'show']);
     });
 
     // ============================================
@@ -376,10 +368,10 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
         // Programs
         Route::prefix('/programs')->group(function () {
             // ✅ STATIC ROUTES FIRST
-            Route::get('/', [ProgramController::class, 'index']);
+            Route::get('/', [ResidentProgramController::class, 'publicIndex']);
 
             // ✅ WILDCARD ROUTES AFTER STATIC
-            Route::get('/{id}', [ProgramController::class, 'show']);
+            Route::get('/{id}', [ResidentProgramController::class, 'show']);
         });
     });
 });

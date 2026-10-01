@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import {
   Menu,
-  Bell,
   User,
   LogOut,
   Search,
@@ -17,6 +16,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { useThemeStore } from "../../stores/themeStore";
 import { useNavigate } from "react-router-dom";
 import ThemeSwitcher from "../features/ThemeSwitcher";
+import NotificationBell from "../features/NotificationBell";
 import Modal from "../ui/Modal";
 import toast from "react-hot-toast";
 import { api } from "../../api/apiClient";
@@ -30,15 +30,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
   const { user, logout } = useAuthStore();
   const { mode, toggleDarkMode } = useThemeStore();
   const [showThemeModal, setShowThemeModal] = useState(false);
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-
-  // Use real notification data
-  // const { data: notifications = [] } = useGetNotifications({ refetchInterval: 30000 });
-  // const { data: unreadCount = 0 } = useGetUnreadCount();
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,32 +149,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
             <Palette className="w-5 h-5 text-theme-textSecondary hover:text-theme-primary transition-colors" />
           </button>
 
-          {/* Notification Bell */}
-          <div className="relative">
-            <button
-              onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-              className="relative p-2 rounded-lg hover:bg-theme-hover transition-colors"
-            >
-              <Bell className="w-5 h-5 text-theme-textSecondary hover:text-theme-primary transition-colors" />
-              {/* Uncomment when notification system is ready
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full border-2 border-theme-surface">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-              */}
-            </button>
-            {/* Uncomment when notification panel is ready
-            {isNotificationOpen && (
-              <div className="absolute right-0 mt-2 w-96 z-50">
-                <NotificationPanel
-                  isOpen={isNotificationOpen}
-                  onClose={() => setIsNotificationOpen(false)}
-                />
-              </div>
-            )}
-            */}
-          </div>
+          {/* ✅ Notification Bell (uses polling context) */}
+          <NotificationBell />
 
           {/* User Profile */}
           <div className="relative">
@@ -194,7 +165,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
                 {getFullName()}
               </span>
               <ChevronDown
-                className={`w-4 h-4 text-theme-textSecondary transition-transform duration-200 ${showProfileDropdown ? "rotate-180" : ""}`}
+                className={`w-4 h-4 text-theme-textSecondary transition-transform duration-200 ${showProfileDropdown ? "rotate-180" : ""
+                  }`}
               />
             </button>
 

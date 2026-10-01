@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Web/Records/RecordsController.php
 
 namespace App\Http\Controllers\Web\Records;
 
@@ -6,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\RecordActivityLog;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -14,9 +16,96 @@ class RecordsController extends Controller
 {
     use SendsNotifications;
 
-    /**
-     * Get pending records for approval
-     */
+    // ============================================================
+    // ACTIVITY LOGS (was RecordActivityLogController)
+    // ============================================================
+
+    public function indexLogs(Request $request)
+    {
+        $query = RecordActivityLog::with(['encoder', 'record']);
+
+        if ($request->has('type')) {
+            $query->where('record_type', $request->type);
+        }
+
+        if ($request->has('action')) {
+            $query->where('action', $request->action);
+        }
+
+        $logs = $query->latest()->paginate(50);
+
+        return $this->respondSuccess($logs);
+    }
+
+    public function storeLog(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'encoded_by' => 'required|exists:users,id',
+            'record_id' => 'required|integer',
+            'record_type' => 'required|string',
+            'action' => 'required|string',
+            'data_status' => 'nullable|string',
+            'details' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
+
+        $log = RecordActivityLog::create($request->all());
+
+        return $this->respondSuccess($log, 'Activity log created successfully', 201);
+    }
+
+    public function showLog($id)
+    {
+        $log = RecordActivityLog::with(['encoder', 'record'])->find($id);
+
+        if (!$log) {
+            return $this->respondNotFound('Log not found');
+        }
+
+        return $this->respondSuccess($log);
+    }
+
+    public function destroyLog($id)
+    {
+        $log = RecordActivityLog::find($id);
+
+        if (!$log) {
+            return $this->respondNotFound('Log not found');
+        }
+
+        $log->delete();
+
+        return $this->respondSuccess(null, 'Log deleted successfully');
+    }
+
+    public function logsByEncoder($userId)
+    {
+        $logs = RecordActivityLog::with(['encoder', 'record'])
+            ->where('encoded_by', $userId)
+            ->latest()
+            ->get();
+
+        return $this->respondSuccess($logs);
+    }
+
+    public function logsByRecord($recordId, $recordType)
+    {
+        $logs = RecordActivityLog::with(['encoder'])
+            ->where('record_id', $recordId)
+            ->where('record_type', $recordType)
+            ->latest()
+            ->get();
+
+        return $this->respondSuccess($logs);
+    }
+
+    // ============================================================
+    // APPROVAL WORKFLOW (was the old RecordsController)
+    // ============================================================
+
     public function getPendingRecords(Request $request)
     {
         $query = RecordActivityLog::with(['encoder', 'record'])
@@ -51,10 +140,6 @@ class RecordsController extends Controller
         return $this->respondSuccess($stats);
     }
 
-    /**
-     * Approve a record
-     * ✅ Notifies the encoder who submitted
-     */
     public function approveRecord($id)
     {
         $record = RecordActivityLog::find($id);
@@ -68,7 +153,6 @@ class RecordsController extends Controller
             'details' => ($record->details ?? '') . ' | Approved by ' . Auth::user()->email,
         ]);
 
-        // ✅ Notify the encoder who submitted the record
         if ($record->encoded_by) {
             $this->notifyUser(
                 $record->encoded_by,
@@ -86,10 +170,6 @@ class RecordsController extends Controller
         return $this->respondSuccess($record, 'Record approved successfully');
     }
 
-    /**
-     * Reject a record
-     * ✅ Notifies the encoder with the reason
-     */
     public function rejectRecord(Request $request, $id)
     {
         $record = RecordActivityLog::find($id);
@@ -105,7 +185,6 @@ class RecordsController extends Controller
             'details' => ($record->details ?? '') . ' | Rejected by ' . Auth::user()->email . ' | Reason: ' . $reason,
         ]);
 
-        // ✅ Notify the encoder who submitted the record
         if ($record->encoded_by) {
             $this->notifyUser(
                 $record->encoded_by,

@@ -1,23 +1,18 @@
 <?php
-// app/Http/Controllers/Mobile/Notifications/NotificationController.php
+// app/Traits/HandlesNotifications.php
 
-namespace App\Http\Controllers\Mobile\Notifications;
+namespace App\Traits;
 
-use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Models\NotificationRecipient;
-use App\Traits\SendsNotifications;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
-use App\Traits\HandlesNotifications;
 
-class NotificationController extends Controller
+trait HandlesNotifications
 {
     use SendsNotifications;
-    use HandlesNotifications;
 
     /**
      * Get notifications for the AUTHENTICATED user only.
@@ -34,7 +29,6 @@ class NotificationController extends Controller
                     '=',
                     'notification_recipients.notification_id'
                 )
-                // ✅ STRICT: ONLY the authenticated user's rows
                 ->where('notification_recipients.user_id', $userId)
                 ->orderBy('notifications.created_at', 'desc')
                 ->select([
@@ -83,7 +77,6 @@ class NotificationController extends Controller
             $userId = (int) Auth::id();
 
             $count = DB::table('notification_recipients')
-                // ✅ STRICT
                 ->where('user_id', $userId)
                 ->where('is_read', false)
                 ->count();
@@ -113,15 +106,12 @@ class NotificationController extends Controller
                 return $this->respondError('Validation error', $validator->errors(), 422);
             }
 
-            // ✅ Ownership check FIRST
             if (!$this->userOwnsNotification($userId, $notificationId)) {
-                // Return 404 (not 403) to avoid leaking that the ID exists
                 return $this->respondNotFound('Notification not found');
             }
 
             DB::table('notification_recipients')
                 ->where('notification_id', $notificationId)
-                // ✅ STRICT: re-assert ownership at write time
                 ->where('user_id', $userId)
                 ->update([
                     'is_read' => true,
@@ -145,7 +135,6 @@ class NotificationController extends Controller
             $userId = (int) Auth::id();
 
             DB::table('notification_recipients')
-                // ✅ STRICT
                 ->where('user_id', $userId)
                 ->where('is_read', false)
                 ->update([
@@ -170,14 +159,12 @@ class NotificationController extends Controller
             $userId = (int) Auth::id();
             $notificationId = (int) $id;
 
-            // ✅ Ownership check FIRST
             if (!$this->userOwnsNotification($userId, $notificationId)) {
                 return $this->respondNotFound('Notification not found');
             }
 
             DB::table('notification_recipients')
                 ->where('notification_id', $notificationId)
-                // ✅ STRICT
                 ->where('user_id', $userId)
                 ->delete();
 
@@ -190,13 +177,12 @@ class NotificationController extends Controller
 
     /**
      * Admin utility — send a notification.
-     * ✅ RESTRICTED: only Super Admin / Barangay Captain.
+     * RESTRICTED to Super Admin / Barangay Captain.
      */
     public function send(Request $request)
     {
         $user = Auth::user();
 
-        // ✅ Role guard — reject anyone who isn't Super Admin or Captain
         $allowed = $user->roles()
             ->whereIn('name', ['Super Admin', 'Barangay Captain'])
             ->exists();

@@ -1,11 +1,9 @@
 // pages/dashboards/TreasurerDashboard.tsx
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Wallet,
-  TrendingUp,
-  TrendingDown,
   Eye,
   DollarSign,
   Calendar,
@@ -35,9 +33,7 @@ import {
   ArrowDownRight,
   Banknote,
   Smartphone,
-  Landmark,
   ChevronDown,
-  MoreVertical,
 } from "lucide-react";
 import { Pie, Column } from "@ant-design/plots";
 import { api } from "../../api/apiClient";
@@ -71,6 +67,19 @@ interface PaymentRecord {
   };
 }
 
+interface TaxRecord {
+  id: number;
+  receipt_number: string;
+  taxpayer_name: string;
+  tax_type: string;
+  amount: number;
+  payment_method: string;
+  status: string;
+  paid_at?: string;
+  created_at: string;
+  remarks?: string;
+}
+
 interface FinancialReport {
   id: number;
   title: string;
@@ -92,6 +101,73 @@ interface FinancialReport {
   };
 }
 
+type RangePreset = "today" | "week" | "month" | "custom" | "all";
+
+// ============================================
+// DATE HELPERS — no Date parsing in filters
+// ============================================
+
+/** Normalize a date string/Date to YYYY-MM-DD (local) */
+const toLocalDate = (value: string | Date | null | undefined): string => {
+  if (!value) return "";
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(value).slice(0, 10);
+};
+
+const todayISO = (): string => toLocalDate(new Date());
+
+const mondayISO = (): string => {
+  const d = new Date();
+  const day = d.getDay(); // 0 = Sun
+  const diffToMonday = (day + 6) % 7;
+  d.setDate(d.getDate() - diffToMonday);
+  return toLocalDate(d);
+};
+
+const firstOfMonthISO = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+};
+
+const getPresetRange = (
+  preset: RangePreset,
+): { start: string; end: string } => {
+  switch (preset) {
+    case "today":
+      return { start: todayISO(), end: todayISO() };
+    case "week":
+      return { start: mondayISO(), end: todayISO() };
+    case "month":
+      return { start: firstOfMonthISO(), end: todayISO() };
+    case "all":
+      return { start: "", end: "" };
+    case "custom":
+    default:
+      return { start: firstOfMonthISO(), end: todayISO() };
+  }
+};
+
+/** Format a YYYY-MM-DD to a short label like "Oct 1, 2026" */
+const prettyDate = (iso: string): string => {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+};
+
 // ============================================
 // MAIN COMPONENT
 // ============================================
@@ -105,33 +181,24 @@ export default function TreasurerDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [taxes, setTaxes] = useState<any[]>([]);
+  const [taxes, setTaxes] = useState<TaxRecord[]>([]);
   const [reports, setReports] = useState<FinancialReport[]>([]);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(
-    null,
-  );
+
+  const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+
   const [showReportModal, setShowReportModal] = useState(false);
   const [showEditReportModal, setShowEditReportModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<FinancialReport | null>(
-    null,
-  );
-  const [showFilters, setShowFilters] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<FinancialReport | null>(null);
+  const [showFilters, setShowFilters] = useState(true);
 
   // Filters
-  const [filterMonth, setFilterMonth] = useState("");
-  const [filterYear, setFilterYear] = useState(
-    new Date().getFullYear().toString(),
-  );
   const [paymentTypeFilter, setPaymentTypeFilter] = useState("all");
-  const [dateRange, setDateRange] = useState({
-    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-      .toISOString()
-      .split("T")[0],
-    end: new Date().toISOString().split("T")[0],
-  });
+  const [preset, setPreset] = useState<RangePreset>("month");
+  const [range, setRange] = useState(getPresetRange("month"));
 
   // Report form
   const [reportForm, setReportForm] = useState({
@@ -140,7 +207,6 @@ export default function TreasurerDashboard() {
     period: "",
     notes: "",
   });
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   // ============================================
   // DATA FETCHING
@@ -150,11 +216,9 @@ export default function TreasurerDashboard() {
     if (!data) return [];
     if (Array.isArray(data)) return data;
     if (data?.data && Array.isArray(data.data)) return data.data;
-    if (data?.data?.data && Array.isArray(data.data.data))
-      return data.data.data;
+    if (data?.data?.data && Array.isArray(data.data.data)) return data.data.data;
     if (data?.payments && Array.isArray(data.payments)) return data.payments;
-    if (data?.taxPayments && Array.isArray(data.taxPayments))
-      return data.taxPayments;
+    if (data?.taxPayments && Array.isArray(data.taxPayments)) return data.taxPayments;
     if (data?.reports && Array.isArray(data.reports)) return data.reports;
 
     const findArray = (obj: any, depth = 0): any[] => {
@@ -173,17 +237,7 @@ export default function TreasurerDashboard() {
       }
       if (typeof obj === "object") {
         for (const key of Object.keys(obj)) {
-          if (
-            [
-              "message",
-              "status",
-              "success",
-              "errors",
-              "meta",
-              "links",
-            ].includes(key)
-          )
-            continue;
+          if (["message", "status", "success", "errors", "meta", "links"].includes(key)) continue;
           const result = findArray(obj[key], depth + 1);
           if (result.length > 0) return result;
         }
@@ -197,16 +251,10 @@ export default function TreasurerDashboard() {
     setIsLoading(true);
     setIsError(false);
     try {
-      const params: any = {};
-      if (filterMonth) params.month = filterMonth;
-      if (filterYear) params.year = filterYear;
-      if (dateRange.start) params.date_from = dateRange.start;
-      if (dateRange.end) params.date_to = dateRange.end;
-
       const [paymentsRes, taxesRes, reportsRes] = await Promise.all([
-        api.get("/web/payments", { params }),
-        api.get("/web/tax-payments", { params }),
-        api.get("/web/financial-reports", { params }),
+        api.get("/web/payments"),
+        api.get("/web/tax-payments"),
+        api.get("/web/financial-reports"),
       ]);
 
       setPayments(
@@ -233,68 +281,126 @@ export default function TreasurerDashboard() {
 
   useEffect(() => {
     fetchData();
-  }, [dateRange.start, dateRange.end, filterMonth, filterYear]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ============================================
-  // COMPUTED DATA
+  // PRESET HANDLER
   // ============================================
+
+  const handlePreset = (next: RangePreset) => {
+    setPreset(next);
+    setRange(getPresetRange(next));
+  };
+
+  // ============================================
+  // FILTERED DATA
+  // ============================================
+
+  const isWithinRange = (
+    dateStr: string | undefined,
+    from: string,
+    to: string,
+  ) => {
+    if (!from && !to) return true;
+    if (!dateStr) return false;
+    const d = toLocalDate(dateStr);
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  };
 
   const filteredPayments = useMemo(() => {
     return payments.filter((p) => {
       const date = p.paid_at || p.created_at;
-      if (dateRange.start && date && date < dateRange.start) return false;
-      if (dateRange.end && date && date > dateRange.end) return false;
+      if (!isWithinRange(date, range.start, range.end)) return false;
       if (paymentTypeFilter !== "all" && p.payment_type !== paymentTypeFilter)
         return false;
       return true;
     });
-  }, [payments, dateRange, paymentTypeFilter]);
+  }, [payments, range, paymentTypeFilter]);
 
   const filteredTaxes = useMemo(() => {
     return taxes.filter((t) => {
       const date = t.paid_at || t.created_at;
-      if (dateRange.start && date && date < dateRange.start) return false;
-      if (dateRange.end && date && date > dateRange.end) return false;
-      return true;
+      return isWithinRange(date, range.start, range.end);
     });
-  }, [taxes, dateRange]);
+  }, [taxes, range]);
+
+  // ============================================
+  // AVAILABLE PAYMENT TYPES
+  // ============================================
+
+  const availablePaymentTypes = useMemo(() => {
+    const set = new Set<string>();
+    payments.forEach((p) => {
+      if (p.payment_type) set.add(p.payment_type);
+    });
+    return Array.from(set).sort();
+  }, [payments]);
+
+  // ============================================
+  // STATS
+  // ============================================
 
   const stats = useMemo(() => {
-    const totalPayments = filteredPayments.reduce(
-      (sum, p) => sum + p.amount,
-      0,
-    );
-    const totalTaxes = filteredTaxes.reduce((sum, t) => sum + t.amount, 0);
-    const totalRevenue = totalPayments + totalTaxes;
+    const totalPaymentsAmount = filteredPayments.reduce((sum, p) => sum + p.amount, 0);
+    const totalTaxesAmount = filteredTaxes.reduce((sum, t) => sum + t.amount, 0);
+    const totalRevenue = totalPaymentsAmount + totalTaxesAmount;
 
-    // Calculate trend (compare with previous period)
-    const halfPeriod = Math.floor(filteredPayments.length / 2);
-    const recentTotal = filteredPayments
-      .slice(0, halfPeriod)
-      .reduce((sum, p) => sum + p.amount, 0);
-    const olderTotal = filteredPayments
-      .slice(halfPeriod)
-      .reduce((sum, p) => sum + p.amount, 0);
-    const trend =
-      olderTotal > 0 ? ((recentTotal - olderTotal) / olderTotal) * 100 : 0;
+    // Trend: compare to the previous period of equal length
+    let trend = 0;
+    if (preset !== "all" && range.start && range.end) {
+      const startDate = new Date(range.start);
+      const endDate = new Date(range.end);
+      const dayMs = 24 * 60 * 60 * 1000;
+      const periodDays =
+        Math.floor((endDate.getTime() - startDate.getTime()) / dayMs) + 1;
+      const prevEnd = new Date(startDate.getTime() - dayMs);
+      const prevStart = new Date(startDate.getTime() - periodDays * dayMs);
+      const prevStartISO = toLocalDate(prevStart);
+      const prevEndISO = toLocalDate(prevEnd);
+
+      const prevPaymentsTotal = payments
+        .filter((p) =>
+          isWithinRange(p.paid_at || p.created_at, prevStartISO, prevEndISO),
+        )
+        .reduce((sum, p) => sum + p.amount, 0);
+
+      const prevTaxesTotal = taxes
+        .filter((t) =>
+          isWithinRange(t.paid_at || t.created_at, prevStartISO, prevEndISO),
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const prevTotal = prevPaymentsTotal + prevTaxesTotal;
+      if (prevTotal > 0) {
+        trend = ((totalRevenue - prevTotal) / prevTotal) * 100;
+      }
+    }
 
     return {
       totalRevenue,
       totalPayments: filteredPayments.length,
       totalTaxes: filteredTaxes.length,
-      completedPayments: filteredPayments.filter(
-        (p) => p.status === "completed",
-      ).length,
-      pendingPayments: filteredPayments.filter((p) => p.status === "pending")
-        .length,
+      completedPayments: filteredPayments.filter((p) => p.status === "completed").length,
+      pendingPayments: filteredPayments.filter((p) => p.status === "pending").length,
+      failedPayments: filteredPayments.filter((p) => p.status === "failed").length,
       pendingReports: reports.filter((r) => r.status === "pending").length,
       approvedReports: reports.filter((r) => r.status === "approved").length,
       rejectedReports: reports.filter((r) => r.status === "rejected").length,
+      draftReports: reports.filter((r) => r.status === "draft").length,
       trend,
-      totalPaymentsAmount: totalPayments,
-      totalTaxesAmount: totalTaxes,
+      totalPaymentsAmount,
+      totalTaxesAmount,
+      totalTransactions: filteredPayments.length + filteredTaxes.length,
     };
-  }, [filteredPayments, filteredTaxes, reports]);
+  }, [filteredPayments, filteredTaxes, reports, payments, taxes, range, preset]);
+
+  // ============================================
+  // BREAKDOWNS
+  // ============================================
 
   const paymentTypeBreakdown = useMemo(() => {
     const breakdown: Record<string, number> = {};
@@ -302,10 +408,9 @@ export default function TreasurerDashboard() {
       const type = p.payment_type || "Other";
       breakdown[type] = (breakdown[type] || 0) + p.amount;
     });
-    return Object.entries(breakdown).map(([type, amount]) => ({
-      type,
-      amount,
-    }));
+    return Object.entries(breakdown)
+      .map(([type, amount]) => ({ type, amount }))
+      .sort((a, b) => b.amount - a.amount);
   }, [filteredPayments]);
 
   const paymentMethodBreakdown = useMemo(() => {
@@ -314,29 +419,189 @@ export default function TreasurerDashboard() {
       const method = p.payment_method || "Cash";
       breakdown[method] = (breakdown[method] || 0) + p.amount;
     });
-    return Object.entries(breakdown).map(([method, amount]) => ({
-      method,
-      amount,
-    }));
-  }, [filteredPayments]);
+    filteredTaxes.forEach((t) => {
+      const method = t.payment_method || "Cash";
+      breakdown[method] = (breakdown[method] || 0) + t.amount;
+    });
+    return Object.entries(breakdown)
+      .map(([method, amount]) => ({ method, amount }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [filteredPayments, filteredTaxes]);
 
   const dailyRevenue = useMemo(() => {
     const daily: Record<string, number> = {};
+
     filteredPayments.forEach((p) => {
-      const date = (p.paid_at || p.created_at)?.split("T")[0];
+      const date = toLocalDate(p.paid_at || p.created_at);
       if (date) daily[date] = (daily[date] || 0) + p.amount;
     });
-    return Object.entries(daily)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-14) // Last 14 days
-      .map(([date, amount]) => ({
-        date: new Date(date).toLocaleDateString("en-PH", {
-          month: "short",
-          day: "numeric",
-        }),
-        amount,
-      }));
-  }, [filteredPayments]);
+
+    filteredTaxes.forEach((t) => {
+      const date = toLocalDate(t.paid_at || t.created_at);
+      if (date) daily[date] = (daily[date] || 0) + t.amount;
+    });
+
+    let start: Date;
+    let end: Date;
+    if (range.start && range.end) {
+      start = new Date(range.start);
+      end = new Date(range.end);
+    } else {
+      const keys = Object.keys(daily).sort();
+      if (keys.length === 0) return [];
+      start = new Date(keys[0]);
+      end = new Date(keys[keys.length - 1]);
+    }
+
+    const out: { date: string; amount: number }[] = [];
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const key = toLocalDate(cursor);
+      out.push({
+        date: cursor.toLocaleDateString("en-PH", { month: "short", day: "numeric" }),
+        amount: daily[key] || 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return out.slice(-31); // Cap to last 31 days
+  }, [filteredPayments, filteredTaxes, range]);
+
+  // ============================================
+  // IN-PAGE PRINT HELPER
+  // ============================================
+
+  const printHTML = (html: string) => {
+    const existing = document.getElementById("print-portal");
+    if (existing) existing.remove();
+
+    const portal = document.createElement("div");
+    portal.id = "print-portal";
+    portal.innerHTML = html;
+    document.body.appendChild(portal);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print();
+        const cleanup = () => {
+          const el = document.getElementById("print-portal");
+          if (el) el.remove();
+          window.removeEventListener("afterprint", cleanup);
+        };
+        window.addEventListener("afterprint", cleanup);
+      });
+    });
+  };
+
+  const handlePrintReceipt = (payment: PaymentRecord) => {
+    const residentName = payment.resident
+      ? `${payment.resident.first_name || ""} ${payment.resident.last_name || ""}`.trim()
+      : "N/A";
+
+    const paidDate = payment.paid_at || payment.created_at;
+    const formattedDate = paidDate
+      ? new Date(paidDate).toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+      : "N/A";
+    const formattedTime = paidDate
+      ? new Date(paidDate).toLocaleTimeString("en-PH", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+      : "";
+
+    const html = `
+    <style>
+      #print-portal * { box-sizing: border-box; margin: 0; padding: 0; }
+      #print-portal { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a1a; background: #ffffff; }
+      #print-portal .receipt { max-width: 720px; margin: 0 auto; padding: 40px 50px; }
+      #print-portal .header { text-align: center; border-bottom: 3px double #1a1a1a; padding-bottom: 18px; margin-bottom: 26px; }
+      #print-portal .header .republic { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #555; margin-bottom: 6px; }
+      #print-portal .header .barangay { font-size: 26px; font-weight: bold; letter-spacing: 1px; color: #0f172a; margin-bottom: 4px; }
+      #print-portal .header .location { font-size: 12px; color: #666; font-style: italic; }
+      #print-portal .title { text-align: center; font-size: 20px; font-weight: bold; letter-spacing: 4px; text-transform: uppercase; margin: 22px 0 8px; color: #0f172a; }
+      #print-portal .subtitle { text-align: center; font-size: 12px; color: #666; margin-bottom: 26px; letter-spacing: 2px; }
+      #print-portal .or-box { background: #f8f9fb; border: 1px solid #d1d5db; border-left: 4px solid #1e3a8a; padding: 14px 20px; margin-bottom: 26px; display: flex; justify-content: space-between; align-items: center; }
+      #print-portal .or-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #666; font-weight: bold; }
+      #print-portal .or-box .value { font-size: 18px; font-weight: bold; font-family: 'Courier New', monospace; color: #1e3a8a; }
+      #print-portal .details { width: 100%; border-collapse: collapse; margin-bottom: 26px; }
+      #print-portal .details tr td { padding: 11px 0; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: top; }
+      #print-portal .details tr:last-child td { border-bottom: none; }
+      #print-portal .details .field { color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; width: 40%; }
+      #print-portal .details .val { color: #0f172a; font-weight: 600; text-align: right; }
+      #print-portal .amount-section { background: #f0f4ff; border: 2px solid #1e3a8a; padding: 20px 24px; margin: 26px 0; text-align: center; }
+      #print-portal .amount-section .label { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #1e3a8a; margin-bottom: 6px; }
+      #print-portal .amount-section .amount { font-size: 30px; font-weight: bold; color: #1e3a8a; font-family: 'Georgia', serif; }
+      #print-portal .status-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; background: #d1fae5; color: #065f46; }
+      #print-portal .signatures { display: flex; justify-content: space-between; margin-top: 50px; gap: 40px; }
+      #print-portal .sig-block { flex: 1; text-align: center; }
+      #print-portal .sig-block .line { border-top: 1px solid #333; margin-bottom: 6px; height: 40px; }
+      #print-portal .sig-block .name { font-size: 13px; font-weight: bold; color: #0f172a; }
+      #print-portal .sig-block .role { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+      #print-portal .footer-note { margin-top: 34px; padding-top: 18px; border-top: 1px dashed #ccc; font-size: 10px; color: #888; text-align: center; line-height: 1.6; }
+    </style>
+
+    <div class="receipt">
+      <div class="header">
+        <div class="republic">Republic of the Philippines</div>
+        <div class="barangay">BARANGAY BAGOCBOC</div>
+        <div class="location">Opol, Misamis Oriental</div>
+      </div>
+
+      <div class="title">Official Receipt</div>
+      <div class="subtitle">Payment Acknowledgement</div>
+
+      <div class="or-box">
+        <div>
+          <div class="label">OR Number</div>
+          <div class="value">${payment.or_number || "N/A"}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="label">Date Issued</div>
+          <div style="font-size:13px;font-weight:600;color:#0f172a;margin-top:4px">
+            ${formattedDate}${formattedTime ? ` • ${formattedTime}` : ""}
+          </div>
+        </div>
+      </div>
+
+      <table class="details">
+        <tr><td class="field">Received From</td><td class="val">${residentName}</td></tr>
+        <tr><td class="field">Payment Type</td><td class="val">${payment.payment_type || "N/A"}</td></tr>
+        <tr><td class="field">Payment Method</td><td class="val">${payment.payment_method || "Cash"}</td></tr>
+        <tr><td class="field">Status</td><td class="val"><span class="status-badge">${payment.status || "Completed"}</span></td></tr>
+        ${payment.description ? `<tr><td class="field">Description</td><td class="val">${payment.description}</td></tr>` : ""}
+      </table>
+
+      <div class="amount-section">
+        <div class="label">Total Amount Paid</div>
+        <div class="amount">₱ ${payment.amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      </div>
+
+      <div class="signatures">
+        <div class="sig-block">
+          <div class="line"></div>
+          <div class="name">Barangay Treasurer</div>
+          <div class="role">Authorized Personnel</div>
+        </div>
+        <div class="sig-block">
+          <div class="line"></div>
+          <div class="name">${residentName}</div>
+          <div class="role">Payor / Received By</div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        This is a system-generated official receipt from the Barangay Bagocboc Management System.<br/>
+        Thank you for your payment. Please keep this receipt for your records.
+      </div>
+    </div>
+  `;
+
+    printHTML(html);
+  };
 
   // ============================================
   // HANDLERS
@@ -433,64 +698,6 @@ export default function TreasurerDashboard() {
     }
   };
 
-  const handlePrintReceipt = (payment: PaymentRecord) => {
-    const printWindow = window.open("", "_blank", "width=600,height=800");
-    if (!printWindow) {
-      toast.error("Please allow popups");
-      return;
-    }
-    printWindow.document.write(`
-      <!DOCTYPE html><html><head><title>Receipt - ${payment.or_number}</title>
-      <style>
-        body{font-family:Arial;padding:40px;max-width:400px;margin:0 auto;color:#333}
-        .header{text-align:center;border-bottom:2px solid #333;padding-bottom:20px;margin-bottom:20px}
-        .header h1{font-size:24px;margin:0;color:#1a56db}
-        .details table{width:100%;border-collapse:collapse}
-        .details td{padding:8px 0}
-        .details .label{color:#666;font-weight:bold}
-        .details .value{text-align:right}
-        .amount{font-size:24px;font-weight:bold;color:#1a56db;text-align:center;padding:20px;border-top:2px dashed #ddd;border-bottom:2px dashed #ddd;margin:20px 0}
-        .footer{text-align:center;font-size:12px;color:#999;margin-top:30px;padding-top:20px;border-top:1px solid #ddd}
-        @media print{.no-print{display:none}body{padding:20px}}
-      </style></head><body>
-      <div class="header"><h1>Barangay Bagocboc</h1><p>Official Receipt</p><p><strong>${payment.or_number || "N/A"}</strong></p></div>
-      <div class="details"><table>
-        <tr><td class="label">Date</td><td class="value">${payment.paid_at ? formatDate(payment.paid_at) : formatDate(payment.created_at)}</td></tr>
-        <tr><td class="label">Resident</td><td class="value">${payment.resident?.first_name || ""} ${payment.resident?.last_name || "N/A"}</td></tr>
-        <tr><td class="label">Payment Type</td><td class="value">${payment.payment_type || "N/A"}</td></tr>
-        <tr><td class="label">Payment Method</td><td class="value">${payment.payment_method || "N/A"}</td></tr>
-        <tr><td class="label">Status</td><td class="value">${payment.status || "pending"}</td></tr>
-      </table></div>
-      <div class="amount">${formatCurrency(payment.amount || 0)}</div>
-      <div class="footer"><p>Thank you for your payment!</p><p>Barangay Bagocboc Management System</p></div>
-      <div style="text-align:center;margin-top:20px;" class="no-print">
-        <button onclick="window.print()" style="padding:10px 30px;background:#1a56db;color:white;border:none;border-radius:5px;cursor:pointer;">Print</button>
-        <button onclick="window.close()" style="padding:10px 30px;background:#6b7280;color:white;border:none;border-radius:5px;cursor:pointer;margin-left:10px;">Close</button>
-      </div>
-      <script>setTimeout(() => window.print(), 500)</script></body></html>
-    `);
-    printWindow.document.close();
-  };
-
-  // ============================================
-  // RENDER HELPERS
-  // ============================================
-
-  const months = [
-    { value: "01", label: "January" },
-    { value: "02", label: "February" },
-    { value: "03", label: "March" },
-    { value: "04", label: "April" },
-    { value: "05", label: "May" },
-    { value: "06", label: "June" },
-    { value: "07", label: "July" },
-    { value: "08", label: "August" },
-    { value: "09", label: "September" },
-    { value: "10", label: "October" },
-    { value: "11", label: "November" },
-    { value: "12", label: "December" },
-  ];
-
   const getMethodIcon = (method: string) => {
     switch (method?.toLowerCase()) {
       case "cash":
@@ -502,14 +709,16 @@ export default function TreasurerDashboard() {
     }
   };
 
+  const hasActiveFilters =
+    paymentTypeFilter !== "all" || preset !== "month";
+
   // ============================================
-  // LOADING / ERROR STATES
+  // LOADING / ERROR
   // ============================================
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        {/* Header Skeleton */}
         <div className="flex justify-between items-center">
           <div className="space-y-2">
             <div className="h-8 w-64 bg-theme-hover rounded-lg animate-pulse" />
@@ -517,30 +726,12 @@ export default function TreasurerDashboard() {
           </div>
           <div className="h-10 w-32 bg-theme-hover rounded-lg animate-pulse" />
         </div>
-
-        {/* KPI Skeleton */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="bg-theme-surface border border-theme rounded-xl p-6"
-            >
+            <div key={i} className="bg-theme-surface border border-theme rounded-xl p-6">
               <div className="h-4 w-24 bg-theme-hover rounded animate-pulse mb-3" />
               <div className="h-8 w-32 bg-theme-hover rounded animate-pulse mb-2" />
               <div className="h-3 w-20 bg-theme-hover rounded animate-pulse" />
-            </div>
-          ))}
-        </div>
-
-        {/* Chart Skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="bg-theme-surface border border-theme rounded-xl p-6"
-            >
-              <div className="h-5 w-40 bg-theme-hover rounded animate-pulse mb-4" />
-              <div className="h-64 bg-theme-hover rounded-lg animate-pulse" />
             </div>
           ))}
         </div>
@@ -579,9 +770,7 @@ export default function TreasurerDashboard() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* ============================================ */}
       {/* HEADER */}
-      {/* ============================================ */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -602,17 +791,14 @@ export default function TreasurerDashboard() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-all font-medium text-sm ${
-              showFilters
+            className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-all font-medium text-sm ${showFilters
                 ? "border-theme-primary bg-theme-primary/10 text-theme-primary"
                 : "border-theme text-theme-text hover:bg-theme-hover"
-            }`}
+              }`}
           >
             <Filter className="w-4 h-4" />
             Filters
-            {(filterMonth || paymentTypeFilter !== "all") && (
-              <span className="w-2 h-2 rounded-full bg-theme-primary" />
-            )}
+            {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-theme-primary" />}
           </button>
           <button
             onClick={handleRefresh}
@@ -639,113 +825,153 @@ export default function TreasurerDashboard() {
         </div>
       </div>
 
-      {/* ============================================ */}
-      {/* FILTER BAR (Collapsible) */}
-      {/* ============================================ */}
+      {/* FILTER BAR — with Today / Week / Month / Custom / All */}
       {showFilters && (
-        <div className="bg-theme-surface border border-theme rounded-xl p-4 shadow-sm animate-in slide-in-from-top-2 duration-200">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-theme-textSecondary mb-1.5">
-                Date From
-              </label>
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) =>
-                  setDateRange({ ...dateRange, start: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-theme rounded-lg bg-theme-surface text-theme-text text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
-              />
+        <div className="bg-theme-surface border border-theme rounded-xl p-4 shadow-sm space-y-3">
+          {/* Top row: preset buttons + payment type filter */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-theme-textSecondary uppercase tracking-wider flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5" />
+                Period
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: "today", label: "Today" },
+                  { id: "week", label: "This Week" },
+                  { id: "month", label: "This Month" },
+                  { id: "custom", label: "Custom Range" },
+                  { id: "all", label: "All Time" },
+                ].map((p) => {
+                  const active = preset === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handlePreset(p.id as RangePreset)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active
+                          ? "bg-theme-primary text-white shadow-sm"
+                          : "bg-theme-background text-theme-textSecondary hover:bg-theme-hover border border-theme"
+                        }`}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-theme-textSecondary mb-1.5">
-                Date To
-              </label>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) =>
-                  setDateRange({ ...dateRange, end: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-theme rounded-lg bg-theme-surface text-theme-text text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-theme-textSecondary mb-1.5">
-                Month
-              </label>
-              <select
-                value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
-                className="w-full px-3 py-2 border border-theme rounded-lg bg-theme-surface text-theme-text text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
-              >
-                <option value="">All Months</option>
-                {months.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-theme-textSecondary mb-1.5">
-                Payment Type
-              </label>
-              <select
-                value={paymentTypeFilter}
-                onChange={(e) => setPaymentTypeFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-theme rounded-lg bg-theme-surface text-theme-text text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
-              >
-                <option value="all">All Types</option>
-                <option value="Barangay Clearance">Barangay Clearance</option>
-                <option value="Certificate of Residency">
-                  Certificate of Residency
-                </option>
-                <option value="Business Clearance">Business Clearance</option>
-                <option value="Certificate of Indigency">
-                  Certificate of Indigency
-                </option>
-              </select>
+
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="relative">
+                <select
+                  value={paymentTypeFilter}
+                  onChange={(e) => setPaymentTypeFilter(e.target.value)}
+                  className="px-3 py-1.5 border border-theme rounded-lg bg-theme-surface text-theme-text text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                >
+                  <option value="all">All Payment Types</option>
+                  {availablePaymentTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
-          {(filterMonth ||
-            paymentTypeFilter !== "all" ||
-            dateRange.start !==
-              new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-                .toISOString()
-                .split("T")[0]) && (
-            <div className="mt-3 pt-3 border-t border-theme flex justify-end">
+
+          {/* Bottom row: custom range inputs */}
+          {preset === "custom" && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-theme">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-theme-textSecondary" />
+                <label className="text-xs font-medium text-theme-textSecondary">
+                  From
+                </label>
+                <input
+                  type="date"
+                  value={range.start}
+                  max={range.end || undefined}
+                  onChange={(e) =>
+                    setRange({ ...range, start: e.target.value })
+                  }
+                  className="px-3 py-1.5 border border-theme rounded-lg bg-theme-surface text-theme-text text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-theme-textSecondary">
+                  To
+                </label>
+                <input
+                  type="date"
+                  value={range.end}
+                  min={range.start || undefined}
+                  onChange={(e) =>
+                    setRange({ ...range, end: e.target.value })
+                  }
+                  className="px-3 py-1.5 border border-theme rounded-lg bg-theme-surface text-theme-text text-sm focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none"
+                />
+              </div>
+              {(range.start || range.end) && (
+                <button
+                  onClick={() => setRange({ start: "", end: "" })}
+                  className="flex items-center gap-1 text-xs text-theme-primary hover:text-theme-secondary font-medium"
+                >
+                  <X className="w-3 h-3" /> Clear
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Summary line */}
+          <div className="text-xs text-theme-textSecondary pt-1 flex items-center justify-between gap-3 flex-wrap">
+            <span>
+              {preset === "all" ? (
+                <>Showing all records</>
+              ) : preset === "today" ? (
+                <>
+                  Showing today's records (
+                  <span className="font-semibold text-theme-text">
+                    {prettyDate(range.start)}
+                  </span>
+                  )
+                </>
+              ) : preset === "week" ? (
+                <>
+                  This week ({prettyDate(range.start)} —{" "}
+                  {prettyDate(range.end)})
+                </>
+              ) : preset === "month" ? (
+                <>
+                  This month ({prettyDate(range.start)} —{" "}
+                  {prettyDate(range.end)})
+                </>
+              ) : range.start && range.end ? (
+                <>
+                  Custom range ({prettyDate(range.start)} —{" "}
+                  {prettyDate(range.end)})
+                </>
+              ) : (
+                <>Select a date range</>
+              )}
+            </span>
+
+            {hasActiveFilters && (
               <button
                 onClick={() => {
-                  setFilterMonth("");
+                  handlePreset("month");
                   setPaymentTypeFilter("all");
-                  setDateRange({
-                    start: new Date(
-                      new Date().getFullYear(),
-                      new Date().getMonth(),
-                      1,
-                    )
-                      .toISOString()
-                      .split("T")[0],
-                    end: new Date().toISOString().split("T")[0],
-                  });
                 }}
-                className="text-xs text-theme-primary hover:text-theme-secondary font-medium"
+                className="text-theme-primary hover:text-theme-secondary font-medium"
               >
                 Clear all filters
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
-      {/* ============================================ */}
       {/* KPI CARDS */}
-      {/* ============================================ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Revenue */}
-        <div className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700 transition-all relative overflow-hidden">
+        <div className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/10 to-transparent rounded-full -mr-8 -mt-8" />
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
@@ -754,11 +980,10 @@ export default function TreasurerDashboard() {
               </div>
               {stats.trend !== 0 && (
                 <div
-                  className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${
-                    stats.trend > 0
+                  className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${stats.trend > 0
                       ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
                       : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                  }`}
+                    }`}
                 >
                   {stats.trend > 0 ? (
                     <ArrowUpRight className="w-3 h-3" />
@@ -776,13 +1001,12 @@ export default function TreasurerDashboard() {
               {formatCurrency(stats.totalRevenue)}
             </p>
             <p className="text-xs text-theme-textSecondary mt-1">
-              {stats.totalPayments + stats.totalTaxes} transactions
+              {stats.totalTransactions} transactions
             </p>
           </div>
         </div>
 
-        {/* Total Payments */}
-        <div className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all relative overflow-hidden">
+        <div className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full -mr-8 -mt-8" />
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
@@ -808,8 +1032,7 @@ export default function TreasurerDashboard() {
           </div>
         </div>
 
-        {/* Tax Payments */}
-        <div className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md hover:border-purple-300 dark:hover:border-purple-700 transition-all relative overflow-hidden">
+        <div className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-full -mr-8 -mt-8" />
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
@@ -832,9 +1055,8 @@ export default function TreasurerDashboard() {
           </div>
         </div>
 
-        {/* Pending Reports */}
         <div
-          className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md hover:border-amber-300 dark:hover:border-amber-700 transition-all relative overflow-hidden cursor-pointer"
+          className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
           onClick={() => navigate("/barangay-bagocboc/financial-reports")}
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-full -mr-8 -mt-8" />
@@ -851,21 +1073,15 @@ export default function TreasurerDashboard() {
             <p className="text-2xl font-bold text-theme-text mt-1">
               {stats.pendingReports}
             </p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-theme-textSecondary">
-                {stats.approvedReports} approved · {stats.rejectedReports}{" "}
-                rejected
-              </span>
-            </div>
+            <p className="text-xs text-theme-textSecondary mt-1">
+              {stats.approvedReports} approved · {stats.rejectedReports} rejected
+            </p>
           </div>
         </div>
       </div>
 
-      {/* ============================================ */}
-      {/* CHARTS SECTION */}
-      {/* ============================================ */}
+      {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue by Payment Type */}
         <div className="bg-theme-surface border border-theme rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -874,7 +1090,7 @@ export default function TreasurerDashboard() {
                 Revenue by Payment Type
               </h3>
               <p className="text-xs text-theme-textSecondary mt-0.5">
-                Breakdown of collections by category
+                Payments only (taxes shown separately)
               </p>
             </div>
           </div>
@@ -888,26 +1104,14 @@ export default function TreasurerDashboard() {
                 innerRadius={0.55}
                 label={{
                   text: (datum: any) => {
-                    const total = paymentTypeBreakdown.reduce(
-                      (sum, d) => sum + d.amount,
-                      0,
-                    );
-                    const pct =
-                      total > 0 ? Math.round((datum.amount / total) * 100) : 0;
+                    const total = paymentTypeBreakdown.reduce((sum, d) => sum + d.amount, 0);
+                    const pct = total > 0 ? Math.round((datum.amount / total) * 100) : 0;
                     return pct > 8 ? `${pct}%` : "";
                   },
-                  style: {
-                    fontWeight: "bold",
-                    fontSize: 11,
-                    fill: "#fff",
-                  },
+                  style: { fontWeight: "bold", fontSize: 11, fill: "#fff" },
                 }}
                 legend={{
-                  color: {
-                    title: false,
-                    position: "bottom",
-                    rowPadding: 8,
-                  },
+                  color: { title: false, position: "bottom", rowPadding: 8 },
                 }}
                 tooltip={{
                   items: [
@@ -931,7 +1135,6 @@ export default function TreasurerDashboard() {
           </div>
         </div>
 
-        {/* Daily Revenue */}
         <div className="bg-theme-surface border border-theme rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -940,7 +1143,7 @@ export default function TreasurerDashboard() {
                 Daily Revenue Trend
               </h3>
               <p className="text-xs text-theme-textSecondary mt-0.5">
-                Last 14 days of collections
+                Payments + tax collections in the selected range
               </p>
             </div>
           </div>
@@ -971,10 +1174,7 @@ export default function TreasurerDashboard() {
                   },
                 }}
                 color="#10b981"
-                columnStyle={{
-                  radiusTopLeft: 4,
-                  radiusTopRight: 4,
-                }}
+                columnStyle={{ radiusTopLeft: 4, radiusTopRight: 4 }}
                 tooltip={{
                   items: [
                     {
@@ -998,11 +1198,8 @@ export default function TreasurerDashboard() {
         </div>
       </div>
 
-      {/* ============================================ */}
       {/* PAYMENT METHODS + RECENT PAYMENTS */}
-      {/* ============================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Payment Methods */}
         <div className="bg-theme-surface border border-theme rounded-xl p-6 shadow-sm">
           <h3 className="font-semibold text-theme-text mb-4 flex items-center gap-2">
             <CreditCard className="w-4 h-4 text-theme-primary" />
@@ -1011,17 +1208,9 @@ export default function TreasurerDashboard() {
           <div className="space-y-3">
             {paymentMethodBreakdown.length > 0 ? (
               paymentMethodBreakdown.map((item, index) => {
-                const total = paymentMethodBreakdown.reduce(
-                  (sum, m) => sum + m.amount,
-                  0,
-                );
+                const total = paymentMethodBreakdown.reduce((sum, m) => sum + m.amount, 0);
                 const pct = total > 0 ? (item.amount / total) * 100 : 0;
-                const colors = [
-                  "bg-emerald-500",
-                  "bg-blue-500",
-                  "bg-purple-500",
-                  "bg-amber-500",
-                ];
+                const colors = ["bg-emerald-500", "bg-blue-500", "bg-purple-500", "bg-amber-500"];
                 return (
                   <div key={index} className="space-y-1.5">
                     <div className="flex items-center justify-between text-sm">
@@ -1054,7 +1243,6 @@ export default function TreasurerDashboard() {
           </div>
         </div>
 
-        {/* Recent Payments */}
         <div className="lg:col-span-2 bg-theme-surface border border-theme rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-theme flex items-center justify-between">
             <div>
@@ -1081,9 +1269,7 @@ export default function TreasurerDashboard() {
                   <Inbox className="w-7 h-7 text-theme-textSecondary/50" />
                 </div>
                 <div>
-                  <p className="text-theme-text font-medium">
-                    No Payments Found
-                  </p>
+                  <p className="text-theme-text font-medium">No Payments Found</p>
                   <p className="text-sm text-theme-textSecondary">
                     No payments match your current filters
                   </p>
@@ -1095,114 +1281,95 @@ export default function TreasurerDashboard() {
               <table className="w-full">
                 <thead className="bg-theme-background border-b border-theme">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      OR Number
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      Resident
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      Method
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                      Actions
-                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">OR Number</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Resident</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Type</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Method</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-theme">
-                  {filteredPayments
-                    .slice(0, 8)
-                    .map((payment: PaymentRecord) => (
-                      <tr
-                        key={payment.id}
-                        className="hover:bg-theme-hover transition-colors group"
-                      >
-                        <td className="px-4 py-3 font-mono text-xs font-semibold text-theme-text">
-                          {payment.or_number || "N/A"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-theme-primary/10 flex items-center justify-center flex-shrink-0">
-                              <User className="w-3.5 h-3.5 text-theme-primary" />
-                            </div>
-                            <span className="text-sm text-theme-text truncate max-w-[140px]">
-                              {payment.resident?.first_name || "Unknown"}{" "}
-                              {payment.resident?.last_name || ""}
-                            </span>
+                  {filteredPayments.slice(0, 8).map((payment: PaymentRecord) => (
+                    <tr key={payment.id} className="hover:bg-theme-hover transition-colors group">
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-theme-text">
+                        {payment.or_number || "N/A"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-theme-primary/10 flex items-center justify-center flex-shrink-0">
+                            <User className="w-3.5 h-3.5 text-theme-primary" />
                           </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-theme-textSecondary truncate block max-w-[140px]">
-                            {payment.payment_type || "N/A"}
+                          <span className="text-sm text-theme-text truncate max-w-[140px]">
+                            {payment.resident?.first_name || "Unknown"}{" "}
+                            {payment.resident?.last_name || ""}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-bold text-theme-text">
-                            {formatCurrency(payment.amount || 0)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-theme-background rounded-full text-xs font-medium text-theme-textSecondary">
-                            {getMethodIcon(payment.payment_method)}
-                            {payment.payment_method || "Cash"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full font-medium ${getStatusColor(payment.status || "pending")}`}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-theme-textSecondary truncate block max-w-[140px]">
+                          {payment.payment_type || "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-sm font-bold text-theme-text">
+                          {formatCurrency(payment.amount || 0)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-theme-background rounded-full text-xs font-medium text-theme-textSecondary">
+                          {getMethodIcon(payment.payment_method)}
+                          {payment.payment_method || "Cash"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full font-medium ${getStatusColor(
+                            payment.status || "pending",
+                          )}`}
+                        >
+                          {payment.status === "completed" ? (
+                            <CheckCircle className="w-3 h-3" />
+                          ) : (
+                            <Clock className="w-3 h-3" />
+                          )}
+                          {payment.status || "pending"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-theme-textSecondary">
+                          {payment.paid_at
+                            ? formatDate(payment.paid_at)
+                            : payment.created_at
+                              ? formatDate(payment.created_at)
+                              : "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handlePrintReceipt(payment)}
+                            className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
+                            title="Print Receipt"
                           >
-                            {payment.status === "completed" ? (
-                              <CheckCircle className="w-3 h-3" />
-                            ) : (
-                              <Clock className="w-3 h-3" />
-                            )}
-                            {payment.status || "pending"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-theme-textSecondary">
-                            {payment.paid_at
-                              ? formatDate(payment.paid_at)
-                              : payment.created_at
-                                ? formatDate(payment.created_at)
-                                : "N/A"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handlePrintReceipt(payment)}
-                              className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
-                              title="Print Receipt"
-                            >
-                              <Printer className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedPayment(payment);
-                                setShowPaymentModal(true);
-                              }}
-                              className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
-                              title="View Details"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedPayment(payment);
+                              setShowPaymentModal(true);
+                            }}
+                            className="p-1.5 text-theme-textSecondary hover:text-theme-primary hover:bg-theme-primary/10 rounded-lg transition-colors"
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1210,9 +1377,7 @@ export default function TreasurerDashboard() {
         </div>
       </div>
 
-      {/* ============================================ */}
       {/* RECENT REPORTS */}
-      {/* ============================================ */}
       <div className="bg-theme-surface border border-theme rounded-xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-theme flex items-center justify-between">
           <div>
@@ -1266,35 +1431,18 @@ export default function TreasurerDashboard() {
             <table className="w-full">
               <thead className="bg-theme-background border-b border-theme">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                    Title
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                    Period
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Period</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-theme-textSecondary uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-theme">
                 {reports.slice(0, 5).map((report) => (
-                  <tr
-                    key={report.id}
-                    className="hover:bg-theme-hover transition-colors group"
-                  >
+                  <tr key={report.id} className="hover:bg-theme-hover transition-colors group">
                     <td className="px-4 py-3">
                       <p className="text-sm font-medium text-theme-text truncate max-w-[200px]">
                         {report.title}
@@ -1317,33 +1465,24 @@ export default function TreasurerDashboard() {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full font-medium ${
-                          report.status === "approved"
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full font-medium ${report.status === "approved"
                             ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                             : report.status === "pending"
                               ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
                               : report.status === "rejected"
                                 ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                                 : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                        }`}
+                          }`}
                       >
-                        {report.status === "approved" && (
-                          <CheckCircle className="w-3 h-3" />
-                        )}
-                        {report.status === "pending" && (
-                          <Clock className="w-3 h-3" />
-                        )}
-                        {report.status === "rejected" && (
-                          <XCircle className="w-3 h-3" />
-                        )}
+                        {report.status === "approved" && <CheckCircle className="w-3 h-3" />}
+                        {report.status === "pending" && <Clock className="w-3 h-3" />}
+                        {report.status === "rejected" && <XCircle className="w-3 h-3" />}
                         {report.status}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs text-theme-textSecondary">
-                        {report.created_at
-                          ? formatDate(report.created_at)
-                          : "N/A"}
+                        {report.created_at ? formatDate(report.created_at) : "N/A"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -1355,8 +1494,7 @@ export default function TreasurerDashboard() {
                                 setSelectedReport(report);
                                 setReportForm({
                                   title: report.title || "",
-                                  report_type:
-                                    report.report_type || "collection",
+                                  report_type: report.report_type || "collection",
                                   period: report.period || "",
                                   notes: report.notes || "",
                                 });
@@ -1386,11 +1524,7 @@ export default function TreasurerDashboard() {
         )}
       </div>
 
-      {/* ============================================ */}
       {/* MODALS */}
-      {/* ============================================ */}
-
-      {/* Payment Details Modal */}
       <Modal
         isOpen={showPaymentModal}
         onClose={() => {
@@ -1415,47 +1549,23 @@ export default function TreasurerDashboard() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <DetailItem
-                label="OR Number"
-                value={selectedPayment.or_number || "N/A"}
-                mono
-              />
-              <DetailItem
-                label="Status"
-                value={selectedPayment.status || "pending"}
-                badge={selectedPayment.status}
-              />
+              <DetailItem label="OR Number" value={selectedPayment.or_number || "N/A"} mono />
+              <DetailItem label="Status" value={selectedPayment.status || "pending"} badge={selectedPayment.status} />
               <DetailItem
                 label="Resident"
                 value={`${selectedPayment.resident?.first_name || "Unknown"} ${selectedPayment.resident?.last_name || ""}`}
               />
-              <DetailItem
-                label="Payment Type"
-                value={selectedPayment.payment_type || "N/A"}
-              />
-              <DetailItem
-                label="Payment Method"
-                value={selectedPayment.payment_method || "N/A"}
-              />
+              <DetailItem label="Payment Type" value={selectedPayment.payment_type || "N/A"} />
+              <DetailItem label="Payment Method" value={selectedPayment.payment_method || "N/A"} />
               <DetailItem
                 label="Date Paid"
-                value={
-                  selectedPayment.paid_at
-                    ? formatDate(selectedPayment.paid_at)
-                    : "Not paid yet"
-                }
+                value={selectedPayment.paid_at ? formatDate(selectedPayment.paid_at) : "Not paid yet"}
               />
               <div className="col-span-2">
-                <DetailItem
-                  label="Description"
-                  value={selectedPayment.description || "No description"}
-                />
+                <DetailItem label="Description" value={selectedPayment.description || "No description"} />
               </div>
               <div className="col-span-2">
-                <DetailItem
-                  label="Processed By"
-                  value={selectedPayment.processed_by?.email || "N/A"}
-                />
+                <DetailItem label="Processed By" value={selectedPayment.processed_by?.email || "N/A"} />
               </div>
             </div>
 
@@ -1480,7 +1590,6 @@ export default function TreasurerDashboard() {
         )}
       </Modal>
 
-      {/* Create Report Modal */}
       <Modal
         isOpen={showReportModal}
         onClose={() => {
@@ -1513,7 +1622,6 @@ export default function TreasurerDashboard() {
         />
       </Modal>
 
-      {/* Edit Report Modal */}
       <Modal
         isOpen={showEditReportModal}
         onClose={() => {
@@ -1536,7 +1644,6 @@ export default function TreasurerDashboard() {
         />
       </Modal>
 
-      {/* Delete Report Modal */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => {
@@ -1559,12 +1666,8 @@ export default function TreasurerDashboard() {
           </div>
           {selectedReport && (
             <div className="p-4 bg-theme-background rounded-lg">
-              <p className="font-medium text-theme-text">
-                {selectedReport.title}
-              </p>
-              <p className="text-sm text-theme-textSecondary">
-                {selectedReport.period}
-              </p>
+              <p className="font-medium text-theme-text">{selectedReport.title}</p>
+              <p className="text-sm text-theme-textSecondary">{selectedReport.period}</p>
             </div>
           )}
           <div className="flex justify-end gap-3">
@@ -1619,14 +1722,14 @@ function DetailItem({
       </p>
       {badge ? (
         <span
-          className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full font-medium ${getStatusColor(badge)}`}
+          className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full font-medium ${getStatusColor(
+            badge,
+          )}`}
         >
           {badge}
         </span>
       ) : (
-        <p
-          className={`text-sm font-medium text-theme-text ${mono ? "font-mono" : ""}`}
-        >
+        <p className={`text-sm font-medium text-theme-text ${mono ? "font-mono" : ""}`}>
           {value}
         </p>
       )}
@@ -1663,9 +1766,7 @@ function ReportForm({
         </label>
         <select
           value={formData.report_type}
-          onChange={(e) =>
-            setFormData({ ...formData, report_type: e.target.value })
-          }
+          onChange={(e) => setFormData({ ...formData, report_type: e.target.value })}
           className="w-full px-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-all"
         >
           <option value="collection">Collection Report</option>

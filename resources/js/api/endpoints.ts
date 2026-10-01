@@ -1175,14 +1175,25 @@ export const roleApi = {
 // ============================================
 
 export const notificationApi = {
-  getAll: async () => {
+  getAll: async (params?: { unread_only?: boolean }) => {
     try {
-      const response = await api.get("/web/notifications");
+      const response = await api.get("/web/notifications", { params });
       return response;
     } catch (error) {
       console.error("Error fetching notifications:", error);
       return { data: { data: [] } };
     }
+  },
+
+  /**
+   * ✅ Lightweight polling endpoint.
+   * Pass `since_id` to get only newer notifications.
+   */
+  poll: async (sinceId: number = 0, limit: number = 20) => {
+    const response = await api.get("/web/notifications/poll", {
+      params: { since_id: sinceId, limit },
+    });
+    return response;
   },
 
   getUnreadCount: async () => {
@@ -1191,40 +1202,30 @@ export const notificationApi = {
       return response;
     } catch (error) {
       console.error("Error fetching unread count:", error);
-      return { data: { count: 0 } };
+      return { data: { data: { count: 0 } } };
     }
   },
 
   markRead: async (notificationId: number) => {
-    try {
-      const response = await api.post("/web/notifications/mark-read", {
-        notification_id: notificationId,
-      });
-      return response;
-    } catch (error) {
-      console.error("Error marking notification read:", error);
-      throw error;
-    }
+    const response = await api.post("/web/notifications/mark-read", {
+      notification_id: notificationId,
+    });
+    return response;
   },
 
   markAllRead: async () => {
-    try {
-      const response = await api.post("/web/notifications/mark-all-read");
-      return response;
-    } catch (error) {
-      console.error("Error marking all notifications read:", error);
-      throw error;
-    }
+    const response = await api.post("/web/notifications/mark-all-read");
+    return response;
   },
 
   send: async (data: any) => {
-    try {
-      const response = await api.post("/web/notifications/send", data);
-      return response;
-    } catch (error) {
-      console.error("Error sending notification:", error);
-      throw error;
-    }
+    const response = await api.post("/web/notifications/send", data);
+    return response;
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(`/web/notifications/${id}`);
+    return response;
   },
 };
 

@@ -1,20 +1,20 @@
 <?php
+// app/Http/Controllers/Mobile/Health/NutritionAssessmentController.php
 
 namespace App\Http\Controllers\Mobile\Health;
 
 use App\Http\Controllers\Controller;
 use App\Models\NutritionAssessment;
-use App\Models\ProgramParticipant;
+use App\Traits\ResolvesZones;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class NutritionAssessmentController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, ResolvesZones;
 
     public function index(Request $request)
     {
@@ -28,10 +28,6 @@ class NutritionAssessmentController extends Controller
         return $this->respondSuccess($assessments);
     }
 
-    /**
-     * Create nutrition assessment
-     * ✅ Zone-scoped notification to BHWs
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -70,12 +66,10 @@ class NutritionAssessmentController extends Controller
         $participantName = $assessment->participant?->resident?->full_name ?? 'Unknown';
         $residentId = $assessment->participant?->resident_id;
 
-        // ✅ ZONE-SCOPED NOTIFICATION
         try {
             $zoneId = $residentId ? $this->resolveZoneForResident((int) $residentId) : null;
 
             if ($zoneId) {
-                // ✅ Underweight / severely underweight → HIGH priority
                 $isConcerning = in_array($request->nutrition_status, [
                     'underweight',
                     'severely_underweight',
@@ -175,20 +169,5 @@ class NutritionAssessmentController extends Controller
 
         $assessment->delete();
         return $this->respondSuccess(null, 'Nutrition assessment deleted successfully');
-    }
-
-    /**
-     * Resolve the zone ID for a resident via their active household
-     */
-    private function resolveZoneForResident(int $residentId): ?int
-    {
-        $zoneId = DB::table('resident_households')
-            ->join('households', 'resident_households.household_id', '=', 'households.id')
-            ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
-            ->where('resident_households.resident_id', $residentId)
-            ->where('resident_households.status', 'active')
-            ->value('household_addresses.zone');
-
-        return $zoneId ? (int) $zoneId : null;
     }
 }

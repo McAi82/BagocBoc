@@ -4,8 +4,8 @@
 namespace App\Http\Controllers\Mobile\Zone;
 
 use App\Http\Controllers\Controller;
+use App\Models\BarangayZone;
 use App\Models\ComplianceRequirement;
-use App\Models\User;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -33,10 +33,6 @@ class ComplianceManagementController extends Controller
         }
     }
 
-    /**
-     * Create compliance requirement
-     * ✅ Zone-scoped notification to Residents
-     */
     public function store(Request $request)
     {
         try {
@@ -55,16 +51,10 @@ class ComplianceManagementController extends Controller
 
             $compliance = ComplianceRequirement::create($request->all());
 
-            // ✅ ZONE-SCOPED NOTIFICATION
-            // The `zone` field can be a zone ID, a zone name, or a free-form
-            // string. We try to resolve it to a numeric zone_id first so we
-            // can scope the notification. If it doesn't resolve, we fall back
-            // to notifying all residents (barangay-wide requirement).
             try {
                 $zoneId = $this->resolveZoneId($request->zone);
 
                 if ($zoneId) {
-                    // ✅ Notify ONLY residents in that zone
                     $userIds = $this->getUserIdsForRoleInZone('Resident', $zoneId);
 
                     if (!empty($userIds)) {
@@ -86,8 +76,6 @@ class ComplianceManagementController extends Controller
                         ]);
                     }
                 } else {
-                    // Couldn't resolve zone → treat as barangay-wide requirement.
-                    // Notify all Residents.
                     Log::info('Compliance requirement — zone not resolvable, notifying all residents', [
                         'compliance_id' => $compliance->id,
                         'zone_input' => $request->zone,
@@ -164,31 +152,20 @@ class ComplianceManagementController extends Controller
         }
     }
 
-    // ============================================
-    // PRIVATE HELPERS
-    // ============================================
-
-    /**
-     * Resolve a zone identifier (ID or name or "Zone N") to a numeric zone_id.
-     * Returns null if it can't be resolved — caller should fall back.
-     */
     private function resolveZoneId($zoneInput): ?int
     {
         if ($zoneInput === null || $zoneInput === '') return null;
 
-        // Numeric ID?
         if (is_numeric($zoneInput)) {
-            $exists = \App\Models\BarangayZone::where('id', (int) $zoneInput)->exists();
+            $exists = BarangayZone::where('id', (int) $zoneInput)->exists();
             return $exists ? (int) $zoneInput : null;
         }
 
-        // Name match?
-        $zone = \App\Models\BarangayZone::where('name', $zoneInput)->first();
+        $zone = BarangayZone::where('name', $zoneInput)->first();
         if ($zone) return (int) $zone->id;
 
-        // Try "Zone 5" → extract number
         if (preg_match('/zone\s*(\d+)/i', $zoneInput, $m)) {
-            $zoneByNumber = \App\Models\BarangayZone::where('zone_number', (int) $m[1])->first();
+            $zoneByNumber = BarangayZone::where('zone_number', (int) $m[1])->first();
             if ($zoneByNumber) return (int) $zoneByNumber->id;
         }
 

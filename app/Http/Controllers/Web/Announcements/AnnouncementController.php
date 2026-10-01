@@ -17,25 +17,30 @@ class AnnouncementController extends Controller
     use SendsNotifications;
 
     /**
-     * Get all announcements
+     * Roles permitted to create / update / delete announcements.
+     */
+    private const MANAGE_ROLES = ['Super Admin', 'Barangay Captain'];
+
+    /**
+     * Get all announcements (every authenticated user can view).
      */
     public function index(Request $request)
     {
         $query = Announcement::with(['createdBy']);
 
-        if ($request->has('status')) {
+        if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        if ($request->has('priority')) {
+        if ($request->filled('priority')) {
             $query->where('priority', $request->priority);
         }
 
-        if ($request->has('target_group')) {
+        if ($request->filled('target_group')) {
             $query->where('target_group', $request->target_group);
         }
 
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'LIKE', "%{$search}%")
@@ -43,13 +48,17 @@ class AnnouncementController extends Controller
             });
         }
 
-        $query->where(function ($q) {
-            $q->where('status', 'Published')
+        // Only show Published + non-expired to non-managers
+        $userRoles = $this->currentUserRoles();
+        $isManager = count(array_intersect($userRoles, self::MANAGE_ROLES)) > 0;
+
+        if (!$isManager) {
+            $query->where('status', 'Published')
                 ->where(function ($sq) {
                     $sq->whereNull('expires_at')
                         ->orWhere('expires_at', '>', now());
                 });
-        });
+        }
 
         $announcements = $query->orderBy('created_at', 'desc')->paginate(10);
 
@@ -57,19 +66,25 @@ class AnnouncementController extends Controller
     }
 
     /**
-     * Create announcement
-     * ✅ Notifies users in the target group
+     * Create announcement — notifies ALL users.
      */
     public function store(Request $request)
     {
+        if (!$this->canManage()) {
+            return $this->respondForbidden(
+                'Only Super Admin or Barangay Captain can create announcements.',
+            );
+        }
+
         $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-            'message' => 'required|string',
+            'title'        => 'required|string|max:255',
+            'message'      => 'required|string',
             'target_group' => 'required|in:All,Youth,Senior Citizens,Heads of Family,Voters,Pregnant Women,Lactating Mothers',
-            'priority' => 'required|in:low,medium,high',
-            'action_url' => 'nullable|string|max:500',
-            'image_url' => 'nullable|string|max:500',
-            'expires_at' => 'nullable|date|after:now',
+            'priority'     => 'required|in:low,medium,high',
+            'action_url'   => 'nullable|string|max:500',
+            'image_url'    => 'nullable|string|max:500',
+            'expires_at'   => 'nullable|date|after:now',
+            'status'       => 'sometimes|in:Published,Draft,Archived',
         ]);
 
         if ($validator->fails()) {
@@ -78,28 +93,30 @@ class AnnouncementController extends Controller
 
         $announcement = Announcement::create([
             'created_by_user_id' => Auth::id(),
-            'title' => $request->title,
-            'message' => $request->message,
-            'target_group' => $request->target_group,
-            'priority' => $request->priority,
-            'action_url' => $request->action_url,
-            'image_url' => $request->image_url,
-            'expires_at' => $request->expires_at,
-            'status' => 'Published',
+            'title'              => $request->title,
+            'message'            => $request->message,
+            'target_group'       => $request->target_group,
+            'priority'           => $request->priority,
+            'action_url'         => $request->action_url,
+            'image_url'          => $request->image_url,
+            'expires_at'         => $request->expires_at,
+            'status'             => $request->input('status', 'Published'),
         ]);
 
-        // ✅ Notify users in the target group
-        $this->notifyTargetGroup($announcement);
+        // ✅ Broadcast to ALL active users when published
+        if ($announcement->status === 'Published') {
+            $this->notifyAllUsers($announcement);
+        }
 
         return $this->respondSuccess(
             $announcement->load('createdBy'),
             'Announcement created successfully',
-            201
+            201,
         );
     }
 
     /**
-     * Show announcement
+     * Show announcement.
      */
     public function show($id)
     {
@@ -113,10 +130,16 @@ class AnnouncementController extends Controller
     }
 
     /**
-     * Update announcement
+     * Update announcement.
      */
     public function update(Request $request, $id)
     {
+        if (!$this->canManage()) {
+            return $this->respondForbidden(
+                'Only Super Admin or Barangay Captain can update announcements.',
+            );
+        }
+
         $announcement = Announcement::find($id);
 
         if (!$announcement) {
@@ -124,33 +147,45 @@ class AnnouncementController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'title' => 'sometimes|string|max:255',
-            'message' => 'sometimes|string',
+            'title'        => 'sometimes|string|max:255',
+            'message'      => 'sometimes|string',
             'target_group' => 'sometimes|in:All,Youth,Senior Citizens,Heads of Family,Voters,Pregnant Women,Lactating Mothers',
-            'priority' => 'sometimes|in:low,medium,high',
-            'action_url' => 'nullable|string|max:500',
-            'image_url' => 'nullable|string|max:500',
-            'expires_at' => 'nullable|date|after:now',
-            'status' => 'sometimes|in:Published,Draft,Archived',
+            'priority'     => 'sometimes|in:low,medium,high',
+            'action_url'   => 'nullable|string|max:500',
+            'image_url'    => 'nullable|string|max:500',
+            'expires_at'   => 'nullable|date|after:now',
+            'status'       => 'sometimes|in:Published,Draft,Archived',
         ]);
 
         if ($validator->fails()) {
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
+        $wasDraft = $announcement->status !== 'Published';
         $announcement->update($request->all());
 
+        // If the announcement just became Published, broadcast to everyone
+        if ($wasDraft && $announcement->status === 'Published') {
+            $this->notifyAllUsers($announcement);
+        }
+
         return $this->respondSuccess(
-            $announcement->load('createdBy'),
-            'Announcement updated successfully'
+            $announcement->fresh()->load('createdBy'),
+            'Announcement updated successfully',
         );
     }
 
     /**
-     * Delete announcement
+     * Delete announcement.
      */
     public function destroy($id)
     {
+        if (!$this->canManage()) {
+            return $this->respondForbidden(
+                'Only Super Admin or Barangay Captain can delete announcements.',
+            );
+        }
+
         $announcement = Announcement::find($id);
 
         if (!$announcement) {
@@ -163,7 +198,7 @@ class AnnouncementController extends Controller
     }
 
     /**
-     * Get all announcements for mobile
+     * Get all announcements for mobile (public list, still auth-protected).
      */
     public function getPublic(Request $request)
     {
@@ -173,7 +208,7 @@ class AnnouncementController extends Controller
                     ->orWhere('expires_at', '>', now());
             });
 
-        if ($request->has('target_group')) {
+        if ($request->filled('target_group')) {
             $query->where('target_group', $request->target_group);
         }
 
@@ -187,12 +222,35 @@ class AnnouncementController extends Controller
     // ============================================
 
     /**
-     * Send notifications to users matching the target group
+     * Resolve the current user's role names.
      */
-    private function notifyTargetGroup(Announcement $announcement): void
+    private function currentUserRoles(): array
+    {
+        $user = Auth::user();
+        if (!$user) return [];
+
+        return $user->roles()->pluck('name')->toArray();
+    }
+
+    /**
+     * Check if the current user can manage announcements.
+     */
+    private function canManage(): bool
+    {
+        $roles = $this->currentUserRoles();
+        return count(array_intersect($roles, self::MANAGE_ROLES)) > 0;
+    }
+
+    /**
+     * Send the announcement notification to EVERY active user.
+     */
+    private function notifyAllUsers(Announcement $announcement): void
     {
         try {
-            $userIds = $this->resolveTargetGroupUserIds($announcement->target_group);
+            $userIds = User::where('account_status', 'active')
+                ->pluck('id')
+                ->toArray();
+
             if (empty($userIds)) return;
 
             $priority = $announcement->priority === 'high' ? 'high' : 'normal';
@@ -203,81 +261,13 @@ class AnnouncementController extends Controller
                 $announcement->message,
                 'announcement',
                 $priority,
-                $announcement->action_url ?: '/announcements',
+                $announcement->action_url ?: '/barangay-bagocboc/announcements',
                 Auth::id(),
                 'announcement',
-                $announcement->id
+                $announcement->id,
             );
         } catch (\Exception $e) {
-            Log::error('Announcement notify error: ' . $e->getMessage());
+            Log::error('Announcement broadcast error: ' . $e->getMessage());
         }
-    }
-
-    /**
-     * Resolve a target group to a list of user IDs
-     */
-    private function resolveTargetGroupUserIds(string $targetGroup): array
-    {
-        switch ($targetGroup) {
-            case 'All':
-                // Everyone who has a user account
-                return User::whereNotNull('account_status')
-                    ->where('account_status', 'active')
-                    ->pluck('id')
-                    ->toArray();
-
-            case 'Youth':
-                return $this->userIdsByAge(15, 30);
-
-            case 'Senior Citizens':
-                return $this->userIdsByAge(60, 200);
-
-            case 'Heads of Family':
-                // Users whose resident is the primary of a household
-                return User::whereHas('resident', function ($q) {
-                    $q->whereHas('households', function ($hq) {
-                        $hq->where('resident_households.is_primary', true);
-                    });
-                })->pluck('id')->toArray();
-
-            case 'Voters':
-                return User::whereHas('resident', function ($q) {
-                    $q->whereIn('voter_status', ['Registered Local', 'Registered_Outside']);
-                })->pluck('id')->toArray();
-
-            case 'Pregnant Women':
-                return User::whereHas('resident', function ($q) {
-                    $q->whereHas('maternalProfiles', function ($mq) {
-                        $mq->where('pregnancy_status', 'pregnant');
-                    })->orWhereHas('maternalProfile', function ($mq) {
-                        $mq->where('pregnancy_status', 'pregnant');
-                    });
-                })->pluck('id')->toArray();
-
-            case 'Lactating Mothers':
-                return User::whereHas('resident', function ($q) {
-                    $q->whereHas('maternalProfiles', function ($mq) {
-                        $mq->where('pregnancy_status', 'postpartum');
-                    })->orWhereHas('maternalProfile', function ($mq) {
-                        $mq->where('pregnancy_status', 'postpartum');
-                    });
-                })->pluck('id')->toArray();
-
-            default:
-                return [];
-        }
-    }
-
-    /**
-     * Get user IDs by resident age range
-     */
-    private function userIdsByAge(int $minAge, int $maxAge): array
-    {
-        $minDate = now()->subYears($maxAge)->toDateString();
-        $maxDate = now()->subYears($minAge)->toDateString();
-
-        return User::whereHas('resident', function ($q) use ($minDate, $maxDate) {
-            $q->whereBetween('birth_date', [$minDate, $maxDate]);
-        })->pluck('id')->toArray();
     }
 }

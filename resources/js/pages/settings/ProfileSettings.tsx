@@ -1,6 +1,6 @@
 // resources/js/pages/settings/ProfileSettings.tsx
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   User,
@@ -20,15 +20,29 @@ import {
   Briefcase,
   RefreshCw,
   Info,
+  Camera,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { api } from "../../api/apiClient";
 import Spinner from "../../components/ui/Spinner";
 import toast from "react-hot-toast";
 
+// ============================================
+// CONSTANTS
+// ============================================
+
+const MAX_PHOTO_SIZE = 4 * 1024 * 1024; // 4 MB
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
 export default function ProfileSettings() {
   const navigate = useNavigate();
-  const { user, updateUser } = useAuthStore();
+  const { user, logout, updateUser } = useAuthStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
@@ -36,14 +50,28 @@ export default function ProfileSettings() {
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
   const [isSaving, setIsSaving] = useState(false);
 
+  // ✅ Photo state
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Password visibility
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // ✅ Change-password flow state
+  const [securityStep, setSecurityStep] = useState<"form" | "otp">("form");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpRequestedAt, setOtpRequestedAt] = useState<Date | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+
   const hasResident = !!user?.resident;
 
   const [formData, setFormData] = useState({
-    // Resident-specific (empty for Super Admin)
     first_name: "",
     middle_name: "",
     last_name: "",
@@ -54,8 +82,6 @@ export default function ProfileSettings() {
     address: "",
     occupation: "",
     education_attainment: "",
-
-    // User-level (always present)
     email: "",
     phone_number: "",
   });
@@ -69,9 +95,17 @@ export default function ProfileSettings() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   /* ============================================================
+     RESEND COOLDOWN TICKER
+     ============================================================ */
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
+
+  /* ============================================================
      FETCH USER
      ============================================================ */
-
   const fetchUserData = async () => {
     setIsLoading(true);
     setIsError(false);
@@ -95,17 +129,18 @@ export default function ProfileSettings() {
           : "",
         gender: resident?.gender || "",
         civil_status: resident?.civil_status || "",
-        address:
-          resident?.place_of_birth || resident?.address || "",
+        address: resident?.place_of_birth || resident?.address || "",
         occupation: resident?.occupation || "",
         education_attainment: resident?.education_attainment || "",
         email: userData?.email || "",
         phone_number: resident?.phone_number || userData?.phone_number || "",
       });
 
-      if (userData) {
-        updateUser(userData);
-      }
+      setPhotoPreview(userData?.profile_photo_url || null);
+      setPhotoFile(null);
+      setRemovePhoto(false);
+
+      if (userData) updateUser(userData);
     } catch (error) {
       console.error("❌ Error fetching user data:", error);
       setIsError(true);
@@ -121,9 +156,68 @@ export default function ProfileSettings() {
   }, []);
 
   /* ============================================================
-     INPUT HANDLING
+     PHOTO PICKER
      ============================================================ */
+  const handlePhotoClick = () => fileInputRef.current?.click();
 
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error("Only JPG, PNG, or WEBP images are allowed");
+      return;
+    }
+    if (file.size > MAX_PHOTO_SIZE) {
+      toast.error("Image must be smaller than 4 MB");
+      return;
+    }
+
+    setPhotoFile(file);
+    setRemovePhoto(false);
+
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    setRemovePhoto(true);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleUploadPhoto = async () => {
+    if (!photoFile) return;
+    setIsUploadingPhoto(true);
+    try {
+      const form = new FormData();
+      form.append("profile_photo", photoFile);
+      form.append("_method", "PUT");
+
+      const res = await api.post(`/web/users/${user?.id}`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const updated = res.data?.data;
+      if (updated) {
+        updateUser({ ...user, ...updated });
+        setPhotoPreview(updated.profile_photo_url || null);
+        setPhotoFile(null);
+      }
+      toast.success("Profile photo updated!");
+    } catch (err: any) {
+      console.error("Photo upload error:", err);
+      toast.error(err?.response?.data?.message || "Failed to upload photo");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  /* ============================================================
+     FORM HANDLERS
+     ============================================================ */
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -143,7 +237,6 @@ export default function ProfileSettings() {
   /* ============================================================
      VALIDATION
      ============================================================ */
-
   const validateProfile = () => {
     const newErrors: Record<string, string> = {};
 
@@ -153,7 +246,6 @@ export default function ProfileSettings() {
       newErrors.email = "Invalid email format";
     }
 
-    // Resident-specific validation only when applicable
     if (hasResident) {
       if (!formData.first_name.trim())
         newErrors.first_name = "First name is required";
@@ -167,6 +259,7 @@ export default function ProfileSettings() {
 
   const validatePassword = () => {
     const newErrors: Record<string, string> = {};
+
     if (!passwordData.current_password)
       newErrors.current_password = "Current password is required";
     if (!passwordData.new_password)
@@ -176,6 +269,7 @@ export default function ProfileSettings() {
     if (passwordData.new_password !== passwordData.new_password_confirmation) {
       newErrors.new_password_confirmation = "Passwords do not match";
     }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -183,7 +277,6 @@ export default function ProfileSettings() {
   /* ============================================================
      SAVE PROFILE
      ============================================================ */
-
   const handleSaveProfile = async () => {
     if (!validateProfile()) {
       toast.error("Please fix the errors below");
@@ -192,14 +285,8 @@ export default function ProfileSettings() {
 
     setIsSaving(true);
     try {
-      // Only send resident fields when the user actually has a resident
-      const data: Record<string, any> = {
-        email: formData.email,
-      };
-
-      if (formData.phone_number) {
-        data.phone_number = formData.phone_number;
-      }
+      const data: Record<string, any> = { email: formData.email };
+      if (formData.phone_number) data.phone_number = formData.phone_number;
 
       if (hasResident) {
         Object.assign(data, {
@@ -216,11 +303,10 @@ export default function ProfileSettings() {
         });
       }
 
-      console.log("📤 Saving profile:", data);
+      if (removePhoto) data.remove_photo = true;
 
       await api.put(`/web/users/${user?.id}`, data);
 
-      // Update the local store — preserve the existing resident when present
       updateUser({
         ...user,
         email: formData.email,
@@ -241,9 +327,8 @@ export default function ProfileSettings() {
               place_of_birth: formData.address,
             },
           }
-          : {
-            phone_number: formData.phone_number,
-          }),
+          : { phone_number: formData.phone_number }),
+        ...(removePhoto ? { profile_photo_url: null } : {}),
       });
 
       toast.success("Profile updated successfully!");
@@ -272,10 +357,9 @@ export default function ProfileSettings() {
   };
 
   /* ============================================================
-     CHANGE PASSWORD
+     CHANGE PASSWORD — STEP 1: Request OTP
      ============================================================ */
-
-  const handleChangePassword = async () => {
+  const handleRequestOtp = async () => {
     if (!validatePassword()) {
       toast.error("Please fix the errors below");
       return;
@@ -283,21 +367,21 @@ export default function ProfileSettings() {
 
     setIsSaving(true);
     try {
-      await api.put(`/web/users/${user?.id}`, {
+      const res = await api.post("/web/auth/change-password/request-otp", {
         current_password: passwordData.current_password,
-        password: passwordData.new_password,
-        password_confirmation: passwordData.new_password_confirmation,
       });
-      toast.success("Password changed successfully!");
-      setPasswordData({
-        current_password: "",
-        new_password: "",
-        new_password_confirmation: "",
-      });
-      setErrors({});
-    } catch (error: any) {
-      console.error("Password change error:", error);
-      const fieldErrors = error?.response?.data?.errors;
+
+      const data = res.data?.data || {};
+      if (data.dev_otp) setDevOtp(String(data.dev_otp));
+
+      setSecurityStep("otp");
+      setOtpCode("");
+      setOtpRequestedAt(new Date());
+      setResendCooldown(60);
+      toast.success("OTP sent to your email address.");
+    } catch (err: any) {
+      console.error("Request OTP error:", err);
+      const fieldErrors = err?.response?.data?.errors;
       if (fieldErrors && typeof fieldErrors === "object") {
         const mapped: Record<string, string> = {};
         Object.keys(fieldErrors).forEach((k) => {
@@ -305,11 +389,11 @@ export default function ProfileSettings() {
           mapped[k] = Array.isArray(v) ? v[0] : String(v);
         });
         setErrors(mapped);
-        const first = Object.keys(mapped)[0];
-        toast.error(`${mapped[first]}`);
+        toast.error(mapped.current_password || "Please fix the errors below");
       } else {
         toast.error(
-          error?.response?.data?.message || "Failed to change password",
+          err?.response?.data?.message ||
+          "Failed to send OTP. Please try again.",
         );
       }
     } finally {
@@ -318,9 +402,70 @@ export default function ProfileSettings() {
   };
 
   /* ============================================================
+     CHANGE PASSWORD — STEP 2: Confirm OTP + change
+     ============================================================ */
+  const handleConfirmChange = async () => {
+    if (otpCode.length !== 6) {
+      toast.error("Enter the 6-digit OTP.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await api.post("/web/auth/change-password", {
+        current_password: passwordData.current_password,
+        password: passwordData.new_password,
+        password_confirmation: passwordData.new_password_confirmation,
+        otp: otpCode,
+      });
+
+      toast.success("Password changed. Please log in again.");
+
+      setPasswordData({
+        current_password: "",
+        new_password: "",
+        new_password_confirmation: "",
+      });
+      setOtpCode("");
+      setSecurityStep("form");
+      setDevOtp(null);
+      setErrors({});
+
+      // Backend invalidated all tokens → force logout
+      setTimeout(() => {
+        logout();
+        navigate("/login", { replace: true });
+      }, 900);
+    } catch (err: any) {
+      console.error("Change password error:", err);
+      const fieldErrors = err?.response?.data?.errors;
+      if (fieldErrors && typeof fieldErrors === "object") {
+        const mapped: Record<string, string> = {};
+        Object.keys(fieldErrors).forEach((k) => {
+          const v = fieldErrors[k];
+          mapped[k] = Array.isArray(v) ? v[0] : String(v);
+        });
+        setErrors(mapped);
+        toast.error(Object.values(mapped)[0] || "Please fix the errors below");
+      } else {
+        toast.error(
+          err?.response?.data?.message || "Failed to change password.",
+        );
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelOtp = () => {
+    setSecurityStep("form");
+    setOtpCode("");
+    setDevOtp(null);
+  };
+
+  /* ============================================================
      HELPERS
      ============================================================ */
-
   const handleRefresh = () => {
     toast.loading("Refreshing...");
     fetchUserData().then(() => {
@@ -348,9 +493,8 @@ export default function ProfileSettings() {
   };
 
   /* ============================================================
-     LOADING / ERROR STATES
+     LOADING / ERROR
      ============================================================ */
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -389,7 +533,6 @@ export default function ProfileSettings() {
   /* ============================================================
      MAIN RENDER
      ============================================================ */
-
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -416,8 +559,8 @@ export default function ProfileSettings() {
         <button
           onClick={() => setActiveTab("profile")}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === "profile"
-            ? "border-theme-primary text-theme-primary"
-            : "border-transparent text-theme-textSecondary hover:text-theme-text"
+              ? "border-theme-primary text-theme-primary"
+              : "border-transparent text-theme-textSecondary hover:text-theme-text"
             }`}
         >
           <User className="w-4 h-4 inline mr-2" />
@@ -426,8 +569,8 @@ export default function ProfileSettings() {
         <button
           onClick={() => setActiveTab("security")}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === "security"
-            ? "border-theme-primary text-theme-primary"
-            : "border-transparent text-theme-textSecondary hover:text-theme-text"
+              ? "border-theme-primary text-theme-primary"
+              : "border-transparent text-theme-textSecondary hover:text-theme-text"
             }`}
         >
           <Lock className="w-4 h-4 inline mr-2" />
@@ -440,22 +583,52 @@ export default function ProfileSettings() {
       {/* ============================================ */}
       {activeTab === "profile" && (
         <div className="bg-theme-surface rounded-xl border border-theme shadow-sm overflow-hidden">
-          {/* Profile Header */}
+          {/* Header band with avatar */}
           <div className="bg-gradient-to-r from-theme-primary to-theme-secondary px-6 py-8 text-white">
             <div className="flex items-center gap-6 flex-wrap">
-              <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/30">
-                <span className="text-2xl font-bold text-white">
-                  {getInitials()}
-                </span>
+              {/* Avatar with hover overlay */}
+              <div className="relative group">
+                <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/30 overflow-hidden">
+                  {photoPreview ? (
+                    <img
+                      src={photoPreview}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-2xl font-bold text-white">
+                      {getInitials()}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handlePhotoClick}
+                  className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                  title="Change photo"
+                >
+                  <Camera className="w-6 h-6 text-white" />
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
               </div>
-              <div>
+
+              <div className="flex-1 min-w-0">
                 <h2 className="text-2xl font-bold">{getDisplayName()}</h2>
                 <p className="text-blue-100">{formData.email || "No email"}</p>
+
                 <div className="flex items-center gap-3 mt-2 flex-wrap">
                   <span
                     className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${user?.account_status === "active"
-                      ? "bg-green-500/30 text-green-100"
-                      : "bg-red-500/30 text-red-100"
+                        ? "bg-green-500/30 text-green-100"
+                        : "bg-red-500/30 text-red-100"
                       }`}
                   >
                     {user?.account_status === "active" ? (
@@ -469,6 +642,54 @@ export default function ProfileSettings() {
                     {user?.roles?.map((r: any) => r.name).join(", ") || "User"}
                   </span>
                 </div>
+
+                {/* Photo actions */}
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handlePhotoClick}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/15 hover:bg-white/25 backdrop-blur-sm rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Choose Photo
+                  </button>
+
+                  {photoPreview && (
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/30 hover:bg-red-500/50 backdrop-blur-sm rounded-lg text-xs font-medium transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Remove
+                    </button>
+                  )}
+
+                  {photoFile && (
+                    <button
+                      type="button"
+                      onClick={handleUploadPhoto}
+                      disabled={isUploadingPhoto}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-theme-primary hover:bg-blue-50 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {isUploadingPhoto ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-3.5 h-3.5" />
+                          Save Photo
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-blue-200 mt-2">
+                  JPG, PNG or WEBP · Max 4 MB
+                </p>
               </div>
             </div>
           </div>
@@ -479,6 +700,7 @@ export default function ProfileSettings() {
               <h3 className="text-lg font-semibold text-theme-text">
                 Personal Information
               </h3>
+
               {!isEditing ? (
                 <button
                   onClick={() => setIsEditing(true)}
@@ -517,7 +739,6 @@ export default function ProfileSettings() {
               )}
             </div>
 
-            {/* No-resident notice */}
             {!hasResident && (
               <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start gap-3">
                 <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
@@ -526,17 +747,15 @@ export default function ProfileSettings() {
                     This account has no linked resident profile.
                   </p>
                   <p className="mt-0.5 text-blue-700 dark:text-blue-400">
-                    You can still update your email and phone number. Resident
-                    fields are hidden because they don't apply.
+                    You can still update your email, phone number, and profile
+                    photo.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Resident fields — only if there's a resident */}
             {hasResident && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                {/* First Name */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     First Name
@@ -550,8 +769,8 @@ export default function ProfileSettings() {
                       onChange={handleChange}
                       disabled={!isEditing}
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                        ? "border-theme"
-                        : "border-theme bg-theme-background cursor-not-allowed"
+                          ? "border-theme"
+                          : "border-theme bg-theme-background cursor-not-allowed"
                         } ${errors.first_name ? "border-red-500" : ""}`}
                     />
                   </div>
@@ -562,7 +781,6 @@ export default function ProfileSettings() {
                   )}
                 </div>
 
-                {/* Middle Name */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Middle Name
@@ -574,13 +792,12 @@ export default function ProfileSettings() {
                     onChange={handleChange}
                     disabled={!isEditing}
                     className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       }`}
                   />
                 </div>
 
-                {/* Last Name */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Last Name
@@ -592,8 +809,8 @@ export default function ProfileSettings() {
                     onChange={handleChange}
                     disabled={!isEditing}
                     className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       } ${errors.last_name ? "border-red-500" : ""}`}
                   />
                   {errors.last_name && (
@@ -603,7 +820,6 @@ export default function ProfileSettings() {
                   )}
                 </div>
 
-                {/* Suffix */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Suffix
@@ -616,13 +832,12 @@ export default function ProfileSettings() {
                     disabled={!isEditing}
                     placeholder="Jr., Sr., III"
                     className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       }`}
                   />
                 </div>
 
-                {/* Birth Date */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Birth Date
@@ -636,14 +851,13 @@ export default function ProfileSettings() {
                       onChange={handleChange}
                       disabled={!isEditing}
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                        ? "border-theme"
-                        : "border-theme bg-theme-background cursor-not-allowed"
+                          ? "border-theme"
+                          : "border-theme bg-theme-background cursor-not-allowed"
                         }`}
                     />
                   </div>
                 </div>
 
-                {/* Gender */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Gender
@@ -654,8 +868,8 @@ export default function ProfileSettings() {
                     onChange={handleChange}
                     disabled={!isEditing}
                     className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       }`}
                   >
                     <option value="">Select Gender</option>
@@ -664,7 +878,6 @@ export default function ProfileSettings() {
                   </select>
                 </div>
 
-                {/* Civil Status */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Civil Status
@@ -675,8 +888,8 @@ export default function ProfileSettings() {
                     onChange={handleChange}
                     disabled={!isEditing}
                     className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       }`}
                   >
                     <option value="">Select Status</option>
@@ -687,7 +900,6 @@ export default function ProfileSettings() {
                   </select>
                 </div>
 
-                {/* Occupation */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Occupation
@@ -701,14 +913,13 @@ export default function ProfileSettings() {
                       onChange={handleChange}
                       disabled={!isEditing}
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                        ? "border-theme"
-                        : "border-theme bg-theme-background cursor-not-allowed"
+                          ? "border-theme"
+                          : "border-theme bg-theme-background cursor-not-allowed"
                         }`}
                     />
                   </div>
                 </div>
 
-                {/* Education */}
                 <div>
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Education Attainment
@@ -720,13 +931,12 @@ export default function ProfileSettings() {
                     onChange={handleChange}
                     disabled={!isEditing}
                     className={`w-full px-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       }`}
                   />
                 </div>
 
-                {/* Address / Place of Birth */}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                     Place of Birth / Address
@@ -740,8 +950,8 @@ export default function ProfileSettings() {
                       disabled={!isEditing}
                       rows={2}
                       className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                        ? "border-theme"
-                        : "border-theme bg-theme-background cursor-not-allowed"
+                          ? "border-theme"
+                          : "border-theme bg-theme-background cursor-not-allowed"
                         }`}
                     />
                   </div>
@@ -749,9 +959,7 @@ export default function ProfileSettings() {
               </div>
             )}
 
-            {/* Contact — always present */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Email */}
               <div>
                 <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                   Email Address
@@ -765,8 +973,8 @@ export default function ProfileSettings() {
                     onChange={handleChange}
                     disabled={!isEditing}
                     className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       } ${errors.email ? "border-red-500" : ""}`}
                   />
                 </div>
@@ -775,7 +983,6 @@ export default function ProfileSettings() {
                 )}
               </div>
 
-              {/* Phone */}
               <div>
                 <label className="block text-sm font-medium text-theme-textSecondary mb-1">
                   Phone Number
@@ -790,8 +997,8 @@ export default function ProfileSettings() {
                     disabled={!isEditing}
                     placeholder="09XXXXXXXXX"
                     className={`w-full pl-10 pr-4 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${isEditing
-                      ? "border-theme"
-                      : "border-theme bg-theme-background cursor-not-allowed"
+                        ? "border-theme"
+                        : "border-theme bg-theme-background cursor-not-allowed"
                       }`}
                   />
                 </div>
@@ -806,145 +1013,279 @@ export default function ProfileSettings() {
       {/* ============================================ */}
       {activeTab === "security" && (
         <div className="bg-theme-surface rounded-xl border border-theme shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-theme">
-            <h3 className="text-lg font-semibold text-theme-text flex items-center gap-2">
-              <Shield className="w-5 h-5 text-theme-primary" />
-              Change Password
-            </h3>
-            <p className="text-sm text-theme-textSecondary mt-1">
-              Update your password to keep your account secure
-            </p>
-          </div>
-
-          <div className="p-6 max-w-md">
-            {/* Current Password */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-theme-text mb-1">
-                Current Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
-                <input
-                  type={showCurrentPassword ? "text" : "password"}
-                  name="current_password"
-                  value={passwordData.current_password}
-                  onChange={handlePasswordChange}
-                  className={`w-full pl-10 pr-12 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.current_password ? "border-red-500" : "border-theme"
-                    }`}
-                  placeholder="Enter current password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-textSecondary hover:text-theme-text"
-                >
-                  {showCurrentPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              {errors.current_password && (
-                <p className="text-sm text-red-500 mt-1">
-                  {errors.current_password}
-                </p>
-              )}
-            </div>
-
-            {/* New Password */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-theme-text mb-1">
-                New Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
-                <input
-                  type={showNewPassword ? "text" : "password"}
-                  name="new_password"
-                  value={passwordData.new_password}
-                  onChange={handlePasswordChange}
-                  className={`w-full pl-10 pr-12 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.new_password ? "border-red-500" : "border-theme"
-                    }`}
-                  placeholder="Enter new password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-textSecondary hover:text-theme-text"
-                >
-                  {showNewPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              {errors.new_password && (
-                <p className="text-sm text-red-500 mt-1">
-                  {errors.new_password}
-                </p>
-              )}
-              <p className="text-xs text-theme-textSecondary mt-1">
-                Password must be at least 8 characters long
+          {/* Header + step indicator */}
+          <div className="px-6 py-4 border-b border-theme flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-theme-text flex items-center gap-2">
+                <Shield className="w-5 h-5 text-theme-primary" />
+                Change Password
+              </h3>
+              <p className="text-sm text-theme-textSecondary mt-1">
+                {securityStep === "form"
+                  ? "Verify your current password, then we'll email you a one-time code."
+                  : "Enter the 6-digit code we sent to your email address."}
               </p>
             </div>
 
-            {/* Confirm Password */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-theme-text mb-1">
-                Confirm New Password <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="new_password_confirmation"
-                  value={passwordData.new_password_confirmation}
-                  onChange={handlePasswordChange}
-                  className={`w-full pl-10 pr-12 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.new_password_confirmation
-                    ? "border-red-500"
-                    : "border-theme"
-                    }`}
-                  placeholder="Confirm new password"
-                />
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${securityStep === "form"
+                    ? "bg-theme-primary text-white"
+                    : "bg-green-500 text-white"
+                  }`}
+              >
+                {securityStep === "form" ? "1" : "✓"}
+              </span>
+              <span className="w-6 h-0.5 bg-theme-border" />
+              <span
+                className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${securityStep === "otp"
+                    ? "bg-theme-primary text-white"
+                    : "bg-theme-background text-theme-textSecondary"
+                  }`}
+              >
+                2
+              </span>
+            </div>
+          </div>
+
+          {/* STEP 1 — Form */}
+          {securityStep === "form" && (
+            <div className="p-6 max-w-md">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  Current Password <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                  <input
+                    type={showCurrentPassword ? "text" : "password"}
+                    name="current_password"
+                    value={passwordData.current_password}
+                    onChange={handlePasswordChange}
+                    className={`w-full pl-10 pr-12 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.current_password ? "border-red-500" : "border-theme"
+                      }`}
+                    placeholder="Enter current password"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowCurrentPassword(!showCurrentPassword)
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-textSecondary hover:text-theme-text"
+                  >
+                    {showCurrentPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                {errors.current_password && (
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.current_password}
+                  </p>
+                )}
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  New Password <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    name="new_password"
+                    value={passwordData.new_password}
+                    onChange={handlePasswordChange}
+                    className={`w-full pl-10 pr-12 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.new_password ? "border-red-500" : "border-theme"
+                      }`}
+                    placeholder="Enter new password"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-textSecondary hover:text-theme-text"
+                  >
+                    {showNewPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                {errors.new_password && (
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.new_password}
+                  </p>
+                )}
+                <p className="text-xs text-theme-textSecondary mt-1">
+                  Password must be at least 8 characters long
+                </p>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  Confirm New Password <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    name="new_password_confirmation"
+                    value={passwordData.new_password_confirmation}
+                    onChange={handlePasswordChange}
+                    className={`w-full pl-10 pr-12 py-2 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.new_password_confirmation
+                        ? "border-red-500"
+                        : "border-theme"
+                      }`}
+                    placeholder="Confirm new password"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowConfirmPassword(!showConfirmPassword)
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-textSecondary hover:text-theme-text"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                {errors.new_password_confirmation && (
+                  <p className="text-sm text-red-500 mt-1">
+                    {errors.new_password_confirmation}
+                  </p>
+                )}
+              </div>
+
+              <button
+                onClick={handleRequestOtp}
+                disabled={isSaving}
+                className="flex items-center gap-2 px-6 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Sending OTP...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4" /> Send Verification Code
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* STEP 2 — OTP */}
+          {securityStep === "otp" && (
+            <div className="p-6 max-w-md">
+              <div className="mb-5 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start gap-3">
+                <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-800 dark:text-blue-300">
+                  <p className="font-medium">
+                    We sent a 6-digit code to your email.
+                  </p>
+                  <p className="mt-0.5 text-blue-700 dark:text-blue-400">
+                    {otpRequestedAt
+                      ? `Sent at ${otpRequestedAt.toLocaleTimeString()}. The code expires in 5 minutes.`
+                      : "The code expires in 5 minutes."}
+                  </p>
+                </div>
+              </div>
+
+              {/* {devOtp && (
+                <div className="mb-5 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    🔑 <strong>Dev OTP:</strong>{" "}
+                    <span className="font-mono font-bold">{devOtp}</span>
+                  </p>
+                </div>
+              )} */}
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  Verification Code <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) =>
+                      setOtpCode(
+                        e.target.value.replace(/\D/g, "").slice(0, 6),
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && otpCode.length === 6) {
+                        handleConfirmChange();
+                      }
+                    }}
+                    className="w-full pl-10 pr-4 py-3 border border-theme rounded-lg bg-theme-surface text-theme-text text-center text-2xl font-bold tracking-[0.5em] focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors"
+                    placeholder="••••••"
+                    autoFocus
+                    autoComplete="one-time-code"
+                  />
+                </div>
+                <p className="text-xs text-theme-textSecondary mt-2">
+                  Didn't get it?{" "}
+                  <button
+                    type="button"
+                    onClick={handleRequestOtp}
+                    disabled={isSaving || resendCooldown > 0}
+                    className={`font-medium underline-offset-4 hover:underline ${resendCooldown > 0 || isSaving
+                        ? "text-theme-textSecondary cursor-not-allowed"
+                        : "text-theme-primary"
+                      }`}
+                  >
+                    {resendCooldown > 0
+                      ? `Resend in ${resendCooldown}s`
+                      : "Resend code"}
+                  </button>
+                </p>
+              </div>
+
+              <div className="flex gap-3 mt-6">
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowConfirmPassword(!showConfirmPassword)
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-theme-textSecondary hover:text-theme-text"
+                  onClick={handleCancelOtp}
+                  disabled={isSaving}
+                  className="px-5 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text disabled:opacity-50"
                 >
-                  {showConfirmPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmChange}
+                  disabled={isSaving || otpCode.length !== 6}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Verifying...
+                    </>
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <>
+                      <Shield className="w-4 h-4" /> Confirm Change
+                    </>
                   )}
                 </button>
               </div>
-              {errors.new_password_confirmation && (
-                <p className="text-sm text-red-500 mt-1">
-                  {errors.new_password_confirmation}
-                </p>
-              )}
-            </div>
 
-            <button
-              onClick={handleChangePassword}
-              disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Updating...
-                </>
-              ) : (
-                <>
-                  <Shield className="w-4 h-4" /> Update Password
-                </>
-              )}
-            </button>
-          </div>
+              <p className="mt-4 text-xs text-theme-textSecondary">
+                After changing your password, all active sessions will be signed
+                out. You'll need to log in again.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

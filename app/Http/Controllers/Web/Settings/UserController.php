@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -66,27 +67,47 @@ class UserController extends Controller
 
             'occupation'            => ['sometimes', 'nullable', 'string', 'max:255'],
             'education_attainment'  => ['sometimes', 'nullable', 'string', 'max:255'],
+
+            // ✅ Profile photo upload
+            'profile_photo' => ['sometimes', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'remove_photo'  => ['sometimes', 'boolean'],
         ]);
 
         DB::beginTransaction();
 
         try {
-            // Update user-level fields
+            // ---------- User-level fields ----------
             $userUpdates = [];
             if (isset($validated['email'])) {
                 $userUpdates['email'] = $validated['email'];
             }
-
-            // For users WITHOUT a resident, phone_number lives on the user
             if (!$user->resident && isset($validated['phone_number'])) {
                 $userUpdates['phone_number'] = $validated['phone_number'];
+            }
+
+            // ---------- Profile photo handling ----------
+            if ($request->hasFile('profile_photo')) {
+                // Delete the previous photo if it exists
+                if ($user->profile_photo_path && Storage::disk('public')->exists($user->profile_photo_path)) {
+                    Storage::disk('public')->delete($user->profile_photo_path);
+                }
+
+                $file = $request->file('profile_photo');
+                $filename = 'profile-photos/' . $user->id . '_' . time() . '.' . $file->getClientOriginalExtension();
+                Storage::disk('public')->put($filename, file_get_contents($file->getRealPath()));
+                $userUpdates['profile_photo_path'] = $filename;
+            } elseif (!empty($validated['remove_photo'])) {
+                if ($user->profile_photo_path && Storage::disk('public')->exists($user->profile_photo_path)) {
+                    Storage::disk('public')->delete($user->profile_photo_path);
+                }
+                $userUpdates['profile_photo_path'] = null;
             }
 
             if (!empty($userUpdates)) {
                 $user->update($userUpdates);
             }
 
-            // Update resident-level fields ONLY if the user has a resident
+            // ---------- Resident-level fields ----------
             if ($user->resident) {
                 $residentFields = [
                     'first_name',
@@ -98,8 +119,8 @@ class UserController extends Controller
                     'gender',
                     'civil_status',
                     'phone_number',
-                    'occupation',           // ✅ ADD
-                    'education_attainment', // ✅ ADD
+                    'occupation',
+                    'education_attainment',
                 ];
 
                 $residentUpdates = [];

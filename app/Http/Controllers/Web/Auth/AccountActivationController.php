@@ -6,6 +6,8 @@ namespace App\Http\Controllers\Web\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\AccountActivation;
 use App\Models\Resident;
+use App\Models\User;
+use App\Traits\GeneratesReferenceNumbers;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -14,12 +16,8 @@ use Illuminate\Support\Facades\Log;
 
 class AccountActivationController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, GeneratesReferenceNumbers;
 
-    /**
-     * ✅ Verify resident records - now checks email too
-     * The user must provide an email that matches a registered resident.
-     */
     public function verifyRecords(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -28,7 +26,7 @@ class AccountActivationController extends Controller
             'lastName' => 'required|string',
             'suffix' => 'nullable|string',
             'birthDate' => 'required|date',
-            'email' => 'required|email',  // ✅ ADD - must match resident record
+            'email' => 'required|email',
         ]);
 
         if ($validator->fails()) {
@@ -39,7 +37,6 @@ class AccountActivationController extends Controller
             ->where('last_name', $request->lastName)
             ->whereDate('birth_date', $request->birthDate);
 
-        // ✅ Match middle name (or null)
         if (!empty($request->middleName)) {
             $query->where('middle_name', $request->middleName);
         } else {
@@ -48,7 +45,6 @@ class AccountActivationController extends Controller
             });
         }
 
-        // ✅ Match suffix (or null)
         if (!empty($request->suffix)) {
             $query->where('suffix', $request->suffix);
         } else {
@@ -63,7 +59,6 @@ class AccountActivationController extends Controller
             return $this->respondNotFound('Information does not match our records.');
         }
 
-        // ✅ CRITICAL: Verify that the provided email matches the resident's registered email
         if (!$resident->email) {
             return $this->respondError(
                 'This resident record does not have an email on file. Please visit the barangay hall to update your records.',
@@ -80,8 +75,7 @@ class AccountActivationController extends Controller
             );
         }
 
-        // ✅ Check if a user account already exists for this resident
-        $existingUser = \App\Models\User::where('resident_id', $resident->id)->first();
+        $existingUser = User::where('resident_id', $resident->id)->first();
         if ($existingUser) {
             return $this->respondError(
                 'An account already exists for this resident. Please use the "Forgot Password" option if you cannot log in.',
@@ -96,10 +90,6 @@ class AccountActivationController extends Controller
         ], 'Verification Complete!');
     }
 
-    /**
-     * Submit account activation
-     * ✅ Notifies Front Desk + Secretary of the new request
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -121,13 +111,7 @@ class AccountActivationController extends Controller
             ? $request->file('id_back')->store('id_documents', 'public')
             : null;
 
-        $referenceNumber = sprintf(
-            '%03d %03d %03d %03d',
-            random_int(0, 999),
-            random_int(0, 999),
-            random_int(0, 999),
-            random_int(0, 999)
-        );
+        $referenceNumber = $this->generateActivationReference();
 
         $activation = AccountActivation::create([
             'resident_id' => $request->resident_id,

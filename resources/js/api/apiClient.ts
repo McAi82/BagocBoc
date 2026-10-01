@@ -3,7 +3,7 @@ import axios from "axios";
 import { useAuthStore } from "../stores/authStore";
 
 // ✅ Relative URL — Laravel serves both SPA and API from the same origin
-const API_BASE_URL = "https://ivory-narwhal-758437.hostingersite.com/api";
+const API_BASE_URL = "http://localhost:8000/api";
 
 if (API_BASE_URL) {
   console.log("🔌 API Base URL:", API_BASE_URL);

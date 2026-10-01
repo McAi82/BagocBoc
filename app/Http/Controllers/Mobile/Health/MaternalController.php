@@ -1,19 +1,20 @@
 <?php
+// app/Http/Controllers/Mobile/Health/MaternalController.php
 
 namespace App\Http\Controllers\Mobile\Health;
 
 use App\Http\Controllers\Controller;
 use App\Models\MaternalProfile;
+use App\Traits\ResolvesZones;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class MaternalController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, ResolvesZones;
 
     public function index(Request $request)
     {
@@ -27,10 +28,6 @@ class MaternalController extends Controller
         return $this->respondSuccess($profiles);
     }
 
-    /**
-     * Create maternal profile
-     * ✅ Zone-scoped notification to BHWs
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -51,7 +48,6 @@ class MaternalController extends Controller
 
         $residentName = $profile->resident ? $profile->resident->full_name : 'Unknown';
 
-        // ✅ ZONE-SCOPED NOTIFICATION
         try {
             $zoneId = $this->resolveZoneForResident((int) $profile->resident_id);
 
@@ -127,20 +123,5 @@ class MaternalController extends Controller
 
         $profile->delete();
         return $this->respondSuccess(null, 'Maternal profile deleted successfully');
-    }
-
-    /**
-     * Resolve the zone ID for a resident via their active household
-     */
-    private function resolveZoneForResident(int $residentId): ?int
-    {
-        $zoneId = DB::table('resident_households')
-            ->join('households', 'resident_households.household_id', '=', 'households.id')
-            ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
-            ->where('resident_households.resident_id', $residentId)
-            ->where('resident_households.status', 'active')
-            ->value('household_addresses.zone');
-
-        return $zoneId ? (int) $zoneId : null;
     }
 }

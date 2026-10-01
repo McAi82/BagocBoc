@@ -5,19 +5,16 @@ namespace App\Http\Controllers\Mobile\Zone;
 
 use App\Http\Controllers\Controller;
 use App\Models\Certification;
-use App\Models\CertificateRequester;
-use App\Models\Resident;
-use App\Models\User;
+use App\Traits\ResolvesZones;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CertificateRequestController extends Controller
 {
-    use SendsNotifications;
+    use SendsNotifications, ResolvesZones;
 
     public function index(Request $request)
     {
@@ -35,8 +32,7 @@ class CertificateRequestController extends Controller
                 $query->where('status', $request->status);
             }
 
-            $zoneLeaderId = Auth::id();
-            $zoneId = $this->getZoneLeaderZone($zoneLeaderId);
+            $zoneId = $this->getZoneLeaderZone(Auth::id());
 
             if ($zoneId) {
                 $residentIds = $this->getResidentIdsByZone($zoneId);
@@ -87,10 +83,6 @@ class CertificateRequestController extends Controller
         }
     }
 
-    /**
-     * Reject certificate request
-     * ✅ Notifies resident
-     */
     public function reject(Request $request, $id)
     {
         try {
@@ -118,7 +110,6 @@ class CertificateRequestController extends Controller
                 'remarks' => $request->reason,
             ]);
 
-            // ✅ Notify resident
             $this->notifyCertificateResident(
                 $certification,
                 '❌ Certificate Request Rejected',
@@ -170,8 +161,7 @@ class CertificateRequestController extends Controller
     public function getRequestCounts()
     {
         try {
-            $zoneLeaderId = Auth::id();
-            $zoneId = $this->getZoneLeaderZone($zoneLeaderId);
+            $zoneId = $this->getZoneLeaderZone(Auth::id());
 
             $query = Certification::query();
 
@@ -204,10 +194,6 @@ class CertificateRequestController extends Controller
         }
     }
 
-    /**
-     * Approve certificate request
-     * ✅ Notifies resident
-     */
     public function approve($id)
     {
         try {
@@ -229,7 +215,6 @@ class CertificateRequestController extends Controller
 
             $this->syncToWebFrontDesk($certification);
 
-            // ✅ Notify resident
             $this->notifyCertificateResident(
                 $certification,
                 '✅ Certificate Request Approved',
@@ -250,38 +235,6 @@ class CertificateRequestController extends Controller
     // ============================================
     // PRIVATE HELPERS
     // ============================================
-
-    private function getZoneLeaderZone($userId)
-    {
-        try {
-            $user = User::with('resident')->find($userId);
-            if (!$user || !$user->resident) return null;
-
-            return DB::table('resident_households')
-                ->join('households', 'resident_households.household_id', '=', 'households.id')
-                ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
-                ->where('resident_households.resident_id', $user->resident->id)
-                ->where('resident_households.status', 'active')
-                ->value('household_addresses.zone');
-        } catch (\Exception $e) {
-            return null;
-        }
-    }
-
-    private function getResidentIdsByZone($zoneId)
-    {
-        try {
-            return DB::table('resident_households')
-                ->join('households', 'resident_households.household_id', '=', 'households.id')
-                ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
-                ->where('household_addresses.zone', $zoneId)
-                ->where('resident_households.status', 'active')
-                ->pluck('resident_households.resident_id')
-                ->unique()->values();
-        } catch (\Exception $e) {
-            return collect([]);
-        }
-    }
 
     private function syncToWebFrontDesk($certification)
     {
@@ -314,9 +267,6 @@ class CertificateRequestController extends Controller
         }
     }
 
-    /**
-     * ✅ Notify the resident who requested the certificate
-     */
     private function notifyCertificateResident(
         Certification $certification,
         string $title,
