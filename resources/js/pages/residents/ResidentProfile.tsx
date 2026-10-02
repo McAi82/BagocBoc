@@ -52,10 +52,6 @@ type Tab =
   | "financial"
   | "account";
 
-/* ============================================================
-   TAB DEFINITIONS
-   ============================================================ */
-
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "overview", label: "Overview", icon: User },
   { id: "household", label: "Household", icon: Home },
@@ -76,6 +72,7 @@ export default function ResidentProfile() {
   const [resident, setResident] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>("");
   const [tab, setTab] = useState<Tab>("overview");
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -90,6 +87,7 @@ export default function ResidentProfile() {
   const fetchResident = async () => {
     setIsLoading(true);
     setIsError(false);
+    setErrorMessage("");
     try {
       const res = await api.get(`/web/residents/${id}`);
       const data = res.data?.data || res.data;
@@ -104,7 +102,9 @@ export default function ResidentProfile() {
         email: data.email || "",
         gender: data.gender || "Male",
         citizenship: data.citizenship || "Filipino",
-        birth_date: data.birth_date ? String(data.birth_date).split("T")[0] : "",
+        birth_date: data.birth_date
+          ? String(data.birth_date).split("T")[0]
+          : "",
         place_of_birth: data.place_of_birth || "",
         civil_status: data.civil_status || "Single",
         voter_status: data.voter_status || "Not Registered",
@@ -112,9 +112,14 @@ export default function ResidentProfile() {
         monthly_income: data.monthly_income || "",
         education_attainment: data.education_attainment || "",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching resident:", error);
       setIsError(true);
+      setErrorMessage(
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to load resident",
+      );
       toast.error("Failed to load resident");
     } finally {
       setIsLoading(false);
@@ -235,17 +240,32 @@ export default function ResidentProfile() {
   if (isError) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-center">
+        <div className="text-center max-w-lg px-4">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-theme-text">
             Failed to Load Resident
           </h3>
-          <button
-            onClick={fetchResident}
-            className="mt-4 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
-          >
-            Try Again
-          </button>
+          {errorMessage && (
+            <p className="text-sm text-theme-textSecondary mt-2 break-words">
+              {errorMessage}
+            </p>
+          )}
+          <div className="flex gap-2 justify-center mt-4">
+            <button
+              onClick={() =>
+                navigate("/barangay-bagocboc/populations/residents")
+              }
+              className="px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text"
+            >
+              Back to Residents
+            </button>
+            <button
+              onClick={fetchResident}
+              className="px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -283,8 +303,7 @@ export default function ResidentProfile() {
   const clearances = resident.clearances || [];
   const penalties = resident.penalties || [];
   const payments = resident.payments || [];
-  const taxPayments =
-    resident.tax_payments || resident.taxPayments || [];
+  const taxPayments = resident.tax_payments || resident.taxPayments || [];
 
   /* ============================================================
      MAIN RENDER
@@ -432,8 +451,7 @@ export default function ResidentProfile() {
               value={
                 stats.checkups ??
                 patientRecords.reduce(
-                  (sum: number, pr: any) =>
-                    sum + (pr.checkups?.length || 0),
+                  (sum: number, pr: any) => sum + (pr.checkups?.length || 0),
                   0,
                 )
               }
@@ -453,8 +471,8 @@ export default function ResidentProfile() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${isActive
-                  ? "border-theme-primary text-theme-primary"
-                  : "border-transparent text-theme-textSecondary hover:text-theme-text"
+                ? "border-theme-primary text-theme-primary"
+                : "border-transparent text-theme-textSecondary hover:text-theme-text"
                 }`}
             >
               <Icon className="w-4 h-4" /> {t.label}
@@ -539,9 +557,7 @@ function OverviewTab({
             <InfoItem
               label="Birth Date"
               value={
-                resident.birth_date
-                  ? formatDate(resident.birth_date)
-                  : "N/A"
+                resident.birth_date ? formatDate(resident.birth_date) : "N/A"
               }
               icon={Calendar}
             />
@@ -810,14 +826,8 @@ function HealthTab({
                     label="Registered"
                     value={formatDate(r.created_at)}
                   />
-                  <MiniField
-                    label="Patient ID"
-                    value={`#${r.id}`}
-                  />
-                  <MiniField
-                    label="Type"
-                    value={r.patient_type}
-                  />
+                  <MiniField label="Patient ID" value={`#${r.id}`} />
+                  <MiniField label="Type" value={r.patient_type} />
                 </div>
               </div>
             ))}
@@ -984,9 +994,7 @@ function DocumentsTab({
                     </Td>
                     <Td>
                       <span className="text-theme-textSecondary text-sm">
-                        {c.created_at
-                          ? formatDate(c.created_at)
-                          : "—"}
+                        {c.created_at ? formatDate(c.created_at) : "—"}
                       </span>
                     </Td>
                   </tr>
@@ -1011,10 +1019,7 @@ function DocumentsTab({
         </div>
 
         {clearances.length === 0 ? (
-          <EmptyBlock
-            icon={FileCheck}
-            label="No clearances issued"
-          />
+          <EmptyBlock icon={FileCheck} label="No clearances issued" />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1054,9 +1059,7 @@ function DocumentsTab({
                     </Td>
                     <Td>
                       <span className="text-theme-textSecondary text-sm">
-                        {c.valid_until
-                          ? formatDate(c.valid_until)
-                          : "—"}
+                        {c.valid_until ? formatDate(c.valid_until) : "—"}
                       </span>
                     </Td>
                   </tr>
@@ -1156,8 +1159,7 @@ function FinancialTab({
             key: "amount",
             label: "Amount",
             align: "right",
-            render: (r: any) =>
-              formatCurrency(parseFloat(r.amount) || 0),
+            render: (r: any) => formatCurrency(parseFloat(r.amount) || 0),
           },
           {
             key: "status",
@@ -1193,8 +1195,7 @@ function FinancialTab({
             key: "amount",
             label: "Amount",
             align: "right",
-            render: (r: any) =>
-              formatCurrency(parseFloat(r.amount) || 0),
+            render: (r: any) => formatCurrency(parseFloat(r.amount) || 0),
           },
           { key: "payment_method", label: "Method" },
           {
@@ -1233,8 +1234,7 @@ function FinancialTab({
             key: "amount",
             label: "Amount",
             align: "right",
-            render: (r: any) =>
-              formatCurrency(parseFloat(r.amount) || 0),
+            render: (r: any) => formatCurrency(parseFloat(r.amount) || 0),
           },
           { key: "payment_method", label: "Method" },
           {
@@ -1275,23 +1275,15 @@ function AccountTab({ resident }: { resident: any }) {
         Account Information
       </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-        <InfoItem
-          label="Email"
-          value={u.email}
-          icon={Mail}
-        />
+        <InfoItem label="Email" value={u.email} icon={Mail} />
         <InfoItem
           label="Account Status"
           value={u.account_status}
-          icon={
-            u.account_status === "active" ? CheckCircle : XCircle
-          }
+          icon={u.account_status === "active" ? CheckCircle : XCircle}
         />
         <InfoItem
           label="Last Login"
-          value={
-            u.last_login_at ? formatDate(u.last_login_at) : "Never"
-          }
+          value={u.last_login_at ? formatDate(u.last_login_at) : "Never"}
           icon={Clock}
         />
         <InfoItem
@@ -1313,8 +1305,7 @@ function AccountTab({ resident }: { resident: any }) {
           <InfoItem
             label="Roles"
             value={
-              (u.roles || []).map((r: any) => r.name).join(", ") ||
-              "—"
+              (u.roles || []).map((r: any) => r.name).join(", ") || "—"
             }
             icon={Shield}
           />

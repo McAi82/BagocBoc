@@ -60,73 +60,100 @@ class ResidentController extends Controller
 
     public function show($id)
     {
-        $resident = Resident::with([
-            // Households + address + zone
-            'households.address.barangayZone',
-            'households.residents',
+        try {
+            $resident = Resident::with([
+                // Household + address + zone + members
+                'households.address.barangayZone',
+                'households.residents',
 
-            // Health
-            'patientRecords.checkups',
-            'patientRecords.pregnancyRecord',
-            'patientRecords.childRecord',
-            'patientRecords.lactatingRecord',
-            'patientRecords.seniorRecord',
-            'patientRecords.ncdRecord',
-            'maternalProfile',
-            'optPlusAssessments',
+                // Health
+                'patientRecords.checkups',
+                'patientRecords.pregnancyRecord',
+                'patientRecords.childRecord',
+                'patientRecords.lactatingRecord',
+                'patientRecords.seniorRecord',
+                'patientRecords.ncdRecord',
+                'maternalProfile',
+                'optPlusAssessments',
 
-            // Certificates / Clearances
-            'certifications.certificationType',
-            'certifications.processedBy',
-            'clearances.processedBy',
+                // Documents
+                'certifications.certificationType',
+                'certifications.processedBy',
+                'clearances.processedBy',
 
-            // Financial
-            'penalties.issuedBy',
-            'payments.processedBy',
-            'taxPayments.processedBy',
+                // Financial
+                'penalties.issuedBy',
+                'payments.processedBy',
+                'taxPayments.processedBy',
 
-            // Account
-            'user.roles',
-        ])->find($id);
+                // Account
+                'user.roles',
+            ])->find($id);
 
-        if (!$resident) {
-            return $this->respondNotFound('Resident not found');
+            if (!$resident) {
+                return $this->respondNotFound('Resident not found');
+            }
+
+            /* ---------- current household snapshot ---------- */
+            $household = $resident->households->first();
+
+            $resident->setAttribute('current_household', $household ? [
+                'id'                        => $household->id,
+                'household_number'          => $household->household_number,
+                'household_tracking_number' => $household->household_tracking_number,
+                'role'                      => $household->pivot?->relationship_to_household,
+                'is_primary'                => (bool) ($household->pivot?->is_primary ?? false),
+                'zone'                      => $household->address?->barangayZone?->name,
+                'street'                    => $household->address?->street,
+                'member_count'              => $household->residents->count(),
+                'members'                   => $household->residents->map(function ($m) {
+                    return [
+                        'id'           => $m->id,
+                        'full_name'    => $m->full_name,
+                        'age'          => $m->age,
+                        'gender'       => $m->gender,
+                        'relationship' => $m->pivot?->relationship_to_household,
+                        'is_primary'   => (bool) ($m->pivot?->is_primary ?? false),
+                    ];
+                })->values()->all(),
+            ] : null);
+
+            /* ---------- aggregate stats for KPI chips ---------- */
+            $resident->setAttribute('stats', [
+                'certifications'    => $resident->certifications->count(),
+                'clearances'        => $resident->clearances->count(),
+                'penalties_pending' => $resident->penalties
+                    ->where('status', 'pending')
+                    ->count(),
+                'payments_total'    => (float) $resident->payments->sum('amount'),
+                'tax_total'         => (float) $resident->taxPayments->sum('amount'),
+                'patient_records'   => $resident->patientRecords->count(),
+                'checkups'          => $resident->patientRecords
+                    ->sum(fn($pr) => optional($pr->checkups)->count() ?? 0),
+            ]);
+
+            /* ---------- Force full serialization + return ----------
+             * Using ->toArray() here:
+             *  - catches circular-reference errors with a clear message
+             *  - strips the Eloquent internals so the JSON is predictable
+             */
+            return $this->respondSuccess($resident->toArray());
+        } catch (\Throwable $e) {
+            Log::error('Resident show failed', [
+                'resident_id' => $id,
+                'message'     => $e->getMessage(),
+                'file'        => $e->getFile(),
+                'line'        => $e->getLine(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => config('app.debug')
+                    ? $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine()
+                    : 'Failed to load resident',
+            ], 500);
         }
-
-        // Attach computed helpers
-        $household = $resident->households->first();
-
-        $resident->setAttribute('current_household', $household ? [
-            'id'                       => $household->id,
-            'household_number'         => $household->household_number,
-            'household_tracking_number' => $household->household_tracking_number,
-            'role'                     => $household->pivot->relationship_to_household ?? null,
-            'is_primary'               => (bool) ($household->pivot->is_primary ?? false),
-            'zone'                     => $household->address->barangayZone->name ?? null,
-            'street'                   => $household->address->street ?? null,
-            'member_count'             => $household->residents->count(),
-            'members'                  => $household->residents->map(fn($m) => [
-                'id'         => $m->id,
-                'full_name'  => $m->full_name,
-                'age'        => $m->age,
-                'gender'     => $m->gender,
-                'relationship' => $m->pivot->relationship_to_household ?? null,
-                'is_primary' => (bool) ($m->pivot->is_primary ?? false),
-            ])->values(),
-        ] : null);
-
-        // Cheap counts for badges
-        $resident->setAttribute('stats', [
-            'certifications'  => $resident->certifications->count(),
-            'clearances'      => $resident->clearances->count(),
-            'penalties_pending' => $resident->penalties->where('status', 'pending')->count(),
-            'payments_total'  => (float) $resident->payments->sum('amount'),
-            'tax_total'       => (float) $resident->taxPayments->sum('amount'),
-            'patient_records' => $resident->patientRecords->count(),
-            'checkups'        => $resident->patientRecords->sum(fn($pr) => $pr->checkups->count()),
-        ]);
-
-        return $this->respondSuccess($resident);
     }
 
     public function update(Request $request, $id)
