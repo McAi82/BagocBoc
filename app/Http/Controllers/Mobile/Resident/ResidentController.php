@@ -29,6 +29,8 @@ class ResidentController extends Controller
     // BHW SIDE — census CRUD (was Mobile\Census\ResidentController)
     // ============================================================
 
+
+
     public function index(Request $request)
     {
         $query = Resident::with('households');
@@ -580,50 +582,98 @@ class ResidentController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'request_id' => 'required|integer',
-                'payment_method' => 'required|in:Cash,GCash',
-                'amount' => 'required|numeric|min:0',
+                'request_id' => 'required|integer|exists:certifications,id',
+                'amount'     => 'required|numeric|min:0',
             ]);
 
             if ($validator->fails()) {
                 return $this->respondError('Validation error', $validator->errors(), 422);
             }
 
-            $payment = Payment::create([
-                'resident_id' => $residentId,
-                'processed_by_user_id' => Auth::id(),
-                'or_number' => $this->generateORNumber(),
-                'amount' => $request->amount,
-                'payment_type' => 'Certificate',
-                'payment_method' => $request->payment_method,
-                'status' => 'completed',
-                'paid_at' => now(),
-                'payable_id' => $request->request_id,
-                'payable_type' => Certification::class,
-            ]);
+            // Confirm the certification belongs to this resident and is payable
+            $certification = Certification::where('id', $request->request_id)
+                ->whereHas('requester', function ($q) use ($residentId) {
+                    $q->where('resident_id', $residentId);
+                })
+                ->first();
 
-            $certification = Certification::find($request->request_id);
-            if ($certification) {
-                $certification->update(['status' => 'Ready for Release']);
+            if (!$certification) {
+                return $this->respondNotFound('Certificate request not found');
+            }
+
+            if (!in_array($certification->status, ['Approved', 'Ready for Release'])) {
+                return $this->respondError(
+                    'This certificate is not ready for payment.',
+                    null,
+                    422
+                );
+            }
+
+            if ($certification->payment_status === 'paid') {
+                return $this->respondError(
+                    'This certificate has already been paid.',
+                    null,
+                    422
+                );
+            }
+
+            DB::beginTransaction();
+
+            try {
+                // Create a pending payment for the Treasurer to confirm
+                $payment = Payment::create([
+                    'resident_id'          => $residentId,
+                    'processed_by_user_id' => Auth::id(),
+                    'or_number'            => $this->generateORNumber(),
+                    'amount'               => $request->amount,
+                    'payment_type'         => 'Certificate',
+                    'payment_method'       => 'Cash',
+                    'status'               => 'pending',   // ⬅️ Treasurer confirms later
+                    'paid_at'              => null,
+                    'payable_id'           => $certification->id,
+                    'payable_type'         => Certification::class,
+                ]);
+
+                // Track payment intent on the certification
+                $certification->update([
+                    'payment_method'  => 'cash',
+                    'payment_status'  => 'pending',
+                    'payment_reference' => $payment->or_number,
+                ]);
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            // Notify the Treasurer
+            try {
+                $this->notifyRoles(
+                    ['Barangay Treasurer'],
+                    '💵 Payment Pending Confirmation',
+                    "{$certification->resident_name} requested to pay ₱"
+                        . number_format($payment->amount, 2)
+                        . " in cash for {$certification->certificationType?->name}.",
+                    'payment',
+                    'high',
+                    '/payments/' . $payment->id,
+                    Auth::id(),
+                    'payment',
+                    $payment->id
+                );
+            } catch (\Exception $e) {
+                Log::error('Treasurer notify error: ' . $e->getMessage());
             }
 
             return $this->respondSuccess([
                 'payment' => $payment,
-                'receipt' => [
-                    'or_number' => $payment->or_number,
-                    'resident_name' => Auth::user()->resident ? Auth::user()->resident->full_name : 'N/A',
-                    'amount' => (float) $payment->amount,
-                    'payment_type' => $payment->payment_type,
-                    'payment_method' => $payment->payment_method,
-                    'date' => $payment->paid_at ? $payment->paid_at->format('Y-m-d') : now()->format('Y-m-d'),
-                    'time' => $payment->paid_at ? $payment->paid_at->format('h:i A') : now()->format('h:i A'),
-                    'processed_by' => Auth::user()->email,
-                    'status' => $payment->status,
-                ]
-            ], 'Payment processed successfully');
+                'receipt' => null,   // receipt only after Treasurer confirms
+                'message' => 'Please pay in cash at the Barangay Hall. The Treasurer will confirm your payment.',
+            ], 'Payment request submitted. Please proceed to the Barangay Hall.', 201);
         } catch (\Exception $e) {
-            Log::error('Payment processing error: ' . $e->getMessage());
-            return $this->respondError('Failed to process payment', null, 500);
+            Log::error('Payment request error: ' . $e->getMessage());
+            return $this->respondError('Failed to submit payment request', null, 500);
         }
     }
 

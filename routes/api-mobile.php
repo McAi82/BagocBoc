@@ -321,6 +321,7 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
             Route::get('/compliance', [ComplianceManagementController::class, 'index']);
             Route::post('/compliance', [ComplianceManagementController::class, 'store']);
             Route::get('/residents', [CensusResidentController::class, 'index']);
+            Route::get('/residents', [ZoneController::class, 'residents']);
             Route::get('/households', [CensusHouseholdController::class, 'index']);
             Route::get('/census/records', [CensusHouseholdController::class, 'indexCensus']);
 

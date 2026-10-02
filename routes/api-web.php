@@ -248,11 +248,14 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     // ============================================
     // 3.9 PAYMENTS
     // ============================================
+    // Inside the /payments prefix group
     Route::prefix('/payments')->group(function () {
         Route::get('/', [FinanceController::class, 'indexPayments']);
         Route::post('/', [FinanceController::class, 'storePayment']);
         Route::get('/{id}', [FinanceController::class, 'showPayment']);
         Route::get('/{id}/receipt', [FinanceController::class, 'paymentReceipt']);
+        Route::post('/{id}/confirm', [FinanceController::class, 'confirmPayment']);   // ⬅️ NEW
+        Route::post('/{id}/reject', [FinanceController::class, 'rejectPayment']);     // ⬅️ NEW
     });
 
     // ============================================

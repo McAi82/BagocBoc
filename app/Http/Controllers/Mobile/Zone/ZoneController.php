@@ -30,7 +30,48 @@ class ZoneController extends Controller
     // ============================================================
     // STATS (was ZoneStatsController)
     // ============================================================
+    public function residents(Request $request)
+    {
+        try {
+            $query = Resident::with([
+                'households.address.barangayZone',
+            ])->where('status', 'active');
 
+            if ($request->filled('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('first_name', 'LIKE', "%{$search}%")
+                        ->orWhere('last_name', 'LIKE', "%{$search}%");
+                });
+            }
+
+            $residents = $query->orderBy('last_name')->get()->map(function ($r) {
+                $household = $r->households->first();
+                return [
+                    'id' => $r->id,
+                    'first_name' => $r->first_name,
+                    'middle_name' => $r->middle_name,
+                    'last_name' => $r->last_name,
+                    'full_name' => $r->full_name,
+                    'gender' => $r->gender,
+                    'age' => $r->age,
+                    'birth_date' => $r->birth_date,
+                    'civil_status' => $r->civil_status,
+                    'phone_number' => $r->phone_number,
+                    'household_id' => $household?->id,
+                    'household_number' => $household?->household_number,
+                    'address' => $household?->address?->street,
+                    'zone_name' => $household?->address?->barangayZone?->name,
+                    'zone_id' => $household?->address?->zone,
+                ];
+            });
+
+            return $this->respondSuccess($residents);
+        } catch (\Exception $e) {
+            Log::error('Zone residents error: ' . $e->getMessage());
+            return $this->respondError('Failed to fetch residents', null, 500);
+        }
+    }
     public function indexStats()
     {
         try {

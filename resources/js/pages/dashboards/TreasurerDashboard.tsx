@@ -34,6 +34,9 @@ import {
   Banknote,
   Smartphone,
   ChevronDown,
+  CheckCircle2,      // ✅ NEW
+  XOctagon,          // ✅ NEW
+  BadgeCheck,        // ✅ NEW
 } from "lucide-react";
 import { Pie, Column } from "@ant-design/plots";
 import { api } from "../../api/apiClient";
@@ -58,6 +61,9 @@ interface PaymentRecord {
   description?: string;
   paid_at?: string;
   created_at: string;
+  payment_reference?: string;   // ✅ NEW
+  payable_id?: number;          // ✅ NEW
+  payable_type?: string;        // ✅ NEW
   resident?: {
     first_name: string;
     last_name: string;
@@ -65,6 +71,7 @@ interface PaymentRecord {
   processed_by?: {
     email: string;
   };
+  payable?: any;                // ✅ NEW
 }
 
 interface TaxRecord {
@@ -107,7 +114,6 @@ type RangePreset = "today" | "week" | "month" | "custom" | "all";
 // DATE HELPERS — no Date parsing in filters
 // ============================================
 
-/** Normalize a date string/Date to YYYY-MM-DD (local) */
 const toLocalDate = (value: string | Date | null | undefined): string => {
   if (!value) return "";
   if (value instanceof Date) {
@@ -123,7 +129,7 @@ const todayISO = (): string => toLocalDate(new Date());
 
 const mondayISO = (): string => {
   const d = new Date();
-  const day = d.getDay(); // 0 = Sun
+  const day = d.getDay();
   const diffToMonday = (day + 6) % 7;
   d.setDate(d.getDate() - diffToMonday);
   return toLocalDate(d);
@@ -154,7 +160,6 @@ const getPresetRange = (
   }
 };
 
-/** Format a YYYY-MM-DD to a short label like "Oct 1, 2026" */
 const prettyDate = (iso: string): string => {
   if (!iso) return "—";
   try {
@@ -189,11 +194,20 @@ export default function TreasurerDashboard() {
   const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
+  // ✅ NEW: Confirmation modals for pending payments
+  const [confirmModal, setConfirmModal] = useState<PaymentRecord | null>(null);
+  const [rejectModal, setRejectModal] = useState<PaymentRecord | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+
   const [showReportModal, setShowReportModal] = useState(false);
   const [showEditReportModal, setShowEditReportModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedReport, setSelectedReport] = useState<FinancialReport | null>(null);
   const [showFilters, setShowFilters] = useState(true);
+
+  // ✅ NEW: Active tab inside the payment area
+  const [paymentTab, setPaymentTab] = useState<"all" | "pending">("pending");
 
   // Filters
   const [paymentTypeFilter, setPaymentTypeFilter] = useState("all");
@@ -321,6 +335,33 @@ export default function TreasurerDashboard() {
     });
   }, [payments, range, paymentTypeFilter]);
 
+  // ✅ NEW: Pending payments for confirmation
+  // The backend sets `status = 'pending'` when a resident submits a cash payment
+  // via `ResidentController::processPayment()`. The treasurer must confirm it.
+  const pendingConfirmations = useMemo(() => {
+    return payments.filter((p) => {
+      // Some flows may also use 'processing' or 'awaiting_confirmation'
+      const isPending = p.status === "pending";
+      // Also accept certifications whose payment_status is 'pending'
+      const certPending =
+        p.payable_type?.endsWith("Certification") &&
+        (p.payable?.payment_status === "pending" ||
+          p.payment_reference?.startsWith("CERT-"));
+      return isPending || certPending;
+    });
+  }, [payments]);
+
+  const filteredPendingConfirmations = useMemo(() => {
+    // Apply the same date/type filters to the pending list for consistency
+    return pendingConfirmations.filter((p) => {
+      const date = p.paid_at || p.created_at;
+      if (!isWithinRange(date, range.start, range.end)) return false;
+      if (paymentTypeFilter !== "all" && p.payment_type !== paymentTypeFilter)
+        return false;
+      return true;
+    });
+  }, [pendingConfirmations, range, paymentTypeFilter]);
+
   const filteredTaxes = useMemo(() => {
     return taxes.filter((t) => {
       const date = t.paid_at || t.created_at;
@@ -349,7 +390,6 @@ export default function TreasurerDashboard() {
     const totalTaxesAmount = filteredTaxes.reduce((sum, t) => sum + t.amount, 0);
     const totalRevenue = totalPaymentsAmount + totalTaxesAmount;
 
-    // Trend: compare to the previous period of equal length
     let trend = 0;
     if (preset !== "all" && range.start && range.end) {
       const startDate = new Date(range.start);
@@ -395,8 +435,14 @@ export default function TreasurerDashboard() {
       totalPaymentsAmount,
       totalTaxesAmount,
       totalTransactions: filteredPayments.length + filteredTaxes.length,
+      // ✅ NEW
+      pendingConfirmations: pendingConfirmations.length,
+      pendingConfirmationsAmount: pendingConfirmations.reduce(
+        (sum, p) => sum + p.amount,
+        0,
+      ),
     };
-  }, [filteredPayments, filteredTaxes, reports, payments, taxes, range, preset]);
+  }, [filteredPayments, filteredTaxes, reports, payments, taxes, range, preset, pendingConfirmations]);
 
   // ============================================
   // BREAKDOWNS
@@ -464,7 +510,7 @@ export default function TreasurerDashboard() {
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    return out.slice(-31); // Cap to last 31 days
+    return out.slice(-31);
   }, [filteredPayments, filteredTaxes, range]);
 
   // ============================================
@@ -604,7 +650,62 @@ export default function TreasurerDashboard() {
   };
 
   // ============================================
-  // HANDLERS
+  // ✅ NEW: CONFIRM PAYMENT HANDLERS
+  // ============================================
+
+  /**
+   * Treasurer confirms that cash was physically received.
+   * Backend: POST /web/payments/{id}/confirm
+   */
+  const handleConfirmPayment = async () => {
+    if (!confirmModal) return;
+    setIsProcessingAction(true);
+    try {
+      await api.post(`/web/payments/${confirmModal.id}/confirm`);
+      toast.success(
+        `Payment ${confirmModal.or_number} confirmed successfully!`,
+      );
+      setConfirmModal(null);
+      await fetchData();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "Failed to confirm payment",
+      );
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  /**
+   * Treasurer rejects a payment (resident never showed up, wrong amount, etc.).
+   * Backend: POST /web/payments/{id}/reject
+   */
+  const handleRejectPayment = async () => {
+    if (!rejectModal) return;
+    if (!rejectReason.trim()) {
+      toast.error("Please provide a reason for rejection");
+      return;
+    }
+    setIsProcessingAction(true);
+    try {
+      await api.post(`/web/payments/${rejectModal.id}/reject`, {
+        reason: rejectReason,
+      });
+      toast.success(`Payment ${rejectModal.or_number} rejected`);
+      setRejectModal(null);
+      setRejectReason("");
+      await fetchData();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "Failed to reject payment",
+      );
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // ============================================
+  // HANDLERS (existing)
   // ============================================
 
   const handleRefresh = async () => {
@@ -792,8 +893,8 @@ export default function TreasurerDashboard() {
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-4 py-2 border rounded-lg transition-all font-medium text-sm ${showFilters
-                ? "border-theme-primary bg-theme-primary/10 text-theme-primary"
-                : "border-theme text-theme-text hover:bg-theme-hover"
+              ? "border-theme-primary bg-theme-primary/10 text-theme-primary"
+              : "border-theme text-theme-text hover:bg-theme-hover"
               }`}
           >
             <Filter className="w-4 h-4" />
@@ -825,10 +926,9 @@ export default function TreasurerDashboard() {
         </div>
       </div>
 
-      {/* FILTER BAR — with Today / Week / Month / Custom / All */}
+      {/* FILTER BAR */}
       {showFilters && (
         <div className="bg-theme-surface border border-theme rounded-xl p-4 shadow-sm space-y-3">
-          {/* Top row: preset buttons + payment type filter */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold text-theme-textSecondary uppercase tracking-wider flex items-center gap-1.5">
@@ -849,8 +949,8 @@ export default function TreasurerDashboard() {
                       key={p.id}
                       onClick={() => handlePreset(p.id as RangePreset)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active
-                          ? "bg-theme-primary text-white shadow-sm"
-                          : "bg-theme-background text-theme-textSecondary hover:bg-theme-hover border border-theme"
+                        ? "bg-theme-primary text-white shadow-sm"
+                        : "bg-theme-background text-theme-textSecondary hover:bg-theme-hover border border-theme"
                         }`}
                     >
                       {p.label}
@@ -878,7 +978,6 @@ export default function TreasurerDashboard() {
             </div>
           </div>
 
-          {/* Bottom row: custom range inputs */}
           {preset === "custom" && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-theme">
               <div className="flex items-center gap-2">
@@ -921,34 +1020,18 @@ export default function TreasurerDashboard() {
             </div>
           )}
 
-          {/* Summary line */}
           <div className="text-xs text-theme-textSecondary pt-1 flex items-center justify-between gap-3 flex-wrap">
             <span>
               {preset === "all" ? (
                 <>Showing all records</>
               ) : preset === "today" ? (
-                <>
-                  Showing today's records (
-                  <span className="font-semibold text-theme-text">
-                    {prettyDate(range.start)}
-                  </span>
-                  )
-                </>
+                <>Showing today's records ({prettyDate(range.start)})</>
               ) : preset === "week" ? (
-                <>
-                  This week ({prettyDate(range.start)} —{" "}
-                  {prettyDate(range.end)})
-                </>
+                <>This week ({prettyDate(range.start)} — {prettyDate(range.end)})</>
               ) : preset === "month" ? (
-                <>
-                  This month ({prettyDate(range.start)} —{" "}
-                  {prettyDate(range.end)})
-                </>
+                <>This month ({prettyDate(range.start)} — {prettyDate(range.end)})</>
               ) : range.start && range.end ? (
-                <>
-                  Custom range ({prettyDate(range.start)} —{" "}
-                  {prettyDate(range.end)})
-                </>
+                <>Custom range ({prettyDate(range.start)} — {prettyDate(range.end)})</>
               ) : (
                 <>Select a date range</>
               )}
@@ -981,8 +1064,8 @@ export default function TreasurerDashboard() {
               {stats.trend !== 0 && (
                 <div
                   className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${stats.trend > 0
-                      ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                      : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                    ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                    : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
                     }`}
                 >
                   {stats.trend > 0 ? (
@@ -1055,30 +1138,173 @@ export default function TreasurerDashboard() {
           </div>
         </div>
 
+        {/* ✅ NEW: Pending Confirmations KPI */}
         <div
-          className="group bg-theme-surface border border-theme rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
-          onClick={() => navigate("/barangay-bagocboc/financial-reports")}
+          className="group bg-theme-surface border rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden cursor-pointer"
+          style={{
+            borderColor:
+              stats.pendingConfirmations > 0
+                ? "rgb(245 158 11 / 0.4)"
+                : undefined,
+          }}
+          onClick={() => {
+            setPaymentTab("pending");
+            setShowFilters(true);
+          }}
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-full -mr-8 -mt-8" />
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
               <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                <FileText className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
-              <ArrowUpRight className="w-4 h-4 text-theme-textSecondary group-hover:text-theme-primary transition-colors" />
+              {stats.pendingConfirmations > 0 && (
+                <span className="flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                </span>
+              )}
             </div>
             <p className="text-xs font-medium text-theme-textSecondary uppercase tracking-wide">
-              Pending Reports
+              Pending Confirmation
             </p>
             <p className="text-2xl font-bold text-theme-text mt-1">
-              {stats.pendingReports}
+              {stats.pendingConfirmations}
             </p>
             <p className="text-xs text-theme-textSecondary mt-1">
-              {stats.approvedReports} approved · {stats.rejectedReports} rejected
+              {formatCurrency(stats.pendingConfirmationsAmount)} awaiting cash
             </p>
           </div>
         </div>
       </div>
+
+      {/* ============================================ */}
+      {/* ✅ NEW: PENDING PAYMENT CONFIRMATIONS PANEL */}
+      {/* ============================================ */}
+      {stats.pendingConfirmations > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-transparent dark:from-amber-900/20 dark:to-transparent border-2 border-amber-200 dark:border-amber-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-900/40">
+                <BadgeCheck className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-theme-text text-lg">
+                  Pending Payment Confirmations
+                </h3>
+                <p className="text-xs text-theme-textSecondary">
+                  Residents who submitted a cash payment — please verify and confirm
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500 text-white text-xs font-bold uppercase tracking-wide">
+              <Clock className="w-3 h-3" />
+              {filteredPendingConfirmations.length} awaiting
+            </span>
+          </div>
+
+          <div className="divide-y divide-amber-100 dark:divide-amber-900/30 max-h-96 overflow-y-auto">
+            {filteredPendingConfirmations.length === 0 ? (
+              <div className="px-6 py-10 text-center text-theme-textSecondary">
+                <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-green-500" />
+                <p className="text-sm font-medium text-theme-text">
+                  All caught up!
+                </p>
+                <p className="text-xs">
+                  No pending confirmations in the current filter.
+                </p>
+              </div>
+            ) : (
+              filteredPendingConfirmations.map((payment) => {
+                const residentName = payment.resident
+                  ? `${payment.resident.first_name || ""} ${payment.resident.last_name || ""
+                    }`.trim()
+                  : "Unknown Resident";
+                const createdDate = payment.created_at
+                  ? new Date(payment.created_at).toLocaleString("en-PH", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })
+                  : "—";
+
+                return (
+                  <div
+                    key={payment.id}
+                    className="px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-amber-50/60 dark:hover:bg-amber-900/10 transition-colors"
+                  >
+                    {/* Left: info */}
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
+                        <User className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-theme-text truncate">
+                            {residentName}
+                          </p>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-bold uppercase tracking-wide">
+                            Pending
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-theme-textSecondary mt-1">
+                          <span className="font-mono">
+                            {payment.or_number || "N/A"}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <FileText className="w-3 h-3" />
+                            {payment.payment_type || "N/A"}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            {getMethodIcon(payment.payment_method)}
+                            {payment.payment_method || "Cash"}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {createdDate}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Middle: amount */}
+                    <div className="text-right sm:text-right flex-shrink-0">
+                      <p className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                        Amount
+                      </p>
+                      <p className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                        {formatCurrency(payment.amount)}
+                      </p>
+                    </div>
+
+                    {/* Right: actions */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setConfirmModal(payment)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors shadow-sm"
+                        title="Confirm cash received"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRejectModal(payment);
+                          setRejectReason("");
+                        }}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm"
+                        title="Reject payment"
+                      >
+                        <XOctagon className="w-4 h-4" />
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1244,7 +1470,7 @@ export default function TreasurerDashboard() {
         </div>
 
         <div className="lg:col-span-2 bg-theme-surface border border-theme rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-theme flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-theme flex items-center justify-between flex-wrap gap-3">
             <div>
               <h3 className="font-semibold text-theme-text flex items-center gap-2">
                 <Activity className="w-4 h-4 text-theme-primary" />
@@ -1254,15 +1480,52 @@ export default function TreasurerDashboard() {
                 Latest transactions in the selected period
               </p>
             </div>
-            <button
-              onClick={() => navigate("/barangay-bagocboc/payments")}
-              className="text-xs text-theme-primary hover:text-theme-secondary font-medium flex items-center gap-1"
-            >
-              View All <ArrowUpRight className="w-3 h-3" />
-            </button>
+
+            {/* ✅ NEW: tabs for All / Pending */}
+            <div className="flex gap-1 p-1 bg-theme-background rounded-lg border border-theme">
+              <button
+                onClick={() => setPaymentTab("pending")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${paymentTab === "pending"
+                  ? "bg-theme-primary text-white shadow-sm"
+                  : "text-theme-textSecondary hover:text-theme-text"
+                  }`}
+              >
+                <Clock className="w-3 h-3 inline mr-1" />
+                Pending
+                {stats.pendingConfirmations > 0 && (
+                  <span
+                    className={`ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full ${paymentTab === "pending"
+                      ? "bg-white/25 text-white"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                      }`}
+                  >
+                    {stats.pendingConfirmations}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setPaymentTab("all")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${paymentTab === "all"
+                  ? "bg-theme-primary text-white shadow-sm"
+                  : "text-theme-textSecondary hover:text-theme-text"
+                  }`}
+              >
+                All
+              </button>
+            </div>
           </div>
 
-          {filteredPayments.length === 0 ? (
+          {paymentTab === "pending" ? (
+            // ✅ PENDING TAB: full confirm/reject list
+            <PendingPaymentList
+              payments={filteredPendingConfirmations}
+              onConfirm={(p) => setConfirmModal(p)}
+              onReject={(p) => {
+                setRejectModal(p);
+                setRejectReason("");
+              }}
+            />
+          ) : filteredPayments.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <div className="flex flex-col items-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-theme-background flex items-center justify-center">
@@ -1466,12 +1729,12 @@ export default function TreasurerDashboard() {
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full font-medium ${report.status === "approved"
-                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                            : report.status === "pending"
-                              ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-                              : report.status === "rejected"
-                                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                          : report.status === "pending"
+                            ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                            : report.status === "rejected"
+                              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                              : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
                           }`}
                       >
                         {report.status === "approved" && <CheckCircle className="w-3 h-3" />}
@@ -1524,7 +1787,9 @@ export default function TreasurerDashboard() {
         )}
       </div>
 
-      {/* MODALS */}
+      {/* ============================================ */}
+      {/* PAYMENT DETAILS MODAL */}
+      {/* ============================================ */}
       <Modal
         isOpen={showPaymentModal}
         onClose={() => {
@@ -1590,6 +1855,199 @@ export default function TreasurerDashboard() {
         )}
       </Modal>
 
+      {/* ============================================ */}
+      {/* ✅ NEW: CONFIRM PAYMENT MODAL */}
+      {/* ============================================ */}
+      <Modal
+        isOpen={!!confirmModal}
+        onClose={() => setConfirmModal(null)}
+        title="Confirm Payment Received"
+        size="md"
+      >
+        {confirmModal && (
+          <div className="space-y-4">
+            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-green-800 dark:text-green-300">
+                <p className="font-semibold">
+                  Confirm that you have physically received the cash payment.
+                </p>
+                <p className="mt-0.5 text-green-700 dark:text-green-400">
+                  This will mark the payment as completed and move the linked
+                  certificate to "Ready for Release".
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-theme-background rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                  Resident
+                </span>
+                <span className="text-sm font-medium text-theme-text">
+                  {confirmModal.resident?.first_name}{" "}
+                  {confirmModal.resident?.last_name}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                  OR Number
+                </span>
+                <span className="text-sm font-mono text-theme-text">
+                  {confirmModal.or_number}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                  Payment Type
+                </span>
+                <span className="text-sm text-theme-text">
+                  {confirmModal.payment_type || "N/A"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-theme">
+                <span className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                  Amount
+                </span>
+                <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                  {formatCurrency(confirmModal.amount)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setConfirmModal(null)}
+                disabled={isProcessingAction}
+                className="px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmPayment}
+                disabled={isProcessingAction}
+                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 font-medium shadow-sm"
+              >
+                {isProcessingAction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Confirming...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" /> Confirm Payment
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ============================================ */}
+      {/* ✅ NEW: REJECT PAYMENT MODAL */}
+      {/* ============================================ */}
+      <Modal
+        isOpen={!!rejectModal}
+        onClose={() => {
+          setRejectModal(null);
+          setRejectReason("");
+        }}
+        title="Reject Payment"
+        size="md"
+      >
+        {rejectModal && (
+          <div className="space-y-4">
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+              <XOctagon className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-red-800 dark:text-red-300">
+                <p className="font-semibold">
+                  Reject this payment request?
+                </p>
+                <p className="mt-0.5 text-red-700 dark:text-red-400">
+                  Use this if the resident did not show up, the amount is wrong,
+                  or the payment cannot be verified. The resident will be
+                  notified with your reason.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-theme-background rounded-lg p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                  Resident
+                </span>
+                <span className="text-sm font-medium text-theme-text">
+                  {rejectModal.resident?.first_name}{" "}
+                  {rejectModal.resident?.last_name}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                  OR Number
+                </span>
+                <span className="text-sm font-mono text-theme-text">
+                  {rejectModal.or_number}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-theme">
+                <span className="text-xs text-theme-textSecondary uppercase tracking-wide">
+                  Amount
+                </span>
+                <span className="text-xl font-bold text-red-600 dark:text-red-400">
+                  {formatCurrency(rejectModal.amount)}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-theme-text mb-1.5">
+                Reason for Rejection <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-2.5 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-all placeholder:text-theme-textSecondary resize-none"
+                placeholder="e.g. Resident did not show up at the barangay hall."
+                maxLength={500}
+              />
+              <p className="text-xs text-theme-textSecondary mt-1">
+                {rejectReason.length}/500 characters
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setRejectModal(null);
+                  setRejectReason("");
+                }}
+                disabled={isProcessingAction}
+                className="px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectPayment}
+                disabled={isProcessingAction || !rejectReason.trim()}
+                className="flex items-center gap-2 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 font-medium shadow-sm"
+              >
+                {isProcessingAction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Rejecting...
+                  </>
+                ) : (
+                  <>
+                    <XOctagon className="w-4 h-4" /> Reject Payment
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* REPORT MODALS — unchanged */}
       <Modal
         isOpen={showReportModal}
         onClose={() => {
@@ -1733,6 +2191,110 @@ function DetailItem({
           {value}
         </p>
       )}
+    </div>
+  );
+}
+
+// ✅ NEW: Pending payments list for the dedicated tab
+function PendingPaymentList({
+  payments,
+  onConfirm,
+  onReject,
+}: {
+  payments: PaymentRecord[];
+  onConfirm: (p: PaymentRecord) => void;
+  onReject: (p: PaymentRecord) => void;
+}) {
+  if (payments.length === 0) {
+    return (
+      <div className="px-6 py-12 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+            <CheckCircle2 className="w-7 h-7 text-green-600 dark:text-green-400" />
+          </div>
+          <div>
+            <p className="text-theme-text font-medium">
+              All caught up
+            </p>
+            <p className="text-sm text-theme-textSecondary">
+              No pending payments need your confirmation
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-theme">
+      {payments.map((p) => {
+        const residentName = p.resident
+          ? `${p.resident.first_name || ""} ${p.resident.last_name || ""}`.trim()
+          : "Unknown Resident";
+        const date = p.created_at
+          ? new Date(p.created_at).toLocaleString("en-PH", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })
+          : "—";
+
+        return (
+          <div
+            key={p.id}
+            className="px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-theme-hover transition-colors"
+          >
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-9 h-9 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-theme-text truncate">
+                  {residentName}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-theme-textSecondary mt-0.5">
+                  <span className="font-mono">{p.or_number || "N/A"}</span>
+                  <span>{p.payment_type || "N/A"}</span>
+                  <span className="flex items-center gap-1">
+                    {p.payment_method === "Cash" ? (
+                      <Banknote className="w-3 h-3" />
+                    ) : (
+                      <Smartphone className="w-3 h-3" />
+                    )}
+                    {p.payment_method || "Cash"}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {date}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-right flex-shrink-0">
+              <p className="text-lg font-bold text-amber-700 dark:text-amber-400">
+                {formatCurrency(p.amount)}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => onConfirm(p)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition-colors shadow-sm"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Confirm
+              </button>
+              <button
+                onClick={() => onReject(p)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 transition-colors shadow-sm"
+              >
+                <XOctagon className="w-3.5 h-3.5" />
+                Reject
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

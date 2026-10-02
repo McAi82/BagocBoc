@@ -63,6 +63,11 @@ class Resident extends Model
         return $this->hasMany(TaxPayment::class);
     }
 
+    public function checkups()
+    {
+        return $this->hasMany(\App\Models\CheckupRecord::class, 'resident_id');
+    }
+
     public function penalties()
     {
         return $this->hasMany(Penalty::class);

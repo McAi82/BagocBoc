@@ -23,6 +23,155 @@ class FinanceController extends Controller
     // PAYMENTS
     // ============================================================
 
+    // app/Http/Controllers/Web/Financial/FinanceController.php
+
+    /**
+     * Treasurer confirms a pending payment was received in cash.
+     * Marks the payment completed, sets the OR, and moves the certificate
+     * to Ready for Release.
+     */
+    public function confirmPayment(Request $request, $id)
+    {
+        try {
+            $payment = Payment::with(['resident'])->find($id);
+
+            if (!$payment) {
+                return $this->respondNotFound('Payment not found');
+            }
+
+            if ($payment->status === 'completed') {
+                return $this->respondError('Payment already confirmed', null, 422);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                $payment->update([
+                    'status'  => 'completed',
+                    'paid_at' => now(),
+                ]);
+
+                // Move the linked certificate to Ready for Release
+                if ($payment->payable_type === Certification::class && $payment->payable_id) {
+                    $certification = Certification::find($payment->payable_id);
+                    if ($certification) {
+                        $certification->update([
+                            'payment_status' => 'paid',
+                            'status' => 'Ready for Release',
+                        ]);
+                    }
+                }
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            // Notify the resident
+            try {
+                $user = $this->getUserByResidentId($payment->resident_id);
+                if ($user) {
+                    $this->notifyUser(
+                        $user->id,
+                        '✅ Payment Confirmed',
+                        'Your cash payment of ₱'
+                            . number_format($payment->amount, 2)
+                            . ' has been confirmed. Your certificate is ready for release.',
+                        'payment',
+                        'high',
+                        '/resident/payments/' . $payment->id,
+                        Auth::id(),
+                        'payment',
+                        $payment->id
+                    );
+                }
+            } catch (\Exception $e) {
+                Log::error('Payment confirm notify error: ' . $e->getMessage());
+            }
+
+            return $this->respondSuccess(
+                $payment->load(['resident', 'processedBy']),
+                'Payment confirmed successfully'
+            );
+        } catch (\Exception $e) {
+            Log::error('Confirm payment error: ' . $e->getMessage());
+            return $this->respondError('Failed to confirm payment', null, 500);
+        }
+    }
+
+    /**
+     * Treasurer rejects a payment (resident didn't show up, wrong amount, etc.).
+     */
+    public function rejectPayment(Request $request, $id)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'reason' => 'required|string|max:500',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->respondError('Validation error', $validator->errors(), 422);
+            }
+
+            $payment = Payment::find($id);
+            if (!$payment) {
+                return $this->respondNotFound('Payment not found');
+            }
+
+            if ($payment->status === 'completed') {
+                return $this->respondError('Payment already confirmed', null, 422);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                $payment->update(['status' => 'failed']);
+
+                if ($payment->payable_type === Certification::class && $payment->payable_id) {
+                    $certification = Certification::find($payment->payable_id);
+                    if ($certification) {
+                        $certification->update([
+                            'payment_status' => 'failed',
+                        ]);
+                    }
+                }
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            // Notify the resident
+            try {
+                $user = $this->getUserByResidentId($payment->resident_id);
+                if ($user) {
+                    $this->notifyUser(
+                        $user->id,
+                        '❌ Payment Could Not Be Confirmed',
+                        'Your payment request was not confirmed. Reason: '
+                            . $request->reason
+                            . '. Please contact the Barangay Treasurer.',
+                        'payment',
+                        'high',
+                        '/resident/payments/' . $payment->id,
+                        Auth::id(),
+                        'payment',
+                        $payment->id
+                    );
+                }
+            } catch (\Exception $e) {
+                Log::error('Payment reject notify error: ' . $e->getMessage());
+            }
+
+            return $this->respondSuccess($payment, 'Payment rejected');
+        } catch (\Exception $e) {
+            Log::error('Reject payment error: ' . $e->getMessage());
+            return $this->respondError('Failed to reject payment', null, 500);
+        }
+    }
+
     public function indexPayments(Request $request)
     {
         try {
