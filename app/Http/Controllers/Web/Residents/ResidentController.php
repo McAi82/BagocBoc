@@ -60,11 +60,71 @@ class ResidentController extends Controller
 
     public function show($id)
     {
-        $resident = Resident::with('households')->find($id);
+        $resident = Resident::with([
+            // Households + address + zone
+            'households.address.barangayZone',
+            'households.residents',
+
+            // Health
+            'patientRecords.checkups',
+            'patientRecords.pregnancyRecord',
+            'patientRecords.childRecord',
+            'patientRecords.lactatingRecord',
+            'patientRecords.seniorRecord',
+            'patientRecords.ncdRecord',
+            'maternalProfile',
+            'optPlusAssessments',
+
+            // Certificates / Clearances
+            'certifications.certificationType',
+            'certifications.processedBy',
+            'clearances.processedBy',
+
+            // Financial
+            'penalties.issuedBy',
+            'payments.processedBy',
+            'taxPayments.processedBy',
+
+            // Account
+            'user.roles',
+        ])->find($id);
 
         if (!$resident) {
             return $this->respondNotFound('Resident not found');
         }
+
+        // Attach computed helpers
+        $household = $resident->households->first();
+
+        $resident->setAttribute('current_household', $household ? [
+            'id'                       => $household->id,
+            'household_number'         => $household->household_number,
+            'household_tracking_number' => $household->household_tracking_number,
+            'role'                     => $household->pivot->relationship_to_household ?? null,
+            'is_primary'               => (bool) ($household->pivot->is_primary ?? false),
+            'zone'                     => $household->address->barangayZone->name ?? null,
+            'street'                   => $household->address->street ?? null,
+            'member_count'             => $household->residents->count(),
+            'members'                  => $household->residents->map(fn($m) => [
+                'id'         => $m->id,
+                'full_name'  => $m->full_name,
+                'age'        => $m->age,
+                'gender'     => $m->gender,
+                'relationship' => $m->pivot->relationship_to_household ?? null,
+                'is_primary' => (bool) ($m->pivot->is_primary ?? false),
+            ])->values(),
+        ] : null);
+
+        // Cheap counts for badges
+        $resident->setAttribute('stats', [
+            'certifications'  => $resident->certifications->count(),
+            'clearances'      => $resident->clearances->count(),
+            'penalties_pending' => $resident->penalties->where('status', 'pending')->count(),
+            'payments_total'  => (float) $resident->payments->sum('amount'),
+            'tax_total'       => (float) $resident->taxPayments->sum('amount'),
+            'patient_records' => $resident->patientRecords->count(),
+            'checkups'        => $resident->patientRecords->sum(fn($pr) => $pr->checkups->count()),
+        ]);
 
         return $this->respondSuccess($resident);
     }
