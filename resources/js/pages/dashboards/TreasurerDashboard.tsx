@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Wallet,
   Eye,
-  DollarSign,
+  PhilippinePeso,
   Calendar,
   CreditCard,
   Receipt,
@@ -1059,7 +1059,7 @@ export default function TreasurerDashboard() {
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
               <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <PhilippinePeso className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               {stats.trend !== 0 && (
                 <div
@@ -1803,7 +1803,7 @@ export default function TreasurerDashboard() {
           <div className="space-y-5">
             <div className="flex items-center gap-4 p-4 bg-theme-background rounded-xl">
               <div className="p-3 rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-                <DollarSign className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                <PhilippinePeso className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
                 <p className="text-sm text-theme-textSecondary">Amount Paid</p>

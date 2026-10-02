@@ -21,7 +21,7 @@ import {
   Inbox,
   User as UserIcon,
   Calendar as CalendarIcon,
-  DollarSign,
+  PhilippinePeso,
   Info,
   BarChart3,
   Tag,
@@ -1140,14 +1140,14 @@ export default function FinancialReports() {
               },
               {
                 title: "Amount & Financials",
-                icon: DollarSign,
+                icon: PhilippinePeso,
                 rows: [
                   {
                     label: "Total Amount",
                     value: formatCurrency(
                       parseFloat(selectedReport.total_amount) || 0,
                     ),
-                    icon: DollarSign,
+                    icon: PhilippinePeso,
                   },
                 ],
               },

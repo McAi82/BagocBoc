@@ -8,7 +8,7 @@ import {
   Eye,
   Printer,
   Loader2,
-  DollarSign,
+  PhilippinePeso,
   AlertCircle,
   Save,
   Inbox,
@@ -894,12 +894,12 @@ export default function FrontDeskTaxPage() {
                   {
                     label: "Payment Method",
                     value: selectedTax.payment_method,
-                    icon: DollarSign,
+                    icon: PhilippinePeso,
                   },
                   {
                     label: "Amount Paid",
                     value: formatCurrency(selectedTax.amount),
-                    icon: DollarSign,
+                    icon: PhilippinePeso,
                   },
                   {
                     label: "Status",
@@ -1000,7 +1000,7 @@ function TaxForm({
           Amount <span className="text-red-500">*</span>
         </label>
         <div className="relative">
-          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+          <PhilippinePeso className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
           <input
             type="number"
             step="0.01"

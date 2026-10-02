@@ -7,7 +7,7 @@ import {
   Home,
   FileText,
   CreditCard,
-  DollarSign,
+  PhilippinePeso,
   Calendar,
   RefreshCw,
   Building,
@@ -137,17 +137,17 @@ export default function Dashboard() {
   const recentActivities = [
     ...(Array.isArray(data.announcements)
       ? data.announcements.slice(0, 3).map((a: any) => ({
-          action: "New Announcement",
-          details: a.title || "Announcement",
-          created_at: a.created_at,
-        }))
+        action: "New Announcement",
+        details: a.title || "Announcement",
+        created_at: a.created_at,
+      }))
       : []),
     ...(Array.isArray(data.certifications)
       ? data.certifications.slice(0, 2).map((c: any) => ({
-          action: `Certificate ${c.status || "Request"}`,
-          details: `Certificate for ${c.resident?.first_name || "Resident"}`,
-          created_at: c.created_at,
-        }))
+        action: `Certificate ${c.status || "Request"}`,
+        details: `Certificate for ${c.resident?.first_name || "Resident"}`,
+        created_at: c.created_at,
+      }))
       : []),
   ]
     .sort(
@@ -273,7 +273,7 @@ export default function Dashboard() {
         <StatCard
           title="Total Revenue"
           value={formatCurrency(stats.totalRevenue)}
-          icon={DollarSign}
+          icon={PhilippinePeso}
           color="purple"
         />
       </div>
@@ -303,28 +303,28 @@ export default function Dashboard() {
         )}
         {(roleNames.includes("Barangay Secretary") ||
           roleNames.includes("Barangay Treasurer")) && (
-          <button
-            onClick={() => navigate("/barangay-bagocboc/payments")}
-            className="p-4 bg-theme-surface rounded-xl border border-theme hover:border-theme-primary hover:shadow-md transition-all text-center"
-          >
-            <CreditCard className="w-6 h-6 mx-auto text-theme-accent mb-2" />
-            <span className="text-xs font-medium text-theme-text">
-              Record Payment
-            </span>
-          </button>
-        )}
+            <button
+              onClick={() => navigate("/barangay-bagocboc/payments")}
+              className="p-4 bg-theme-surface rounded-xl border border-theme hover:border-theme-primary hover:shadow-md transition-all text-center"
+            >
+              <CreditCard className="w-6 h-6 mx-auto text-theme-accent mb-2" />
+              <span className="text-xs font-medium text-theme-text">
+                Record Payment
+              </span>
+            </button>
+          )}
         {(roleNames.includes("Barangay Captain") ||
           roleNames.includes("Barangay Secretary")) && (
-          <button
-            onClick={() => navigate("/barangay-bagocboc/announcements")}
-            className="p-4 bg-theme-surface rounded-xl border border-theme hover:border-theme-primary hover:shadow-md transition-all text-center"
-          >
-            <Megaphone className="w-6 h-6 mx-auto text-rose-600 dark:text-rose-400 mb-2" />
-            <span className="text-xs font-medium text-theme-text">
-              Post Announcement
-            </span>
-          </button>
-        )}
+            <button
+              onClick={() => navigate("/barangay-bagocboc/announcements")}
+              className="p-4 bg-theme-surface rounded-xl border border-theme hover:border-theme-primary hover:shadow-md transition-all text-center"
+            >
+              <Megaphone className="w-6 h-6 mx-auto text-rose-600 dark:text-rose-400 mb-2" />
+              <span className="text-xs font-medium text-theme-text">
+                Post Announcement
+              </span>
+            </button>
+          )}
         {roleNames.includes("Barangay Captain") && (
           <button
             onClick={() => navigate("/barangay-bagocboc/map")}
@@ -338,18 +338,18 @@ export default function Dashboard() {
         )}
         {(roleNames.includes("Super Admin") ||
           roleNames.includes("Barangay Captain")) && (
-          <button
-            onClick={() =>
-              navigate("/barangay-bagocboc/settings/barangay-info")
-            }
-            className="p-4 bg-theme-surface rounded-xl border border-theme hover:border-theme-primary hover:shadow-md transition-all text-center"
-          >
-            <Building className="w-6 h-6 mx-auto text-theme-textSecondary mb-2" />
-            <span className="text-xs font-medium text-theme-text">
-              Barangay Info
-            </span>
-          </button>
-        )}
+            <button
+              onClick={() =>
+                navigate("/barangay-bagocboc/settings/barangay-info")
+              }
+              className="p-4 bg-theme-surface rounded-xl border border-theme hover:border-theme-primary hover:shadow-md transition-all text-center"
+            >
+              <Building className="w-6 h-6 mx-auto text-theme-textSecondary mb-2" />
+              <span className="text-xs font-medium text-theme-text">
+                Barangay Info
+              </span>
+            </button>
+          )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -368,7 +368,7 @@ export default function Dashboard() {
           </div>
           <div className="divide-y divide-theme">
             {!stats.recentTransactions ||
-            stats.recentTransactions.length === 0 ? (
+              stats.recentTransactions.length === 0 ? (
               <div className="px-6 py-12 text-center">
                 <div className="flex flex-col items-center gap-3">
                   <CreditCard className="w-12 h-12 text-theme-textSecondary/30" />

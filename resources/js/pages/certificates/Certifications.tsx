@@ -10,7 +10,7 @@ import {
   FileText,
   Printer,
   RefreshCw,
-  DollarSign,
+  PhilippinePeso,
   User,
   Send,
   FileCheck,
@@ -2386,7 +2386,7 @@ export default function Certifications() {
               Fee (₱)
             </label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+              <PhilippinePeso className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
               <input
                 type="number"
                 step="0.01"

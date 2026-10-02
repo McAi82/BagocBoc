@@ -14,7 +14,7 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  DollarSign,
+  PhilippinePeso,
   User,
   Calendar,
   FileCheck,
@@ -115,565 +115,675 @@ export default function SecretaryDashboard() {
     setCurrentPage(1);
   }, [activeTab, searchQuery, itemsPerPage]);
 
-  // ============================================
-  // IN-PAGE PRINT HELPER
-  // ============================================
+  /* ============================================================
+    PRINT HELPER — isolated iframe (no page chrome, no theme bleed)
+    ============================================================ */
   const printHTML = (html: string) => {
-    const existing = document.getElementById("print-portal");
+    const existing = document.getElementById("print-iframe");
     if (existing) existing.remove();
 
-    const portal = document.createElement("div");
-    portal.id = "print-portal";
-    portal.innerHTML = html;
-    document.body.appendChild(portal);
+    const iframe = document.createElement("iframe");
+    iframe.id = "print-iframe";
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    document.body.appendChild(iframe);
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.print();
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      toast.error("Unable to prepare print document");
+      iframe.remove();
+      return;
+    }
 
-        const cleanup = () => {
-          const el = document.getElementById("print-portal");
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    const doPrint = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.error("Print failed:", err);
+        toast.error("Print failed. Please try again.");
+      } finally {
+        setTimeout(() => {
+          const el = document.getElementById("print-iframe");
           if (el) el.remove();
-          window.removeEventListener("afterprint", cleanup);
-        };
-        window.addEventListener("afterprint", cleanup);
-      });
-    });
+        }, 1000);
+      }
+    };
+
+    if (iframe.contentWindow) {
+      iframe.contentWindow.onload = () => setTimeout(doPrint, 300);
+    }
+    setTimeout(doPrint, 500);
   };
 
-  // ============================================
-  // PRINT HANDLERS
-  // ============================================
+  /* ============================================================
+   NUMBER → WORDS (for "Amount in Words" line on receipts)
+   ============================================================ */
+  const numberToWords = (num: number): string => {
+    if (num === 0) return "Zero Pesos Only";
+    const ones = [
+      "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
+      "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+      "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+    ];
+    const tens = [
+      "", "", "Twenty", "Thirty", "Forty", "Fifty",
+      "Sixty", "Seventy", "Eighty", "Ninety",
+    ];
+    const chunk = (n: number): string => {
+      if (n === 0) return "";
+      if (n < 20) return ones[n];
+      if (n < 100)
+        return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
+      return (
+        ones[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 ? " " + chunk(n % 100) : "")
+      );
+    };
+
+    let n = Math.floor(num);
+    const cents = Math.round((num - n) * 100);
+    let words = "";
+
+    const scales = [
+      { value: 1_000_000_000, name: "Billion" },
+      { value: 1_000_000, name: "Million" },
+      { value: 1_000, name: "Thousand" },
+    ];
+
+    for (const s of scales) {
+      if (n >= s.value) {
+        const count = Math.floor(n / s.value);
+        words += chunk(count) + " " + s.name + " ";
+        n %= s.value;
+      }
+    }
+    words += chunk(n);
+    words = words.trim() || "Zero";
+
+    let result = `${words} Pesos`;
+    if (cents > 0) result += ` and ${chunk(cents)} Centavos`;
+    return result + " Only";
+  };
+
+  /* ============================================================
+   FORMAL OFFICIAL PAYMENT RECEIPT
+   ============================================================ */
   const handlePrintPayment = (payment: any) => {
     const residentName = payment.resident
-      ? `${payment.resident.first_name || ""} ${payment.resident.last_name || ""}`.trim()
+      ? `${payment.resident.first_name || ""} ${payment.resident.last_name || ""
+        }`.trim()
       : "N/A";
 
     const paidDate = payment.paid_at || payment.created_at;
-    const formattedDate = paidDate
-      ? new Date(paidDate).toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-      : "N/A";
-    const formattedTime = paidDate
-      ? new Date(paidDate).toLocaleTimeString("en-PH", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-      : "";
+    const d = paidDate ? new Date(paidDate) : new Date();
+
+    const formattedDate = d.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const formattedTime = d.toLocaleTimeString("en-PH", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const amount = parseFloat(payment.amount) || 0;
+    const amountFormatted = amount.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const amountInWords = numberToWords(amount);
+    const statusClass = (payment.status || "completed").toLowerCase();
 
     const html = `
-      <style>
-        #print-portal * { box-sizing: border-box; margin: 0; padding: 0; }
-        #print-portal {
-          font-family: 'Georgia', 'Times New Roman', serif;
-          color: #1a1a1a;
-          background: #ffffff;
-        }
-        #print-portal .receipt {
-          max-width: 720px;
-          margin: 0 auto;
-          background: #ffffff;
-          padding: 40px 50px;
-        }
-        #print-portal .header {
-          text-align: center;
-          border-bottom: 3px double #1a1a1a;
-          padding-bottom: 18px;
-          margin-bottom: 26px;
-        }
-        #print-portal .header .republic {
-          font-size: 11px;
-          letter-spacing: 1.5px;
-          text-transform: uppercase;
-          color: #555;
-          margin-bottom: 6px;
-        }
-        #print-portal .header .barangay {
-          font-size: 26px;
-          font-weight: bold;
-          letter-spacing: 1px;
-          color: #0f172a;
-          margin-bottom: 4px;
-        }
-        #print-portal .header .location {
-          font-size: 12px;
-          color: #666;
-          font-style: italic;
-        }
-        #print-portal .title {
-          text-align: center;
-          font-size: 20px;
-          font-weight: bold;
-          letter-spacing: 4px;
-          text-transform: uppercase;
-          margin: 22px 0 8px;
-          color: #0f172a;
-        }
-        #print-portal .subtitle {
-          text-align: center;
-          font-size: 12px;
-          color: #666;
-          margin-bottom: 26px;
-          letter-spacing: 2px;
-        }
-        #print-portal .or-box {
-          background: #f8f9fb;
-          border: 1px solid #d1d5db;
-          border-left: 4px solid #1e3a8a;
-          padding: 14px 20px;
-          margin-bottom: 26px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        #print-portal .or-box .label {
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 1.5px;
-          color: #666;
-          font-weight: bold;
-        }
-        #print-portal .or-box .value {
-          font-size: 18px;
-          font-weight: bold;
-          font-family: 'Courier New', monospace;
-          color: #1e3a8a;
-        }
-        #print-portal .details {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 26px;
-        }
-        #print-portal .details tr td {
-          padding: 11px 0;
-          border-bottom: 1px solid #eee;
-          font-size: 14px;
-          vertical-align: top;
-        }
-        #print-portal .details tr:last-child td { border-bottom: none; }
-        #print-portal .details .field {
-          color: #666;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          width: 40%;
-        }
-        #print-portal .details .val {
-          color: #0f172a;
-          font-weight: 600;
-          text-align: right;
-        }
-        #print-portal .amount-section {
-          background: #f0f4ff;
-          border: 2px solid #1e3a8a;
-          padding: 20px 24px;
-          margin: 26px 0;
-          text-align: center;
-        }
-        #print-portal .amount-section .label {
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 2px;
-          color: #1e3a8a;
-          margin-bottom: 6px;
-        }
-        #print-portal .amount-section .amount {
-          font-size: 30px;
-          font-weight: bold;
-          color: #1e3a8a;
-          font-family: 'Georgia', serif;
-        }
-        #print-portal .status-badge {
-          display: inline-block;
-          padding: 4px 14px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: bold;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          background: #d1fae5;
-          color: #065f46;
-        }
-        #print-portal .signatures {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 50px;
-          gap: 40px;
-        }
-        #print-portal .sig-block {
-          flex: 1;
-          text-align: center;
-        }
-        #print-portal .sig-block .line {
-          border-top: 1px solid #333;
-          margin-bottom: 6px;
-          height: 40px;
-        }
-        #print-portal .sig-block .name {
-          font-size: 13px;
-          font-weight: bold;
-          color: #0f172a;
-        }
-        #print-portal .sig-block .role {
-          font-size: 11px;
-          color: #666;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        #print-portal .footer-note {
-          margin-top: 34px;
-          padding-top: 18px;
-          border-top: 1px dashed #ccc;
-          font-size: 10px;
-          color: #888;
-          text-align: center;
-          line-height: 1.6;
-        }
-      </style>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Official Receipt — ${payment.or_number || "N/A"}</title>
+<style>
+  @page { size: A4 portrait; margin: 15mm 14mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #ffffff;
+    color: #111111;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 11.5px;
+    line-height: 1.55;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet { width: 100%; max-width: 720px; margin: 0 auto; padding: 8px 0; }
 
-      <div class="receipt">
-        <div class="header">
-          <div class="republic">Republic of the Philippines</div>
-          <div class="barangay">BARANGAY BAGOCBOC</div>
-          <div class="location">Opol, Misamis Oriental</div>
-        </div>
+  .letterhead {
+    display: flex; align-items: center; gap: 20px;
+    padding-bottom: 14px; border-bottom: 3px double #1a1a1a;
+  }
+  .seal {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 1.5px solid #333;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8.5px; letter-spacing: 1px; color: #666;
+    flex-shrink: 0; text-transform: uppercase; text-align: center; line-height: 1.2;
+  }
+  .letterhead-text { flex: 1; text-align: center; line-height: 1.35; }
+  .letterhead-text .republic { font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase; color: #444; }
+  .letterhead-text .province,
+  .letterhead-text .municipality { font-size: 11.5px; color: #444; }
+  .letterhead-text .barangay {
+    font-size: 22px; font-weight: bold; letter-spacing: 1.5px;
+    color: #0f172a; margin: 4px 0;
+  }
+  .letterhead-text .office { font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: #555; }
+  .rule-thick { border-top: 2px solid #1a1a1a; margin-top: 2px; margin-bottom: 22px; }
 
-        <div class="title">Official Receipt</div>
-        <div class="subtitle">Payment Acknowledgement</div>
+  .title-block { text-align: center; margin-bottom: 24px; }
+  .title-block h1 {
+    font-size: 22px; letter-spacing: 6px;
+    text-transform: uppercase; color: #0f172a; font-weight: bold;
+  }
+  .title-block .subtitle {
+    font-size: 11px; font-style: italic; color: #666;
+    letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px;
+  }
 
-        <div class="or-box">
-          <div>
-            <div class="label">OR Number</div>
-            <div class="value">${payment.or_number || "N/A"}</div>
-          </div>
-          <div style="text-align:right">
-            <div class="label">Date Issued</div>
-            <div style="font-size:13px;font-weight:600;color:#0f172a;margin-top:4px">
-              ${formattedDate}${formattedTime ? ` • ${formattedTime}` : ""}
-            </div>
-          </div>
-        </div>
+  .or-band {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px;
+    background: #f5f7fb;
+    border: 1px solid #d8dde6;
+    border-left: 4px solid #1e3a8a;
+    margin-bottom: 24px;
+  }
+  .or-band .lbl {
+    font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: 1.5px; color: #555; font-weight: bold;
+  }
+  .or-band .val {
+    font-size: 17px; font-weight: bold; color: #1e3a8a;
+    font-family: 'Courier New', monospace; margin-top: 2px;
+  }
+  .or-band .date-val {
+    font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 2px;
+  }
 
-        <table class="details">
-          <tr>
-            <td class="field">Received From</td>
-            <td class="val">${residentName}</td>
-          </tr>
-          <tr>
-            <td class="field">Payment Type</td>
-            <td class="val">${payment.payment_type || "N/A"}</td>
-          </tr>
-          <tr>
-            <td class="field">Payment Method</td>
-            <td class="val">${payment.payment_method || "Cash"}</td>
-          </tr>
-          <tr>
-            <td class="field">Status</td>
-            <td class="val">
-              <span class="status-badge">${payment.status || "Completed"}</span>
-            </td>
-          </tr>
-          ${payment.description
-        ? `<tr>
-                  <td class="field">Description</td>
-                  <td class="val">${payment.description}</td>
-                </tr>`
+  .body-block {
+    border: 1px solid #e5e7eb;
+    padding: 26px 30px;
+    margin-bottom: 22px;
+  }
+  .lead {
+    font-size: 12.5px; text-align: justify;
+    margin-bottom: 20px; line-height: 1.7;
+  }
+
+  .row {
+    display: flex; align-items: flex-end;
+    margin-bottom: 14px; font-size: 12.5px;
+  }
+  .row .label { flex: 0 0 auto; padding-right: 6px; color: #555; }
+  .row .dots {
+    flex: 1; border-bottom: 1px dotted #999;
+    margin: 0 6px; transform: translateY(-4px); min-width: 40px;
+  }
+  .row .value {
+    flex: 0 0 auto; font-weight: bold; color: #0f172a;
+    font-family: 'Courier New', monospace;
+    padding-left: 6px; text-align: right;
+    max-width: 300px; word-break: break-word;
+  }
+  .row .value.plain { font-family: 'Georgia', serif; font-weight: normal; }
+
+  .amount-panel {
+    margin-top: 26px;
+    border: 2px solid #1e3a8a;
+    background: #eef3ff;
+    padding: 20px 22px;
+    text-align: center;
+  }
+  .amount-panel .lbl {
+    font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: 2.5px; color: #1e3a8a; font-weight: bold;
+  }
+  .amount-panel .amt {
+    font-size: 30px; font-weight: bold; color: #1e3a8a;
+    font-family: 'Georgia', serif; margin-top: 6px; letter-spacing: 1px;
+  }
+  .amount-panel .words {
+    margin-top: 8px; font-size: 10.5px; font-style: italic;
+    color: #4b5563; letter-spacing: 0.3px;
+  }
+
+  .status-wrap { display: flex; justify-content: center; margin-top: 18px; }
+  .status-badge {
+    display: inline-block; padding: 4px 18px;
+    border-radius: 20px; font-size: 10px; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 1px;
+    border: 1px solid transparent;
+  }
+  .status-badge.completed { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+  .status-badge.pending   { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+  .status-badge.failed    { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+  .signatures {
+    display: flex; justify-content: space-between;
+    gap: 50px; margin-top: 60px; page-break-inside: avoid;
+  }
+  .sig-block { flex: 1; max-width: 260px; text-align: center; }
+  .sig-line { border-top: 1px solid #333; margin-bottom: 6px; height: 40px; }
+  .sig-name { font-size: 12px; font-weight: bold; color: #0f172a; }
+  .sig-title {
+    font-size: 10px; color: #666; text-transform: uppercase;
+    letter-spacing: 1px; margin-top: 2px;
+  }
+
+  .footer {
+    margin-top: 44px; padding-top: 14px;
+    border-top: 1px dashed #bbb;
+    font-size: 9.5px; color: #888;
+    text-align: center; line-height: 1.6;
+    page-break-inside: avoid;
+  }
+  .footer strong { color: #555; }
+  .footer .strip {
+    display: inline-block; margin-top: 6px;
+    padding: 3px 12px; border: 1px dashed #bbb;
+    font-size: 9.5px; color: #666;
+    letter-spacing: 1.2px; text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+  <div class="sheet">
+
+    <div class="letterhead">
+      <div class="seal">BARANGAY<br/>SEAL</div>
+      <div class="letterhead-text">
+        <div class="republic">Republic of the Philippines</div>
+        <div class="province">Province of Misamis Oriental</div>
+        <div class="municipality">Municipality of Opol</div>
+        <div class="barangay">BARANGAY BAGOCBOC</div>
+        <div class="office">Office of the Barangay Treasurer</div>
+      </div>
+      <div class="seal">DILG<br/>SEAL</div>
+    </div>
+    <div class="rule-thick"></div>
+
+    <div class="title-block">
+      <h1>Official Receipt</h1>
+      <div class="subtitle">Acknowledgement of Payment</div>
+    </div>
+
+    <div class="or-band">
+      <div>
+        <div class="lbl">OR Number</div>
+        <div class="val">${payment.or_number || "N/A"}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="lbl">Date Issued</div>
+        <div class="date-val">${formattedDate} &bull; ${formattedTime}</div>
+      </div>
+    </div>
+
+    <div class="body-block">
+      <p class="lead">
+        Received from <strong>${residentName}</strong>
+        the sum of <strong>&#8369;${amountFormatted}</strong>
+        (<em>${amountInWords}</em>) in payment of
+        <strong>${payment.payment_type || "N/A"}</strong>.
+      </p>
+
+      <div class="row">
+        <div class="label">Received From</div>
+        <div class="dots"></div>
+        <div class="value">${residentName}</div>
+      </div>
+      <div class="row">
+        <div class="label">Payment Type</div>
+        <div class="dots"></div>
+        <div class="value">${payment.payment_type || "N/A"}</div>
+      </div>
+      <div class="row">
+        <div class="label">Payment Method</div>
+        <div class="dots"></div>
+        <div class="value">${payment.payment_method || "Cash"}</div>
+      </div>
+      ${payment.description
+        ? `
+      <div class="row">
+        <div class="label">Description</div>
+        <div class="dots"></div>
+        <div class="value plain">${payment.description}</div>
+      </div>`
         : ""
       }
-        </table>
 
-        <div class="amount-section">
-          <div class="label">Total Amount Paid</div>
-          <div class="amount">₱ ${parseFloat(payment.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        </div>
-
-        <div class="signatures">
-          <div class="sig-block">
-            <div class="line"></div>
-            <div class="name">Barangay Treasurer</div>
-            <div class="role">Authorized Personnel</div>
-          </div>
-          <div class="sig-block">
-            <div class="line"></div>
-            <div class="name">${residentName}</div>
-            <div class="role">Payor / Received By</div>
-          </div>
-        </div>
-
-        <div class="footer-note">
-          This is a system-generated official receipt from the Barangay Bagocboc Management System.<br/>
-          Thank you for your payment. Please keep this receipt for your records.
-        </div>
+      <div class="amount-panel">
+        <div class="lbl">Total Amount Paid</div>
+        <div class="amt">&#8369; ${amountFormatted}</div>
+        <div class="words">${amountInWords}</div>
       </div>
-    `;
+
+      <div class="status-wrap">
+        <span class="status-badge ${statusClass}">${payment.status || "Completed"}</span>
+      </div>
+    </div>
+
+    <div class="signatures">
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">Juan D. Dela Cruz</div>
+        <div class="sig-title">Barangay Treasurer</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">${residentName}</div>
+        <div class="sig-title">Payor / Received By</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <strong>Barangay Bagocboc</strong> &bull; Opol, Misamis Oriental<br/>
+      <span class="strip">Thank you for your payment</span><br/>
+      <em>This is a system-generated official receipt. Please keep this for your records.</em>
+    </div>
+  </div>
+</body>
+</html>`;
 
     printHTML(html);
   };
 
+  /* ============================================================
+   FORMAL TAX RECEIPT
+   ============================================================ */
   const handlePrintTax = (tax: any) => {
     const paidDate = tax.paid_at || tax.created_at;
-    const formattedDate = paidDate
-      ? new Date(paidDate).toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-      : "N/A";
-    const formattedTime = paidDate
-      ? new Date(paidDate).toLocaleTimeString("en-PH", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-      : "";
+    const d = paidDate ? new Date(paidDate) : new Date();
+
+    const formattedDate = d.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const formattedTime = d.toLocaleTimeString("en-PH", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const amount = parseFloat(tax.amount) || 0;
+    const amountFormatted = amount.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const amountInWords = numberToWords(amount);
+    const statusClass = (tax.status || "paid").toLowerCase();
 
     const html = `
-      <style>
-        #print-portal * { box-sizing: border-box; margin: 0; padding: 0; }
-        #print-portal {
-          font-family: 'Georgia', 'Times New Roman', serif;
-          color: #1a1a1a;
-          background: #ffffff;
-        }
-        #print-portal .receipt {
-          max-width: 720px;
-          margin: 0 auto;
-          background: #ffffff;
-          padding: 40px 50px;
-        }
-        #print-portal .header {
-          text-align: center;
-          border-bottom: 3px double #1a1a1a;
-          padding-bottom: 18px;
-          margin-bottom: 26px;
-        }
-        #print-portal .header .republic {
-          font-size: 11px;
-          letter-spacing: 1.5px;
-          text-transform: uppercase;
-          color: #555;
-          margin-bottom: 6px;
-        }
-        #print-portal .header .barangay {
-          font-size: 26px;
-          font-weight: bold;
-          letter-spacing: 1px;
-          color: #0f172a;
-          margin-bottom: 4px;
-        }
-        #print-portal .header .location {
-          font-size: 12px;
-          color: #666;
-          font-style: italic;
-        }
-        #print-portal .title {
-          text-align: center;
-          font-size: 20px;
-          font-weight: bold;
-          letter-spacing: 4px;
-          text-transform: uppercase;
-          margin: 22px 0 8px;
-          color: #0f172a;
-        }
-        #print-portal .subtitle {
-          text-align: center;
-          font-size: 12px;
-          color: #666;
-          margin-bottom: 26px;
-          letter-spacing: 2px;
-        }
-        #print-portal .or-box {
-          background: #f8f9fb;
-          border: 1px solid #d1d5db;
-          border-left: 4px solid #6d28d9;
-          padding: 14px 20px;
-          margin-bottom: 26px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        #print-portal .or-box .label {
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 1.5px;
-          color: #666;
-          font-weight: bold;
-        }
-        #print-portal .or-box .value {
-          font-size: 18px;
-          font-weight: bold;
-          font-family: 'Courier New', monospace;
-          color: #6d28d9;
-        }
-        #print-portal .details {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 26px;
-        }
-        #print-portal .details tr td {
-          padding: 11px 0;
-          border-bottom: 1px solid #eee;
-          font-size: 14px;
-          vertical-align: top;
-        }
-        #print-portal .details tr:last-child td { border-bottom: none; }
-        #print-portal .details .field {
-          color: #666;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          width: 40%;
-        }
-        #print-portal .details .val {
-          color: #0f172a;
-          font-weight: 600;
-          text-align: right;
-        }
-        #print-portal .amount-section {
-          background: #f5f3ff;
-          border: 2px solid #6d28d9;
-          padding: 20px 24px;
-          margin: 26px 0;
-          text-align: center;
-        }
-        #print-portal .amount-section .label {
-          font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 2px;
-          color: #6d28d9;
-          margin-bottom: 6px;
-        }
-        #print-portal .amount-section .amount {
-          font-size: 30px;
-          font-weight: bold;
-          color: #6d28d9;
-          font-family: 'Georgia', serif;
-        }
-        #print-portal .status-badge {
-          display: inline-block;
-          padding: 4px 14px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: bold;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          background: #d1fae5;
-          color: #065f46;
-        }
-        #print-portal .signatures {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 50px;
-          gap: 40px;
-        }
-        #print-portal .sig-block {
-          flex: 1;
-          text-align: center;
-        }
-        #print-portal .sig-block .line {
-          border-top: 1px solid #333;
-          margin-bottom: 6px;
-          height: 40px;
-        }
-        #print-portal .sig-block .name {
-          font-size: 13px;
-          font-weight: bold;
-          color: #0f172a;
-        }
-        #print-portal .sig-block .role {
-          font-size: 11px;
-          color: #666;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-        #print-portal .footer-note {
-          margin-top: 34px;
-          padding-top: 18px;
-          border-top: 1px dashed #ccc;
-          font-size: 10px;
-          color: #888;
-          text-align: center;
-          line-height: 1.6;
-        }
-      </style>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Tax Receipt — ${tax.receipt_number || "N/A"}</title>
+<style>
+  @page { size: A4 portrait; margin: 15mm 14mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #ffffff;
+    color: #111111;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 11.5px;
+    line-height: 1.55;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet { width: 100%; max-width: 720px; margin: 0 auto; padding: 8px 0; }
 
-      <div class="receipt">
-        <div class="header">
-          <div class="republic">Republic of the Philippines</div>
-          <div class="barangay">BARANGAY BAGOCBOC</div>
-          <div class="location">Opol, Misamis Oriental</div>
-        </div>
+  .letterhead {
+    display: flex; align-items: center; gap: 20px;
+    padding-bottom: 14px; border-bottom: 3px double #1a1a1a;
+  }
+  .seal {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 1.5px solid #333;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8.5px; letter-spacing: 1px; color: #666;
+    flex-shrink: 0; text-transform: uppercase; text-align: center; line-height: 1.2;
+  }
+  .letterhead-text { flex: 1; text-align: center; line-height: 1.35; }
+  .letterhead-text .republic { font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase; color: #444; }
+  .letterhead-text .province,
+  .letterhead-text .municipality { font-size: 11.5px; color: #444; }
+  .letterhead-text .barangay {
+    font-size: 22px; font-weight: bold; letter-spacing: 1.5px;
+    color: #0f172a; margin: 4px 0;
+  }
+  .letterhead-text .office { font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: #555; }
+  .rule-thick { border-top: 2px solid #1a1a1a; margin-top: 2px; margin-bottom: 22px; }
 
-        <div class="title">Tax Receipt</div>
-        <div class="subtitle">Official Tax Payment Acknowledgement</div>
+  .title-block { text-align: center; margin-bottom: 24px; }
+  .title-block h1 {
+    font-size: 22px; letter-spacing: 6px;
+    text-transform: uppercase; color: #0f172a; font-weight: bold;
+  }
+  .title-block .subtitle {
+    font-size: 11px; font-style: italic; color: #666;
+    letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px;
+  }
 
-        <div class="or-box">
-          <div>
-            <div class="label">Receipt Number</div>
-            <div class="value">${tax.receipt_number || "N/A"}</div>
-          </div>
-          <div style="text-align:right">
-            <div class="label">Date Issued</div>
-            <div style="font-size:13px;font-weight:600;color:#0f172a;margin-top:4px">
-              ${formattedDate}${formattedTime ? ` • ${formattedTime}` : ""}
-            </div>
-          </div>
-        </div>
+  .or-band {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+    border-left: 4px solid #6d28d9;
+    margin-bottom: 24px;
+  }
+  .or-band .lbl {
+    font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: 1.5px; color: #555; font-weight: bold;
+  }
+  .or-band .val {
+    font-size: 17px; font-weight: bold; color: #6d28d9;
+    font-family: 'Courier New', monospace; margin-top: 2px;
+  }
+  .or-band .date-val {
+    font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 2px;
+  }
 
-        <table class="details">
-          <tr>
-            <td class="field">Taxpayer Name</td>
-            <td class="val">${tax.taxpayer_name || "N/A"}</td>
-          </tr>
-          <tr>
-            <td class="field">Tax Type</td>
-            <td class="val">${tax.tax_type || "N/A"}</td>
-          </tr>
-          <tr>
-            <td class="field">Payment Method</td>
-            <td class="val">${tax.payment_method || "Cash"}</td>
-          </tr>
-          <tr>
-            <td class="field">Status</td>
-            <td class="val">
-              <span class="status-badge">${tax.status || "Paid"}</span>
-            </td>
-          </tr>
-          ${tax.remarks
-        ? `<tr>
-                  <td class="field">Remarks</td>
-                  <td class="val">${tax.remarks}</td>
-                </tr>`
+  .body-block {
+    border: 1px solid #e5e7eb;
+    padding: 26px 30px;
+    margin-bottom: 22px;
+  }
+  .lead {
+    font-size: 12.5px; text-align: justify;
+    margin-bottom: 20px; line-height: 1.7;
+  }
+
+  .row {
+    display: flex; align-items: flex-end;
+    margin-bottom: 14px; font-size: 12.5px;
+  }
+  .row .label { flex: 0 0 auto; padding-right: 6px; color: #555; }
+  .row .dots {
+    flex: 1; border-bottom: 1px dotted #999;
+    margin: 0 6px; transform: translateY(-4px); min-width: 40px;
+  }
+  .row .value {
+    flex: 0 0 auto; font-weight: bold; color: #0f172a;
+    font-family: 'Courier New', monospace;
+    padding-left: 6px; text-align: right;
+    max-width: 300px; word-break: break-word;
+  }
+  .row .value.plain { font-family: 'Georgia', serif; font-weight: normal; }
+
+  .amount-panel {
+    margin-top: 26px;
+    border: 2px solid #6d28d9;
+    background: #f5f3ff;
+    padding: 20px 22px;
+    text-align: center;
+  }
+  .amount-panel .lbl {
+    font-size: 9.5px; text-transform: uppercase;
+    letter-spacing: 2.5px; color: #6d28d9; font-weight: bold;
+  }
+  .amount-panel .amt {
+    font-size: 30px; font-weight: bold; color: #6d28d9;
+    font-family: 'Georgia', serif; margin-top: 6px; letter-spacing: 1px;
+  }
+  .amount-panel .words {
+    margin-top: 8px; font-size: 10.5px; font-style: italic;
+    color: #4b5563; letter-spacing: 0.3px;
+  }
+
+  .status-wrap { display: flex; justify-content: center; margin-top: 18px; }
+  .status-badge {
+    display: inline-block; padding: 4px 18px;
+    border-radius: 20px; font-size: 10px; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 1px;
+    border: 1px solid transparent;
+  }
+  .status-badge.paid    { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+  .status-badge.pending { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+
+  .signatures {
+    display: flex; justify-content: space-between;
+    gap: 50px; margin-top: 60px; page-break-inside: avoid;
+  }
+  .sig-block { flex: 1; max-width: 260px; text-align: center; }
+  .sig-line { border-top: 1px solid #333; margin-bottom: 6px; height: 40px; }
+  .sig-name { font-size: 12px; font-weight: bold; color: #0f172a; }
+  .sig-title {
+    font-size: 10px; color: #666; text-transform: uppercase;
+    letter-spacing: 1px; margin-top: 2px;
+  }
+
+  .footer {
+    margin-top: 44px; padding-top: 14px;
+    border-top: 1px dashed #bbb;
+    font-size: 9.5px; color: #888;
+    text-align: center; line-height: 1.6;
+    page-break-inside: avoid;
+  }
+  .footer strong { color: #555; }
+  .footer .strip {
+    display: inline-block; margin-top: 6px;
+    padding: 3px 12px; border: 1px dashed #bbb;
+    font-size: 9.5px; color: #666;
+    letter-spacing: 1.2px; text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+  <div class="sheet">
+
+    <div class="letterhead">
+      <div class="seal">BARANGAY<br/>SEAL</div>
+      <div class="letterhead-text">
+        <div class="republic">Republic of the Philippines</div>
+        <div class="province">Province of Misamis Oriental</div>
+        <div class="municipality">Municipality of Opol</div>
+        <div class="barangay">BARANGAY BAGOCBOC</div>
+        <div class="office">Office of the Barangay Treasurer</div>
+      </div>
+      <div class="seal">DILG<br/>SEAL</div>
+    </div>
+    <div class="rule-thick"></div>
+
+    <div class="title-block">
+      <h1>Tax Receipt</h1>
+      <div class="subtitle">Official Tax Payment Acknowledgement</div>
+    </div>
+
+    <div class="or-band">
+      <div>
+        <div class="lbl">Receipt Number</div>
+        <div class="val">${tax.receipt_number || "N/A"}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="lbl">Date Issued</div>
+        <div class="date-val">${formattedDate} &bull; ${formattedTime}</div>
+      </div>
+    </div>
+
+    <div class="body-block">
+      <p class="lead">
+        Received from <strong>${tax.taxpayer_name || "N/A"}</strong>
+        the sum of <strong>&#8369;${amountFormatted}</strong>
+        (<em>${amountInWords}</em>) in payment of
+        <strong>${tax.tax_type || "N/A"}</strong>.
+      </p>
+
+      <div class="row">
+        <div class="label">Taxpayer Name</div>
+        <div class="dots"></div>
+        <div class="value">${tax.taxpayer_name || "N/A"}</div>
+      </div>
+      <div class="row">
+        <div class="label">Tax Type</div>
+        <div class="dots"></div>
+        <div class="value">${tax.tax_type || "N/A"}</div>
+      </div>
+      <div class="row">
+        <div class="label">Payment Method</div>
+        <div class="dots"></div>
+        <div class="value">${tax.payment_method || "Cash"}</div>
+      </div>
+      ${tax.remarks
+        ? `
+      <div class="row">
+        <div class="label">Remarks</div>
+        <div class="dots"></div>
+        <div class="value plain">${tax.remarks}</div>
+      </div>`
         : ""
       }
-        </table>
 
-        <div class="amount-section">
-          <div class="label">Total Amount Paid</div>
-          <div class="amount">₱ ${parseFloat(tax.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        </div>
-
-        <div class="signatures">
-          <div class="sig-block">
-            <div class="line"></div>
-            <div class="name">Barangay Treasurer</div>
-            <div class="role">Authorized Personnel</div>
-          </div>
-          <div class="sig-block">
-            <div class="line"></div>
-            <div class="name">${tax.taxpayer_name || "Taxpayer"}</div>
-            <div class="role">Payor / Received By</div>
-          </div>
-        </div>
-
-        <div class="footer-note">
-          This is a system-generated tax receipt from the Barangay Bagocboc Management System.<br/>
-          Thank you for your payment. Please keep this receipt for your records.
-        </div>
+      <div class="amount-panel">
+        <div class="lbl">Total Amount Paid</div>
+        <div class="amt">&#8369; ${amountFormatted}</div>
+        <div class="words">${amountInWords}</div>
       </div>
-    `;
+
+      <div class="status-wrap">
+        <span class="status-badge ${statusClass}">${tax.status || "Paid"}</span>
+      </div>
+    </div>
+
+    <div class="signatures">
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">Juan D. Dela Cruz</div>
+        <div class="sig-title">Barangay Treasurer</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">${tax.taxpayer_name || "Taxpayer"}</div>
+        <div class="sig-title">Payor / Received By</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <strong>Barangay Bagocboc</strong> &bull; Opol, Misamis Oriental<br/>
+      <span class="strip">Thank you for your payment</span><br/>
+      <em>This is a system-generated tax receipt. Please keep this for your records.</em>
+    </div>
+  </div>
+</body>
+</html>`;
 
     printHTML(html);
   };
@@ -2261,7 +2371,7 @@ export default function SecretaryDashboard() {
               Amount <span className="text-red-500">*</span>
             </label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+              <PhilippinePeso className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
               <input
                 type="number"
                 step="0.01"

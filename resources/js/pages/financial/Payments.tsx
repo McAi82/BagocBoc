@@ -10,7 +10,7 @@ import {
   XCircle,
   Clock,
   CreditCard,
-  DollarSign,
+  PhilippinePeso,
   Loader2,
   AlertCircle,
   Inbox,
@@ -1500,7 +1500,7 @@ export default function Payments() {
                 Amount (₱) <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                <PhilippinePeso className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
                 <input
                   type="number"
                   step="0.01"

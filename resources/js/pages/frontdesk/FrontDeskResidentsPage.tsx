@@ -10,7 +10,7 @@ import {
   Eye,
   AlertCircle,
   Phone,
-  DollarSign,
+  PhilippinePeso,
   Plus,
   X,
   Save,
@@ -680,9 +680,8 @@ export default function FrontDeskResidentsPage() {
                   onFocus={() => {
                     if (!selectedQueueResident) setShowResidentDropdown(true);
                   }}
-                  className={`w-full pl-10 pr-10 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                    queueErrors.resident ? "border-red-500" : "border-theme"
-                  }`}
+                  className={`w-full pl-10 pr-10 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${queueErrors.resident ? "border-red-500" : "border-theme"
+                    }`}
                 />
                 {selectedQueueResident && (
                   <button
@@ -694,9 +693,8 @@ export default function FrontDeskResidentsPage() {
                 )}
                 {!selectedQueueResident && (
                   <ChevronDown
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary transition-transform ${
-                      showResidentDropdown ? "rotate-180" : ""
-                    }`}
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary transition-transform ${showResidentDropdown ? "rotate-180" : ""
+                      }`}
                   />
                 )}
               </div>
@@ -784,9 +782,8 @@ export default function FrontDeskResidentsPage() {
               onChange={(e) =>
                 setQueueForm({ ...queueForm, service_type: e.target.value })
               }
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                queueErrors.service_type ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${queueErrors.service_type ? "border-red-500" : "border-theme"
+                }`}
             >
               <option value="">Select Service Type</option>
               {SERVICE_TYPES.map((type) => (
@@ -1046,9 +1043,8 @@ function ResidentForm({
               name="first_name"
               value={formData.first_name}
               onChange={handleChange}
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                errors.first_name ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.first_name ? "border-red-500" : "border-theme"
+                }`}
             />
             {errors.first_name && (
               <p className="text-sm text-red-500 mt-1">{errors.first_name}</p>
@@ -1063,9 +1059,8 @@ function ResidentForm({
               name="last_name"
               value={formData.last_name}
               onChange={handleChange}
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                errors.last_name ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.last_name ? "border-red-500" : "border-theme"
+                }`}
             />
             {errors.last_name && (
               <p className="text-sm text-red-500 mt-1">{errors.last_name}</p>
@@ -1105,9 +1100,8 @@ function ResidentForm({
               name="birth_date"
               value={formData.birth_date}
               onChange={handleChange}
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                errors.birth_date ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.birth_date ? "border-red-500" : "border-theme"
+                }`}
             />
             {errors.birth_date && (
               <p className="text-sm text-red-500 mt-1">{errors.birth_date}</p>
@@ -1164,9 +1158,8 @@ function ResidentForm({
               name="place_of_birth"
               value={formData.place_of_birth}
               onChange={handleChange}
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                errors.place_of_birth ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.place_of_birth ? "border-red-500" : "border-theme"
+                }`}
             />
             {errors.place_of_birth && (
               <p className="text-sm text-red-500 mt-1">
@@ -1233,9 +1226,8 @@ function ResidentForm({
               name="education_attainment"
               value={formData.education_attainment}
               onChange={handleChange}
-              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${
-                errors.education_attainment ? "border-red-500" : "border-theme"
-              }`}
+              className={`w-full px-4 py-2.5 border rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors ${errors.education_attainment ? "border-red-500" : "border-theme"
+                }`}
             />
             {errors.education_attainment && (
               <p className="text-sm text-red-500 mt-1">

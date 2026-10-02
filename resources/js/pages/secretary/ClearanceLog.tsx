@@ -20,7 +20,7 @@ import {
   Hash,
   Calendar as CalendarIcon,
   Target,
-  DollarSign,
+  PhilippinePeso,
   Tag,
   Info,
   CheckCircle as CheckIcon,
@@ -708,7 +708,7 @@ Total Records: ${stats.total}
                     value: formatCurrency(
                       parseFloat(selectedClearance.amount) || 0,
                     ),
-                    icon: DollarSign,
+                    icon: PhilippinePeso,
                   },
                   {
                     label: "Purpose",

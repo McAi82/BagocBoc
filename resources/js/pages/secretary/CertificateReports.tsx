@@ -20,7 +20,7 @@ import {
   Hash,
   Calendar as CalendarIcon,
   Target,
-  DollarSign,
+  PhilippinePeso,
   Tag,
   Info,
   CheckCircle as CheckIcon,
@@ -803,7 +803,7 @@ Total Records: ${stats.total}
                     value: selectedCert.certification_type?.fee
                       ? formatCurrency(selectedCert.certification_type.fee)
                       : "Free",
-                    icon: DollarSign,
+                    icon: PhilippinePeso,
                   },
                   {
                     label: "Purpose",
