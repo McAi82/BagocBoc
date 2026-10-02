@@ -76,7 +76,7 @@ return new class extends Migration
             $table->json('virtual_documents')->nullable();
 
             $table->enum('payment_method', ['cash'])->nullable();
-            $table->enum('payment_status', ['pending', 'paid', 'failed'])->default('InReview');
+            $table->enum('payment_status', ['InReview', 'pending', 'paid', 'failed'])->default('InReview');
             $table->string('payment_reference')->nullable();
 
             $table->softDeletes();
