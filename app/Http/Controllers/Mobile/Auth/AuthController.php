@@ -103,6 +103,148 @@ class AuthController extends Controller
         ], 'Login successful');
     }
 
+    // ============================================================
+    // ✅ NEW: REQUEST OTP FOR LOGIN
+    // ============================================================
+    //
+    // Step 1 of the passwordless flow. Takes an email, verifies
+    // the user exists and is allowed on mobile, then sends a code.
+    //
+    public function requestLoginOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
+
+        $email = strtolower(trim($request->email));
+
+        $user = User::with(['roles', 'resident'])
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->first();
+
+        if (!$user) {
+            // Don't reveal whether an email exists — same message either way.
+            return $this->respondError(
+                'If an account exists for this email, a code has been sent.',
+                null,
+                404
+            );
+        }
+
+        // Same role gates as the password login
+        $mobileOnlyRoles = [
+            'Barangay Health Worker',
+            'Zone Leader',
+            'Resident',
+            'Barangay Nutrition Scholar',
+        ];
+
+        $webAccessibleRoles = [
+            'Super Admin',
+            'Barangay Captain',
+            'Barangay Secretary',
+            'Front Desk Clerk',
+            'Barangay Treasurer',
+            'Midwife',
+            'Nurse Deployment Program',
+        ];
+
+        $userRoles = $user->roles->pluck('name')->toArray();
+
+        if (!empty(array_intersect($userRoles, $webAccessibleRoles))) {
+            return $this->respondForbidden(
+                'This account has web access. Please use the web application.'
+            );
+        }
+
+        if (empty(array_intersect($userRoles, $mobileOnlyRoles))) {
+            return $this->respondForbidden('This account is not authorized for mobile access.');
+        }
+
+        if ($user->account_status === 'inactive') {
+            $user->tokens()->delete();
+            return $this->respondError('Your account is deactivated.', null, 403);
+        }
+
+        // ✅ Send the OTP under the 'login' purpose
+        $otpResponse = $this->sendOtp($user, 'login');
+        if ($otpResponse->getStatusCode() !== 200) {
+            return $otpResponse;
+        }
+
+        return $this->respondSuccess([
+            'user_id' => $user->id,
+            'email'   => $user->email,
+            'purpose' => 'login',
+            'requires_otp' => true,
+        ], 'A login code has been sent to your email.', 200);
+    }
+
+    // ============================================================
+    // ✅ NEW: VERIFY LOGIN OTP
+    // ============================================================
+    //
+    // Step 2 of the passwordless flow. Takes user_id + otp + purpose
+    // 'login' and returns the same payload the password login returns.
+    //
+    public function verifyLoginOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'required|exists:users,id',
+            'otp'     => 'required|digits:6',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
+
+        $user = User::findOrFail($request->user_id);
+
+        if ($user->account_status === 'inactive') {
+            $user->tokens()->delete();
+            return $this->respondError('Your account is deactivated.', null, 403);
+        }
+
+        $otp = Otp::where('user_id', $user->id)
+            ->where('purpose', 'login')
+            ->whereNull('used_at')
+            ->where('expires_at', '>', now())
+            ->latest()
+            ->first();
+
+        if (!$otp) {
+            return $this->respondError('Code invalid or expired. Please request a new one.', null, 422);
+        }
+
+        if ($otp->attempts >= 5) {
+            return $this->respondError('Too many attempts. Please request a new code.', null, 429);
+        }
+
+        if (!Hash::check($request->otp, $otp->code_hash)) {
+            $otp->increment('attempts');
+            return $this->respondError('Invalid code.', null, 422);
+        }
+
+        $otp->update(['used_at' => now(), 'attempts' => 0]);
+
+        // Same-side effects as the password login
+        $user->update(['last_login_at' => now()]);
+        $user->load('roles', 'resident');
+
+        $token = $user->createToken('mobile_auth_token')->plainTextToken;
+
+        return $this->respondSuccess([
+            'user'       => $user,
+            'roles'      => $user->roles->pluck('name')->values(),
+            'token'      => $token,
+            'token_type' => 'Bearer',
+        ], 'Login successful', 200);
+    }
+
     public function verifyRegistrationOtp(Request $request)
     {
         $validator = Validator::make($request->all(), [

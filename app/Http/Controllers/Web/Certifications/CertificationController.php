@@ -37,6 +37,17 @@ class CertificationController extends Controller
             $query->where('status', $request->status);
         }
 
+        // ✅ Filter by ZL clearance state
+        if ($request->filled('zl_status')) {
+            if ($request->zl_status === 'unreviewed') {
+                $query->whereNull('zl_clearance_status');
+            } elseif ($request->zl_status === 'any') {
+                // no-op
+            } else {
+                $query->where('zl_clearance_status', $request->zl_status);
+            }
+        }
+
         if ($request->has('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -54,51 +65,52 @@ class CertificationController extends Controller
         $certifications->getCollection()->transform(function ($cert) {
             $resident = $cert->requester?->resident;
             return [
-                'id' => $cert->id,
-                'reference_number' => $cert->reference_number,
-                'resident_id' => $resident?->id,
-                'resident_name' => $resident ? $resident->full_name : 'Unknown',
-                'first_name' => $resident?->first_name,
-                'last_name' => $resident?->last_name,
-                'certification_type_id' => $cert->certification_type_id,
-                'certification_type' => $cert->certificationType,
-                'purpose' => $cert->purpose,
-                'details' => $cert->details,
-                'status' => $cert->status,
+                'id'                     => $cert->id,
+                'reference_number'       => $cert->reference_number,
+                'resident_id'            => $resident?->id,
+                'resident_name'          => $resident ? $resident->full_name : 'Unknown',
+                'first_name'             => $resident?->first_name,
+                'last_name'              => $resident?->last_name,
+                'certification_type_id'  => $cert->certification_type_id,
+                'certification_type'     => $cert->certificationType,
+                'purpose'                => $cert->purpose,
+                'details'                => $cert->details,
+                'status'                 => $cert->status,
 
-                'created_at' => $cert->created_at,
-                'updated_at' => $cert->updated_at,
-                'approved_at' => $cert->approved_at,
-                'released_at' => $cert->released_at,
-                'received_at' => $cert->received_at,
+                'created_at'             => $cert->created_at,
+                'updated_at'             => $cert->updated_at,
+                'approved_at'            => $cert->approved_at,
+                'released_at'            => $cert->released_at,
+                'received_at'            => $cert->received_at,
 
-                'file_url' => $cert->file_url,
-                'document_path' => $cert->document_path,
-                'document_name' => $cert->document_name,
-                'pdf_url' => $cert->pdf_url,
-                'pdf_download_url' => $cert->pdf_download_url,
+                'file_url'               => $cert->file_url,
+                'document_path'          => $cert->document_path,
+                'document_name'          => $cert->document_name,
+                'pdf_url'                => $cert->pdf_url,
+                'pdf_download_url'       => $cert->pdf_download_url,
 
-                'download_token' => $cert->download_token,
+                'download_token'         => $cert->download_token,
                 'download_token_expires_at' => $cert->download_token_expires_at,
-                'downloaded_at' => $cert->downloaded_at,
-                'is_downloadable' => $cert->is_downloadable,
-                'has_been_downloaded' => $cert->has_been_downloaded,
+                'downloaded_at'          => $cert->downloaded_at,
+                'is_downloadable'        => $cert->is_downloadable,
+                'has_been_downloaded'    => $cert->has_been_downloaded,
 
-                'payment_method' => $cert->payment_method,
-                'payment_status' => $cert->payment_status,
-                'payment_reference' => $cert->payment_reference,
+                'payment_method'         => $cert->payment_method,
+                'payment_status'         => $cert->payment_status,
+                'payment_reference'      => $cert->payment_reference,
 
-                'zl_clearance_status' => $cert->zl_clearance_status,
-                'zl_clearance_notes' => $cert->zl_clearance_notes,
-                'zl_clearance_date' => $cert->zl_clearance_date,
+                // ✅ ZL clearance fields
+                'zl_clearance_status'    => $cert->zl_clearance_status,
+                'zl_clearance_notes'     => $cert->zl_clearance_notes,
+                'zl_clearance_date'      => $cert->zl_clearance_date,
 
-                'submission_channel' => $cert->submission_channel,
+                'submission_channel'     => $cert->submission_channel,
 
-                'remarks' => $cert->remarks,
-                'requester' => $cert->requester,
-                'resident' => $resident,
-                'requested_by' => $cert->requestedBy,
-                'processed_by' => $cert->processedBy,
+                'remarks'                => $cert->remarks,
+                'requester'              => $cert->requester,
+                'resident'               => $resident,
+                'requested_by'           => $cert->requestedBy,
+                'processed_by'           => $cert->processedBy,
             ];
         });
 
@@ -203,7 +215,7 @@ class CertificationController extends Controller
     }
 
     // ============================================
-    // CREATE / APPROVE / REJECT
+    // CREATE
     // ============================================
 
     public function store(Request $request)
@@ -233,6 +245,11 @@ class CertificationController extends Controller
             'file_url' => 'certificates/default.pdf',
             'reference_number' => $this->generateReference('CERT', Certification::class),
             'status' => 'Pending',
+
+            // ✅ Explicit nulls — never inherit stale payment state
+            'payment_status'    => null,
+            'payment_method'    => null,
+            'payment_reference' => null,
         ]);
 
         $this->notifyRoles(
@@ -252,6 +269,10 @@ class CertificationController extends Controller
         );
     }
 
+    // ============================================
+    // SECRETARY APPROVAL
+    // ============================================
+
     public function approve($id)
     {
         $certification = Certification::find($id);
@@ -260,14 +281,29 @@ class CertificationController extends Controller
             return $this->respondNotFound('Certification not found');
         }
 
-        if (!$certification->canApprove()) {
-            return $this->respondError('Only pending or in-review certifications can be approved', null, 422);
+        if (!$certification->canSecretaryApprove()) {
+            return $this->respondError(
+                'This certification has already been processed.',
+                null,
+                422
+            );
+        }
+
+        // ✅ Require the ZL to have cleared it first (comment this out
+        //    if the Secretary should be allowed to override directly).
+        if (!$certification->isZlCleared()) {
+            return $this->respondError(
+                'This request has not been cleared by the Zone Leader yet. ' .
+                'Ask the Zone Leader to review it first.',
+                null,
+                422
+            );
         }
 
         $certification->update([
-            'status' => 'Approved',
+            'status'               => 'Approved',
             'processed_by_user_id' => Auth::id(),
-            'approved_at' => now(),
+            'approved_at'          => now(),
         ]);
 
         $this->notifyResident(
@@ -293,7 +329,11 @@ class CertificationController extends Controller
         }
 
         if (!$certification->canApprove()) {
-            return $this->respondError('Only pending or in-review certifications can be rejected', null, 422);
+            return $this->respondError(
+                'Only pending or in-review certifications can be rejected',
+                null,
+                422
+            );
         }
 
         $validator = Validator::make($request->all(), [
@@ -305,9 +345,9 @@ class CertificationController extends Controller
         }
 
         $certification->update([
-            'status' => 'Rejected',
+            'status'               => 'Rejected',
             'processed_by_user_id' => Auth::id(),
-            'remarks' => $request->remarks ?? 'Rejected by barangay official',
+            'remarks'              => $request->remarks ?? 'Rejected by barangay official',
         ]);
 
         $this->notifyResident(
@@ -567,10 +607,11 @@ class CertificationController extends Controller
             'step' => 1,
             'steps' => [
                 ['step' => 1, 'name' => 'Request', 'status' => 'completed', 'description' => 'Resident requested certification', 'date' => $certification->created_at],
-                ['step' => 2, 'name' => 'Approval', 'status' => $certification->approved_at ? 'completed' : ($certification->status === 'Rejected' ? 'rejected' : 'pending'), 'description' => 'Secretary approves or rejects the request', 'date' => $certification->approved_at],
-                ['step' => 3, 'name' => 'Document Creation', 'status' => $certification->document_path ? 'completed' : 'pending', 'description' => 'Secretary generates the document', 'date' => $certification->updated_at],
-                ['step' => 4, 'name' => 'Release', 'status' => $certification->released_at ? 'completed' : 'pending', 'description' => 'Secretary releases the document', 'date' => $certification->released_at],
-                ['step' => 5, 'name' => 'Receive', 'status' => $certification->received_at ? 'completed' : 'pending', 'description' => 'Resident receives and downloads the document', 'date' => $certification->received_at],
+                ['step' => 2, 'name' => 'ZL Clearance', 'status' => $certification->zl_clearance_status === 'cleared' ? 'completed' : ($certification->zl_clearance_status === 'flagged' ? 'rejected' : 'pending'), 'description' => 'Zone Leader clears or flags the request', 'date' => $certification->zl_clearance_date],
+                ['step' => 3, 'name' => 'Approval', 'status' => $certification->approved_at ? 'completed' : ($certification->status === 'Rejected' ? 'rejected' : 'pending'), 'description' => 'Secretary approves or rejects the request', 'date' => $certification->approved_at],
+                ['step' => 4, 'name' => 'Document Creation', 'status' => $certification->document_path ? 'completed' : 'pending', 'description' => 'Secretary generates the document', 'date' => $certification->updated_at],
+                ['step' => 5, 'name' => 'Release', 'status' => $certification->released_at ? 'completed' : 'pending', 'description' => 'Secretary releases the document', 'date' => $certification->released_at],
+                ['step' => 6, 'name' => 'Receive', 'status' => $certification->received_at ? 'completed' : 'pending', 'description' => 'Resident receives and downloads the document', 'date' => $certification->received_at],
             ],
             'current_step' => $this->getCurrentStep($certification),
             'status' => $certification->status,
@@ -581,10 +622,11 @@ class CertificationController extends Controller
 
     private function getCurrentStep($certification)
     {
-        if ($certification->received_at) return 5;
-        if ($certification->released_at) return 4;
-        if ($certification->document_path) return 3;
-        if ($certification->approved_at) return 2;
+        if ($certification->received_at) return 6;
+        if ($certification->released_at) return 5;
+        if ($certification->document_path) return 4;
+        if ($certification->approved_at) return 3;
+        if ($certification->zl_clearance_status === 'cleared') return 2;
         if ($certification->status === 'Rejected') return -1;
         return 1;
     }

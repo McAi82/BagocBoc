@@ -183,35 +183,49 @@
 
 <body>
     @php
-    $purposeKey = $purpose ?? 'is_first_login';
-    $userLabel = $userName ?? 'User';
+    // ── Purpose-driven copy ──────────────────────────────────────────
+    // Every branch returns: [emoji, badge text, intro paragraph, expiry minutes]
+    $purposeKey = $purpose ?? 'login';
+
+    $userLabel = $userName ?? 'there';
     $emailLabel = $email ?? null;
 
-    // Determine display strings based on purpose
     [$badgeIcon, $badgeText, $intro, $expiryMinutes] = match ($purposeKey) {
-    'registration' => [
-    '🎉',
-    'Registration Verification',
-    'Thank you for registering with Barangay Bagocboc. Please use the code below to verify your email address and finish creating your account.',
+    'login' => [
+    '🔐',
+    'Sign-in Code',
+    'Use the code below to sign in to the Barangay Bagocboc mobile app.',
+    10,
+    ],
+    'is_first_login' => [
+    '👋',
+    'First Login Verification',
+    'Welcome! Enter the code below to activate your account and sign in for the first time.',
     10,
     ],
     'password_reset' => [
-    '🔐',
-    'Password Reset Verification',
-    'You requested to reset your password. Please use the code below to continue.',
+    '🔑',
+    'Password Reset',
+    'You requested to reset your password. Enter the code below to continue.',
     5,
     ],
     'change_password' => [
-    '🔑',
-    'Password Change Verification',
-    'You requested to change your password. Please use the code below to continue.',
+    '🛡️',
+    'Password Change',
+    'You requested to change your password. Enter the code below to confirm the change.',
     5,
+    ],
+    'registration' => [
+    '🎉',
+    'Registration Verification',
+    'Thanks for registering with Barangay Bagocboc. Enter the code below to verify your email address and finish creating your account.',
+    10,
     ],
     default => [
     '✅',
     'Account Verification',
     'Please use the code below to verify your identity and continue.',
-    5,
+    10,
     ],
     };
     @endphp
@@ -244,7 +258,7 @@
 
             <!-- OTP Code -->
             <div class="otp-container">
-                <span class="otp-label">Your OTP Code</span>
+                <span class="otp-label">Your code</span>
                 <div class="otp-code">{{ $otp }}</div>
                 <p class="expiry">
                     ⏱️ This code will expire in
@@ -253,13 +267,14 @@
             </div>
 
             <div class="note">
-                <strong>🔒 Security Note:</strong> Never share this OTP with anyone.
-                Barangay Bagocboc will never ask for your OTP via phone or email.
+                <strong>🔒 Security note:</strong> Never share this code with anyone.
+                Barangay Bagocboc will never ask for your code via phone or email.
             </div>
 
             <p class="message" style="font-size:14px; color:#888;">
-                If you didn't request this code, please ignore this email or contact
-                the Barangay Hall immediately.
+                If you didn't request this code, you can safely ignore this email.
+                If you think someone is trying to access your account, contact the
+                Barangay Hall immediately.
             </p>
 
             <hr class="divider">

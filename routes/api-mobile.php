@@ -51,6 +51,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/check-email', [AuthController::class, 'checkEmail']);
     Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    Route::post('/request-login-otp', [AuthController::class, 'requestLoginOtp']);
+    Route::post('/verify-login-otp',  [AuthController::class, 'verifyLoginOtp']);
 });
 
 Route::prefix('/qr')->group(function () {
@@ -318,6 +320,8 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
             Route::get('/check-ins/my', [ZoneController::class, 'myCheckIns']);
             Route::get('/stats', [ZoneController::class, 'indexStats']);
             Route::get('/certificate-requests', [CertificateRequestController::class, 'index']);
+            Route::get('/certificate-requests/counts', [CertificateRequestController::class, 'getRequestCounts']);
+            Route::post('/certificate-requests/{id}/reject', [CertificateRequestController::class, 'flag']);
             Route::get('/compliance', [ComplianceManagementController::class, 'index']);
             Route::post('/compliance', [ComplianceManagementController::class, 'store']);
             Route::get('/residents', [CensusResidentController::class, 'index']);
@@ -325,11 +329,10 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
             Route::get('/households', [CensusHouseholdController::class, 'index']);
             Route::get('/census/records', [CensusHouseholdController::class, 'indexCensus']);
 
-            // ✅ WILDCARD ROUTES AFTER STATIC
-
-            // Certificate Requests
+            //
             Route::post('/certificate-requests/{id}/approve', [CertificateRequestController::class, 'approve']);
-            Route::post('/certificate-requests/{id}/reject', [CertificateRequestController::class, 'reject']);
+            Route::post('/certificate-requests/{id}/flag',    [CertificateRequestController::class, 'flag']);
+            Route::post('/certificate-requests/{id}/retract', [CertificateRequestController::class, 'retract']);
 
             Route::get('/check-ins/{id}', [ZoneController::class, 'showCheckIn']);
             Route::post('/clearance/{residentId}', [ClearanceGenerationController::class, 'generate']);

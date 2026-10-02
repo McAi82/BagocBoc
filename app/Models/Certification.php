@@ -99,44 +99,27 @@ class Certification extends Model
 
     public function getIsDownloadableAttribute(): bool
     {
-        // Not yet released → cannot download
         if (!$this->document_path) return false;
-
-        // Already downloaded → cannot download again
         if ($this->downloaded_at) return false;
-
-        // Token expired → cannot download
         if ($this->download_token_expires_at && $this->download_token_expires_at->isPast()) {
             return false;
         }
-
         return true;
     }
 
-    /**
-     * ✅ True if the resident has already downloaded the certificate.
-     */
     public function getHasBeenDownloadedAttribute(): bool
     {
         return $this->downloaded_at !== null;
     }
 
-    /**
-     * ✅ Public one-time download URL.
-     */
     public function getPdfDownloadUrlAttribute(): ?string
     {
         if (!$this->is_downloadable || !$this->download_token) {
             return null;
         }
-
         return url('/api/mobile/certificates/download/' . $this->download_token);
     }
 
-    /**
-     * ✅ Generate a fresh one-time download token.
-     * Called when the certificate is released.
-     */
     public function generateDownloadToken(int $expiresInHours = 72): void
     {
         $this->update([
@@ -146,10 +129,6 @@ class Certification extends Model
         ]);
     }
 
-    /**
-     * ✅ Mark this certificate as consumed after a successful download.
-     * Clears the token so the URL can never be used again.
-     */
     public function markAsDownloaded(): void
     {
         $this->update([
@@ -171,7 +150,41 @@ class Certification extends Model
     }
 
     // ============================================
-    // HELPER METHODS
+    // ZL CLEARANCE HELPERS
+    // ============================================
+
+    /**
+     * True only when the Zone Leader has NOT yet reviewed this request.
+     * Any status other than Pending, or any existing zl_clearance_status,
+     * locks the ZL out of the first-pass actions.
+     */
+    public function canZoneLeaderClear(): bool
+    {
+        return $this->status === 'Pending'
+            && empty($this->zl_clearance_status);
+    }
+
+    public function isZlCleared(): bool
+    {
+        return $this->zl_clearance_status === 'cleared';
+    }
+
+    public function isZlFlagged(): bool
+    {
+        return $this->zl_clearance_status === 'flagged';
+    }
+
+    /**
+     * The Secretary can approve Pending (direct override) or
+     * In Review (standard two-stage flow).
+     */
+    public function canSecretaryApprove(): bool
+    {
+        return in_array($this->status, ['Pending', 'In Review']);
+    }
+
+    // ============================================
+    // GENERAL STATUS HELPERS
     // ============================================
 
     public function canApprove(): bool

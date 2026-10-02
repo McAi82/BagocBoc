@@ -16,6 +16,10 @@ class CertificateRequestController extends Controller
 {
     use SendsNotifications, ResolvesZones;
 
+    // ============================================
+    // LIST
+    // ============================================
+
     public function index(Request $request)
     {
         try {
@@ -30,6 +34,15 @@ class CertificateRequestController extends Controller
 
             if ($request->has('status')) {
                 $query->where('status', $request->status);
+            }
+
+            // Optional: filter by ZL clearance
+            if ($request->filled('zl_status')) {
+                if ($request->zl_status === 'unreviewed') {
+                    $query->whereNull('zl_clearance_status');
+                } else {
+                    $query->where('zl_clearance_status', $request->zl_status);
+                }
             }
 
             $zoneId = $this->getZoneLeaderZone(Auth::id());
@@ -62,17 +75,24 @@ class CertificateRequestController extends Controller
                 }
 
                 return [
-                    'id' => $cert->id,
-                    'resident_id' => $resident ? $resident->id : null,
-                    'resident_name' => $resident ? $resident->full_name : 'Unknown',
-                    'certificate_type' => $cert->certificationType ? $cert->certificationType->name : 'N/A',
+                    'id'                    => $cert->id,
+                    'resident_id'           => $resident ? $resident->id : null,
+                    'resident_name'         => $resident ? $resident->full_name : 'Unknown',
+                    'certificate_type'      => $cert->certificationType ? $cert->certificationType->name : 'N/A',
                     'certification_type_id' => $cert->certification_type_id,
-                    'purpose' => $cert->purpose ?? 'N/A',
-                    'status' => strtolower($cert->status),
-                    'requested_at' => $cert->created_at ? $cert->created_at->toISOString() : now()->toISOString(),
-                    'household_number' => $household ? $household->household_number : null,
-                    'zone' => $zoneName ?? 'N/A',
-                    'fee' => $cert->certificationType ? (float) $cert->certificationType->fee : 0,
+                    'purpose'               => $cert->purpose ?? 'N/A',
+                    'status'                => strtolower($cert->status),
+                    'requested_at'          => $cert->created_at ? $cert->created_at->toISOString() : now()->toISOString(),
+                    'household_number'      => $household ? $household->household_number : null,
+                    'zone'                  => $zoneName ?? 'N/A',
+                    'fee'                   => $cert->certificationType ? (float) $cert->certificationType->fee : 0,
+
+                    // ✅ ZL clearance fields
+                    'zl_clearance_status'   => $cert->zl_clearance_status,
+                    'zl_clearance_notes'    => $cert->zl_clearance_notes,
+                    'zl_clearance_date'     => $cert->zl_clearance_date
+                        ? $cert->zl_clearance_date->toISOString()
+                        : null,
                 ];
             });
 
@@ -83,9 +103,87 @@ class CertificateRequestController extends Controller
         }
     }
 
-    public function reject(Request $request, $id)
+    // ============================================
+    // ZL FIRST-PASS ACTIONS
+    // ============================================
+
+    /**
+     * Zone Leader clears a request → status becomes "In Review" and the
+     * Secretary picks it up next.
+     */
+    public function approve(Request $request, $id)
     {
         try {
+            $certification = Certification::find($id);
+
+            if (!$certification) {
+                return $this->respondNotFound('Certificate request not found');
+            }
+
+            if (!$certification->canZoneLeaderClear()) {
+                return $this->respondError(
+                    'This request has already been reviewed by a Zone Leader.',
+                    null,
+                    422
+                );
+            }
+
+            $validator = Validator::make($request->all(), [
+                'notes' => 'nullable|string|max:500',
+            ]);
+
+            if ($validator->fails()) {
+                return $this->respondError('Validation error', $validator->errors(), 422);
+            }
+
+            $certification->update([
+                'status'               => 'In Review',
+                'zl_clearance_status'  => 'cleared',
+                'zl_clearance_notes'   => $request->notes,
+                'zl_clearance_date'    => now(),
+                'processed_by_user_id' => Auth::id(),
+            ]);
+
+            $this->syncToWebFrontDesk($certification);
+
+            $this->notifyCertificateResident(
+                $certification,
+                '🔎 Certificate Request Under Review',
+                "Your certificate request ({$certification->reference_number}) has been cleared by your Zone Leader and is now with the Barangay Secretary for approval.",
+                'normal'
+            );
+
+            return $this->respondSuccess(
+                $certification->fresh()->load(['certificationType', 'requester']),
+                'Request cleared and forwarded to the Secretary'
+            );
+        } catch (\Exception $e) {
+            Log::error('ZL clearance error: ' . $e->getMessage());
+            return $this->respondError('Failed to clear certificate', null, 500);
+        }
+    }
+
+    /**
+     * Zone Leader flags a request with a reason. The status stays "Pending"
+     * but the flag is visible to the Secretary.
+     */
+    public function flag(Request $request, $id)
+    {
+        try {
+            $certification = Certification::find($id);
+
+            if (!$certification) {
+                return $this->respondNotFound('Certificate request not found');
+            }
+
+            if (!$certification->canZoneLeaderClear()) {
+                return $this->respondError(
+                    'This request has already been reviewed by a Zone Leader.',
+                    null,
+                    422
+                );
+            }
+
             $validator = Validator::make($request->all(), [
                 'reason' => 'required|string|max:500',
             ]);
@@ -94,38 +192,85 @@ class CertificateRequestController extends Controller
                 return $this->respondError('Validation error', $validator->errors(), 422);
             }
 
+            $certification->update([
+                'zl_clearance_status'  => 'flagged',
+                'zl_clearance_notes'   => $request->reason,
+                'zl_clearance_date'    => now(),
+                'processed_by_user_id' => Auth::id(),
+                // status intentionally stays 'Pending'
+            ]);
+
+            $this->notifyCertificateResident(
+                $certification,
+                '⚠️ Certificate Request Flagged',
+                "Your certificate request ({$certification->reference_number}) was flagged by your Zone Leader: {$request->reason}",
+                'high'
+            );
+
+            $this->notifyRoles(
+                ['Barangay Secretary'],
+                '⚠️ ZL Flagged a Certificate Request',
+                "{$certification->resident_name}'s request ({$certification->reference_number}) was flagged: {$request->reason}",
+                'certificate',
+                'high',
+                '/certifications/' . $certification->id,
+                Auth::id()
+            );
+
+            return $this->respondSuccess(
+                $certification->fresh()->load(['certificationType', 'requester']),
+                'Request flagged'
+            );
+        } catch (\Exception $e) {
+            Log::error('ZL flag error: ' . $e->getMessage());
+            return $this->respondError('Failed to flag certificate', null, 500);
+        }
+    }
+
+    /**
+     * Retract a prior clearance/flag before the Secretary acts.
+     */
+    public function retract(Request $request, $id)
+    {
+        try {
             $certification = Certification::find($id);
 
             if (!$certification) {
                 return $this->respondNotFound('Certificate request not found');
             }
 
-            if ($certification->status !== 'Pending' && $certification->status !== 'In Review') {
-                return $this->respondError('Only pending requests can be rejected', null, 422);
+            if (!$certification->isZlCleared() && !$certification->isZlFlagged()) {
+                return $this->respondError('Nothing to retract.', null, 422);
+            }
+
+            if (in_array($certification->status, ['Approved', 'Ready for Release', 'Released'])) {
+                return $this->respondError(
+                    'The Secretary has already acted on this request.',
+                    null,
+                    422
+                );
             }
 
             $certification->update([
-                'status' => 'Rejected',
-                'processed_by_user_id' => Auth::id(),
-                'remarks' => $request->reason,
+                'status'               => 'Pending',
+                'zl_clearance_status'  => null,
+                'zl_clearance_notes'   => null,
+                'zl_clearance_date'    => null,
             ]);
 
-            $this->notifyCertificateResident(
-                $certification,
-                '❌ Certificate Request Rejected',
-                "Your certificate request ({$certification->reference_number}) was rejected by the Zone Leader. Reason: {$request->reason}",
-                'high'
-            );
-
             return $this->respondSuccess(
-                $certification->load(['certificationType', 'requester']),
-                'Certificate request rejected successfully'
+                $certification->fresh()->load(['certificationType', 'requester']),
+                'Clearance retracted'
             );
         } catch (\Exception $e) {
-            Log::error('Certificate rejection error: ' . $e->getMessage());
-            return $this->respondError('Failed to reject certificate', null, 500);
+            Log::error('ZL retract error: ' . $e->getMessage());
+            return $this->respondError('Failed to retract clearance', null, 500);
         }
     }
+
+    // ============================================
+    // LEGACY / OTHER LIST ENDPOINTS
+    // ============================================
 
     public function allRequests()
     {
@@ -142,13 +287,13 @@ class CertificateRequestController extends Controller
                     : null;
 
                 return [
-                    'id' => $cert->id,
-                    'resident_id' => $resident ? $resident->id : null,
-                    'resident_name' => $resident ? $resident->full_name : 'Unknown',
+                    'id'               => $cert->id,
+                    'resident_id'      => $resident ? $resident->id : null,
+                    'resident_name'    => $resident ? $resident->full_name : 'Unknown',
                     'certificate_type' => $cert->certificationType ? $cert->certificationType->name : 'N/A',
-                    'purpose' => $cert->purpose ?? 'N/A',
-                    'status' => strtolower($cert->status),
-                    'requested_at' => $cert->created_at ? $cert->created_at->toISOString() : now()->toISOString(),
+                    'purpose'          => $cert->purpose ?? 'N/A',
+                    'status'           => strtolower($cert->status),
+                    'requested_at'     => $cert->created_at ? $cert->created_at->toISOString() : now()->toISOString(),
                 ];
             });
 
@@ -173,62 +318,38 @@ class CertificateRequestController extends Controller
                     });
                 } else {
                     return $this->respondSuccess([
-                        'pending' => 0,
-                        'approved' => 0,
-                        'rejected' => 0,
-                        'total' => 0,
+                        'pending'   => 0,
+                        'in_review' => 0,
+                        'flagged'   => 0,
+                        'approved'  => 0,
+                        'rejected'  => 0,
+                        'total'     => 0,
                     ]);
                 }
             }
 
             $counts = [
-                'pending' => (clone $query)->whereIn('status', ['Pending', 'In Review'])->count(),
-                'approved' => (clone $query)->where('status', 'Approved')->count(),
-                'rejected' => (clone $query)->where('status', 'Rejected')->count(),
-                'total' => (clone $query)->count(),
+                'pending' => (clone $query)
+                    ->where('status', 'Pending')
+                    ->whereNull('zl_clearance_status')
+                    ->count(),
+                'in_review' => (clone $query)->where('status', 'In Review')->count(),
+                'flagged'   => (clone $query)->where('zl_clearance_status', 'flagged')->count(),
+                'approved'  => (clone $query)->where('status', 'Approved')->count(),
+                'rejected'  => (clone $query)->where('status', 'Rejected')->count(),
+                'total'     => (clone $query)->count(),
             ];
 
             return $this->respondSuccess($counts);
         } catch (\Exception $e) {
-            return $this->respondSuccess(['pending' => 0, 'approved' => 0, 'rejected' => 0, 'total' => 0]);
-        }
-    }
-
-    public function approve($id)
-    {
-        try {
-            $certification = Certification::find($id);
-
-            if (!$certification) {
-                return $this->respondNotFound('Certificate request not found');
-            }
-
-            if ($certification->status !== 'Pending' && $certification->status !== 'In Review') {
-                return $this->respondError('Only pending requests can be approved', null, 422);
-            }
-
-            $certification->update([
-                'status' => 'Approved',
-                'processed_by_user_id' => Auth::id(),
-                'approved_at' => now(),
+            return $this->respondSuccess([
+                'pending'   => 0,
+                'in_review' => 0,
+                'flagged'   => 0,
+                'approved'  => 0,
+                'rejected'  => 0,
+                'total'     => 0,
             ]);
-
-            $this->syncToWebFrontDesk($certification);
-
-            $this->notifyCertificateResident(
-                $certification,
-                '✅ Certificate Request Approved',
-                "Your certificate request ({$certification->reference_number}) has been approved by the Zone Leader.",
-                'high'
-            );
-
-            return $this->respondSuccess(
-                $certification->load(['certificationType', 'requester']),
-                'Certificate request approved successfully'
-            );
-        } catch (\Exception $e) {
-            Log::error('Certificate approval error: ' . $e->getMessage());
-            return $this->respondError('Failed to approve certificate', null, 500);
         }
     }
 
@@ -252,14 +373,14 @@ class CertificateRequestController extends Controller
                 ]);
             } else {
                 \App\Models\FrontDeskRequest::create([
-                    'resident_id' => $requester->resident_id,
-                    'service_type' => $certification->certificationType ? $certification->certificationType->name : 'Certificate',
-                    'purpose' => $certification->purpose,
-                    'reference_number' => $certification->reference_number,
-                    'status' => 'processing',
-                    'created_by_user_id' => Auth::id(),
+                    'resident_id'          => $requester->resident_id,
+                    'service_type'         => $certification->certificationType ? $certification->certificationType->name : 'Certificate',
+                    'purpose'              => $certification->purpose,
+                    'reference_number'     => $certification->reference_number,
+                    'status'               => 'processing',
+                    'created_by_user_id'   => Auth::id(),
                     'processed_by_user_id' => Auth::id(),
-                    'processed_at' => now(),
+                    'processed_at'         => now(),
                 ]);
             }
         } catch (\Exception $e) {

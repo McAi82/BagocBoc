@@ -53,8 +53,13 @@ return new class extends Migration
             $table->string('document_name')->nullable();
 
             $table->enum('status', [
-                'Pending', 'In Review', 'Approved', 'Ready for Release',
-                'Released', 'Rejected', 'Cancelled',
+                'Pending',
+                'In Review',
+                'Approved',
+                'Ready for Release',
+                'Released',
+                'Rejected',
+                'Cancelled',
             ])->default('Pending');
 
             $table->timestamp('approved_at')->nullable();
@@ -70,8 +75,8 @@ return new class extends Migration
             $table->enum('submission_channel', ['physical', 'virtual'])->default('physical');
             $table->json('virtual_documents')->nullable();
 
-            $table->enum('payment_method', ['cash', 'gcash', 'bank_transfer', 'online'])->nullable();
-            $table->enum('payment_status', ['pending', 'paid', 'failed'])->default('pending');
+            $table->enum('payment_method', ['cash'])->nullable();
+            $table->enum('payment_status', ['pending', 'paid', 'failed'])->default('InReview');
             $table->string('payment_reference')->nullable();
 
             $table->softDeletes();
@@ -124,7 +129,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('certification_id')->unique()->constrained('certifications')->cascadeOnDelete();
             $table->decimal('amount', 10, 2)->default(0);
-            $table->enum('payment_method', ['Cash', 'GCash'])->default('Cash');
+            $table->enum('payment_method', ['Cash'])->default('Cash');
             $table->string('reference_number')->nullable();
             $table->string('official_receipt_number')->nullable();
             $table->enum('status', ['Pending', 'Paid', 'Failed', 'Refunded'])->default('Pending');
