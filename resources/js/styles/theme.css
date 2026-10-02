@@ -200,3 +200,29 @@ tr:hover {
 .btn-secondary:hover {
   background-color: var(--theme-hover);
 }
+
+/* Print portal — only the #print-portal is visible when printing */
+@media screen {
+  #print-portal {
+    display: none;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #print-portal,
+  #print-portal * {
+    visibility: visible !important;
+  }
+
+  #print-portal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    display: block !important;
+  }
+}

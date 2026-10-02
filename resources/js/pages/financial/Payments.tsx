@@ -48,11 +48,9 @@ export default function Payments() {
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✅ Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE);
 
-  // ✅ Payment form state
   const [paymentForm, setPaymentForm] = useState({
     resident_id: "",
     amount: "",
@@ -62,13 +60,11 @@ export default function Payments() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // ✅ Resident search state
   const [residentSearch, setResidentSearch] = useState("");
   const [showResidentDropdown, setShowResidentDropdown] = useState(false);
   const [selectedResident, setSelectedResident] = useState<any>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // ✅ Filtered residents based on search
   const filteredResidents = useMemo(() => {
     if (!residentSearch.trim()) return residents;
     const query = residentSearch.toLowerCase();
@@ -148,13 +144,10 @@ export default function Payments() {
     setIsLoading(true);
     setIsError(false);
     try {
-      console.log("🔍 [Payments] Fetching payments...");
-
       let paymentsData: any[] = [];
       try {
         const paymentsRes = await api.get("/web/payments");
         paymentsData = extractData(paymentsRes.data);
-        console.log(`✅ [Payments] Extracted ${paymentsData.length} payments`);
       } catch (error) {
         console.error("❌ Error fetching payments:", error);
         paymentsData = [];
@@ -164,9 +157,6 @@ export default function Payments() {
       try {
         const residentsRes = await api.get("/web/residents");
         residentsData = extractData(residentsRes.data);
-        console.log(
-          `✅ [Payments] Extracted ${residentsData.length} residents`,
-        );
       } catch (error) {
         console.error("❌ Error fetching residents:", error);
         residentsData = [];
@@ -192,7 +182,6 @@ export default function Payments() {
     fetchData();
   }, []);
 
-  // ✅ Click outside dropdown to close
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -206,7 +195,6 @@ export default function Payments() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ Handle resident selection
   const handleSelectResident = (resident: any) => {
     setSelectedResident(resident);
     setPaymentForm({ ...paymentForm, resident_id: resident.id.toString() });
@@ -214,16 +202,12 @@ export default function Payments() {
     setShowResidentDropdown(false);
   };
 
-  // ✅ Clear selected resident
   const handleClearResident = () => {
     setSelectedResident(null);
     setPaymentForm({ ...paymentForm, resident_id: "" });
     setResidentSearch("");
   };
 
-  // ============================================
-  // FILTERED PAYMENTS
-  // ============================================
   const filteredPayments = useMemo(() => {
     if (!Array.isArray(payments) || payments.length === 0) return [];
     let filtered = [...payments];
@@ -246,7 +230,6 @@ export default function Payments() {
       filtered = filtered.filter((p: any) => p.status === statusFilter);
     }
 
-    // Sort by newest first
     filtered.sort((a, b) => {
       const dateA = new Date(a.paid_at || a.created_at).getTime();
       const dateB = new Date(b.paid_at || b.created_at).getTime();
@@ -256,9 +239,6 @@ export default function Payments() {
     return filtered;
   }, [payments, searchQuery, typeFilter, statusFilter]);
 
-  // ============================================
-  // PAGINATION
-  // ============================================
   const totalPages = Math.max(
     1,
     Math.ceil(filteredPayments.length / itemsPerPage),
@@ -270,34 +250,28 @@ export default function Payments() {
     return filteredPayments.slice(startIndex, endIndex);
   }, [filteredPayments, startIndex, endIndex]);
 
-  // ✅ Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, typeFilter, statusFilter, itemsPerPage]);
 
-  // ✅ Clamp current page if it exceeds total pages after filtering
   useEffect(() => {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
     }
   }, [totalPages, currentPage]);
 
-  // ✅ Generate page numbers with ellipsis
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
     const maxVisible = 5;
 
     if (totalPages <= maxVisible + 2) {
-      // Show all pages
       for (let i = 1; i <= totalPages; i++) pages.push(i);
     } else {
-      // Always show first page
       pages.push(1);
 
       let start = Math.max(2, currentPage - 1);
       let end = Math.min(totalPages - 1, currentPage + 1);
 
-      // Adjust window to always show ~3 pages
       if (currentPage <= 3) {
         start = 2;
         end = Math.min(4, totalPages - 1);
@@ -312,7 +286,6 @@ export default function Payments() {
 
       if (end < totalPages - 1) pages.push("...");
 
-      // Always show last page
       pages.push(totalPages);
     }
 
@@ -322,26 +295,18 @@ export default function Payments() {
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
-      // Optional: scroll to top of table
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
-  // ============================================
-  // STATS (based on filtered payments, not paginated)
-  // ============================================
   const totalAmount = filteredPayments.reduce(
     (sum: number, p: any) => sum + (p.amount || 0),
     0,
   );
 
-  // ============================================
-  // HANDLERS
-  // ============================================
-
-  // ============================================
-  // IN-PAGE PRINT HELPER
-  // ============================================
+  /* ============================================================
+     IN-PAGE PRINT HELPER
+     ============================================================ */
   const printHTML = (html: string) => {
     const existing = document.getElementById("print-portal");
     if (existing) existing.remove();
@@ -365,275 +330,452 @@ export default function Payments() {
     });
   };
 
+  /* ============================================================
+     NUMBER → WORDS (for the "Amount in Words" line)
+     ============================================================ */
+  const numberToWords = (num: number): string => {
+    if (num === 0) return "Zero Pesos Only";
+    const ones = [
+      "",
+      "One",
+      "Two",
+      "Three",
+      "Four",
+      "Five",
+      "Six",
+      "Seven",
+      "Eight",
+      "Nine",
+      "Ten",
+      "Eleven",
+      "Twelve",
+      "Thirteen",
+      "Fourteen",
+      "Fifteen",
+      "Sixteen",
+      "Seventeen",
+      "Eighteen",
+      "Nineteen",
+    ];
+    const tens = [
+      "",
+      "",
+      "Twenty",
+      "Thirty",
+      "Forty",
+      "Fifty",
+      "Sixty",
+      "Seventy",
+      "Eighty",
+      "Ninety",
+    ];
+    const chunk = (n: number): string => {
+      if (n === 0) return "";
+      if (n < 20) return ones[n];
+      if (n < 100)
+        return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
+      return (
+        ones[Math.floor(n / 100)] +
+        " Hundred" +
+        (n % 100 ? " " + chunk(n % 100) : "")
+      );
+    };
+
+    let n = Math.floor(num);
+    const cents = Math.round((num - n) * 100);
+    let words = "";
+
+    const scales = [
+      { value: 1_000_000_000, name: "Billion" },
+      { value: 1_000_000, name: "Million" },
+      { value: 1_000, name: "Thousand" },
+    ];
+
+    for (const s of scales) {
+      if (n >= s.value) {
+        const count = Math.floor(n / s.value);
+        words += chunk(count) + " " + s.name + " ";
+        n %= s.value;
+      }
+    }
+    words += chunk(n);
+    words = words.trim() || "Zero";
+
+    let result = `${words} Pesos`;
+    if (cents > 0) result += ` and ${chunk(cents)} Centavos`;
+    return result + " Only";
+  };
+
+  /* ============================================================
+     FORMAL OFFICIAL RECEIPT
+     ============================================================ */
   const handlePrintReceipt = (payment: any) => {
     const residentName = payment.resident
-      ? `${payment.resident.first_name || ""} ${payment.resident.last_name || ""}`.trim()
+      ? `${payment.resident.first_name || ""} ${payment.resident.last_name || ""
+        }`.trim()
       : "N/A";
 
     const paidDate = payment.paid_at || payment.created_at;
-    const formattedDate = paidDate
-      ? new Date(paidDate).toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-      : "N/A";
-    const formattedTime = paidDate
-      ? new Date(paidDate).toLocaleTimeString("en-PH", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-      : "";
+    const d = paidDate ? new Date(paidDate) : new Date();
+
+    const formattedDate = d.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const formattedTime = d.toLocaleTimeString("en-PH", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const amount = parseFloat(payment.amount) || 0;
+    const amountFormatted = amount.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const amountInWords = numberToWords(amount);
 
     const html = `
-    <style>
-      #print-portal * { box-sizing: border-box; margin: 0; padding: 0; }
-      #print-portal {
-        font-family: 'Georgia', 'Times New Roman', serif;
-        color: #1a1a1a;
-        background: #ffffff;
-      }
-      #print-portal .receipt {
-        max-width: 720px;
-        margin: 0 auto;
-        background: #ffffff;
-        padding: 40px 50px;
-      }
-      #print-portal .header {
-        text-align: center;
-        border-bottom: 3px double #1a1a1a;
-        padding-bottom: 18px;
-        margin-bottom: 26px;
-      }
-      #print-portal .header .republic {
-        font-size: 11px;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        color: #555;
-        margin-bottom: 6px;
-      }
-      #print-portal .header .barangay {
-        font-size: 26px;
-        font-weight: bold;
-        letter-spacing: 1px;
-        color: #0f172a;
-        margin-bottom: 4px;
-      }
-      #print-portal .header .location {
-        font-size: 12px;
-        color: #666;
-        font-style: italic;
-      }
-      #print-portal .title {
-        text-align: center;
-        font-size: 20px;
-        font-weight: bold;
-        letter-spacing: 4px;
-        text-transform: uppercase;
-        margin: 22px 0 8px;
-        color: #0f172a;
-      }
-      #print-portal .subtitle {
-        text-align: center;
-        font-size: 12px;
-        color: #666;
-        margin-bottom: 26px;
-        letter-spacing: 2px;
-      }
-      #print-portal .or-box {
-        background: #f8f9fb;
-        border: 1px solid #d1d5db;
-        border-left: 4px solid #1e3a8a;
-        padding: 14px 20px;
-        margin-bottom: 26px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      #print-portal .or-box .label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        color: #666;
-        font-weight: bold;
-      }
-      #print-portal .or-box .value {
-        font-size: 18px;
-        font-weight: bold;
-        font-family: 'Courier New', monospace;
-        color: #1e3a8a;
-      }
-      #print-portal .details {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 26px;
-      }
-      #print-portal .details tr td {
-        padding: 11px 0;
-        border-bottom: 1px solid #eee;
-        font-size: 14px;
-        vertical-align: top;
-      }
-      #print-portal .details tr:last-child td { border-bottom: none; }
-      #print-portal .details .field {
-        color: #666;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        width: 40%;
-      }
-      #print-portal .details .val {
-        color: #0f172a;
-        font-weight: 600;
-        text-align: right;
-      }
-      #print-portal .amount-section {
-        background: #f0f4ff;
-        border: 2px solid #1e3a8a;
-        padding: 20px 24px;
-        margin: 26px 0;
-        text-align: center;
-      }
-      #print-portal .amount-section .label {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        color: #1e3a8a;
-        margin-bottom: 6px;
-      }
-      #print-portal .amount-section .amount {
-        font-size: 30px;
-        font-weight: bold;
-        color: #1e3a8a;
-        font-family: 'Georgia', serif;
-      }
-      #print-portal .status-badge {
-        display: inline-block;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: bold;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        background: #d1fae5;
-        color: #065f46;
-      }
-      #print-portal .signatures {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 50px;
-        gap: 40px;
-      }
-      #print-portal .sig-block {
-        flex: 1;
-        text-align: center;
-      }
-      #print-portal .sig-block .line {
-        border-top: 1px solid #333;
-        margin-bottom: 6px;
-        height: 40px;
-      }
-      #print-portal .sig-block .name {
-        font-size: 13px;
-        font-weight: bold;
-        color: #0f172a;
-      }
-      #print-portal .sig-block .role {
-        font-size: 11px;
-        color: #666;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      #print-portal .footer-note {
-        margin-top: 34px;
-        padding-top: 18px;
-        border-top: 1px dashed #ccc;
-        font-size: 10px;
-        color: #888;
-        text-align: center;
-        line-height: 1.6;
-      }
-    </style>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Official Receipt — ${payment.or_number || "N/A"}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    <div class="receipt">
-      <div class="header">
-        <div class="republic">Republic of the Philippines</div>
-        <div class="barangay">BARANGAY BAGOCBOC</div>
-        <div class="location">Opol, Misamis Oriental</div>
-      </div>
+    @page { size: A4 portrait; margin: 14mm 12mm; }
 
-      <div class="title">Official Receipt</div>
-      <div class="subtitle">Payment Acknowledgement</div>
+    body {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      color: #1a1a1a;
+      background: #fff;
+      font-size: 11.5px;
+      line-height: 1.5;
+      padding: 24px;
+    }
 
-      <div class="or-box">
-        <div>
-          <div class="label">OR Number</div>
-          <div class="value">${payment.or_number || "N/A"}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="label">Date Issued</div>
-          <div style="font-size:13px;font-weight:600;color:#0f172a;margin-top:4px">
-            ${formattedDate}${formattedTime ? ` • ${formattedTime}` : ""}
-          </div>
-        </div>
-      </div>
+    /* ---------- LETTERHEAD ---------- */
+    .letterhead {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding-bottom: 14px;
+      border-bottom: 3px double #1a1a1a;
+      margin-bottom: 4px;
+    }
 
-      <table class="details">
-        <tr>
-          <td class="field">Received From</td>
-          <td class="val">${residentName}</td>
-        </tr>
-        <tr>
-          <td class="field">Payment Type</td>
-          <td class="val">${payment.payment_type || "N/A"}</td>
-        </tr>
-        <tr>
-          <td class="field">Payment Method</td>
-          <td class="val">${payment.payment_method || "Cash"}</td>
-        </tr>
-        <tr>
-          <td class="field">Status</td>
-          <td class="val">
-            <span class="status-badge">${payment.status || "Completed"}</span>
-          </td>
-        </tr>
-        ${payment.description
-        ? `<tr>
-                <td class="field">Description</td>
-                <td class="val">${payment.description}</td>
-              </tr>`
-        : ""
-      }
-      </table>
+    .seal {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      border: 2px solid #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: #555;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      background: #fafafa;
+    }
 
-      <div class="amount-section">
-        <div class="label">Total Amount Paid</div>
-        <div class="amount">₱ ${parseFloat(payment.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-      </div>
+    .letterhead-text { flex: 1; text-align: center; line-height: 1.35; }
+    .letterhead-text .republic {
+      font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+      color: #444; margin-bottom: 4px;
+    }
+    .letterhead-text .province { font-size: 12px; color: #444; }
+    .letterhead-text .municipality { font-size: 12px; color: #444; margin-bottom: 4px; }
+    .letterhead-text .barangay {
+      font-size: 22px; font-weight: bold; letter-spacing: 1.5px;
+      color: #0f172a; margin: 4px 0;
+    }
+    .letterhead-text .office {
+      font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #555;
+    }
 
-      <div class="signatures">
-        <div class="sig-block">
-          <div class="line"></div>
-          <div class="name">Barangay Treasurer</div>
-          <div class="role">Authorized Personnel</div>
-        </div>
-        <div class="sig-block">
-          <div class="line"></div>
-          <div class="name">${residentName}</div>
-          <div class="role">Payor / Received By</div>
-        </div>
-      </div>
+    .rule-thick {
+      border-top: 2px solid #1a1a1a;
+      margin-top: 2px;
+      margin-bottom: 22px;
+    }
 
-      <div class="footer-note">
-        This is a system-generated official receipt from the Barangay Bagocboc Management System.<br/>
-        Thank you for your payment. Please keep this receipt for your records.
-      </div>
+    /* ---------- TITLE ---------- */
+    .title-block { text-align: center; margin-bottom: 26px; }
+    .title-block h1 {
+      font-size: 22px; letter-spacing: 5px; text-transform: uppercase;
+      color: #0f172a; margin-bottom: 6px; font-weight: bold;
+    }
+    .title-block .subtitle {
+      font-size: 12px; font-style: italic; color: #666;
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+
+    /* ---------- RECEIPT NUMBER BAND ---------- */
+    .receipt-band {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: #f8f9fb;
+      border: 1px solid #d1d5db;
+      border-left: 4px solid #1e3a8a;
+      margin-bottom: 24px;
+    }
+    .receipt-band .lbl {
+      font-size: 10px; text-transform: uppercase;
+      letter-spacing: 1.5px; color: #666; font-weight: bold;
+    }
+    .receipt-band .val {
+      font-size: 18px; font-weight: bold; color: #1e3a8a;
+      font-family: 'Courier New', monospace; margin-top: 2px;
+    }
+
+    /* ---------- RECEIPT BODY ---------- */
+    .receipt-body {
+      border: 1px solid #e5e7eb;
+      padding: 26px 30px;
+      margin-bottom: 20px;
+    }
+
+    .receipt-body .lead {
+      font-size: 13px;
+      margin-bottom: 18px;
+      text-align: justify;
+    }
+
+    .row {
+      display: flex;
+      align-items: flex-end;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .row .label {
+      flex: 0 0 auto;
+      padding-right: 8px;
+      color: #555;
+    }
+    .row .dots {
+      flex: 1;
+      border-bottom: 1px dotted #888;
+      margin: 0 6px;
+      transform: translateY(-4px);
+    }
+    .row .value {
+      flex: 0 0 auto;
+      font-weight: bold;
+      color: #0f172a;
+      font-family: 'Courier New', monospace;
+      padding-left: 8px;
+      min-width: 60px;
+      text-align: right;
+    }
+
+    /* Amount panel */
+    .amount-panel {
+      margin-top: 26px;
+      border: 2px solid #1e3a8a;
+      background: #f0f4ff;
+      padding: 18px 22px;
+      text-align: center;
+    }
+    .amount-panel .lbl {
+      font-size: 10px; text-transform: uppercase;
+      letter-spacing: 2px; color: #1e3a8a; font-weight: bold;
+    }
+    .amount-panel .amt {
+      font-size: 30px; font-weight: bold; color: #1e3a8a;
+      font-family: 'Georgia', serif; margin-top: 4px;
+    }
+    .amount-panel .words {
+      margin-top: 8px;
+      font-size: 11px;
+      font-style: italic;
+      color: #4b5563;
+      letter-spacing: 0.3px;
+    }
+
+    /* Payment status badge */
+    .status-wrap {
+      display: flex;
+      justify-content: center;
+      margin-top: 18px;
+    }
+    .status {
+      display: inline-block;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 10.5px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #6ee7b7;
+    }
+    .status.pending  { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+    .status.failed   { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    .status.completed{ background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+
+    /* ---------- SIGNATURES ---------- */
+    .signatures {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 55px;
+      gap: 40px;
+      page-break-inside: avoid;
+    }
+    .sig-block { flex: 1; max-width: 260px; text-align: center; }
+    .sig-line {
+      border-top: 1px solid #333;
+      margin-bottom: 6px;
+      height: 36px;
+    }
+    .sig-name { font-size: 12px; font-weight: bold; color: #0f172a; }
+    .sig-title {
+      font-size: 10.5px; color: #666; text-transform: uppercase;
+      letter-spacing: 0.8px; margin-top: 2px;
+    }
+
+    /* ---------- FOOTER ---------- */
+    .footer {
+      margin-top: 40px;
+      padding-top: 14px;
+      border-top: 1px dashed #ccc;
+      font-size: 9.5px;
+      color: #888;
+      text-align: center;
+      line-height: 1.6;
+      page-break-inside: avoid;
+    }
+    .footer strong { color: #555; }
+    .footer .strip {
+      margin-top: 8px;
+      display: inline-block;
+      padding: 4px 12px;
+      border: 1px dashed #bbb;
+      font-size: 10px;
+      color: #666;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LETTERHEAD -->
+  <div class="letterhead">
+    <div class="seal">BARANGAY<br/>SEAL</div>
+    <div class="letterhead-text">
+      <div class="republic">Republic of the Philippines</div>
+      <div class="province">Province of Misamis Oriental</div>
+      <div class="municipality">Municipality of Opol</div>
+      <div class="barangay">BARANGAY BAGOCBOC</div>
+      <div class="office">Office of the Barangay Treasurer</div>
     </div>
-  `;
+    <div class="seal">DILG<br/>SEAL</div>
+  </div>
+  <div class="rule-thick"></div>
+
+  <!-- TITLE -->
+  <div class="title-block">
+    <h1>Official Receipt</h1>
+    <div class="subtitle">Acknowledgement of Payment</div>
+  </div>
+
+  <!-- RECEIPT NUMBER BAND -->
+  <div class="receipt-band">
+    <div>
+      <div class="lbl">OR Number</div>
+      <div class="val">${payment.or_number || "N/A"}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="lbl">Date Issued</div>
+      <div class="val" style="font-size:13px; color:#0f172a;">${formattedDate} • ${formattedTime}</div>
+    </div>
+  </div>
+
+  <!-- RECEIPT BODY -->
+  <div class="receipt-body">
+
+    <p class="lead">
+      Received from <strong>${residentName}</strong>
+      the sum of <strong>₱${amountFormatted}</strong>
+      (${amountInWords}) in payment of
+      <strong>${payment.payment_type || "N/A"}</strong>.
+    </p>
+
+    <div class="row">
+      <div class="label">Received From</div>
+      <div class="dots"></div>
+      <div class="value">${residentName}</div>
+    </div>
+
+    <div class="row">
+      <div class="label">Payment Type</div>
+      <div class="dots"></div>
+      <div class="value">${payment.payment_type || "N/A"}</div>
+    </div>
+
+    <div class="row">
+      <div class="label">Payment Method</div>
+      <div class="dots"></div>
+      <div class="value">${payment.payment_method || "Cash"}</div>
+    </div>
+
+    ${payment.description
+        ? `
+    <div class="row">
+      <div class="label">Description</div>
+      <div class="dots"></div>
+      <div class="value" style="font-family:'Georgia',serif;font-weight:normal">${payment.description}</div>
+    </div>`
+        : ""}
+
+    <div class="amount-panel">
+      <div class="lbl">Total Amount Paid</div>
+      <div class="amt">₱ ${amountFormatted}</div>
+      <div class="words">${amountInWords}</div>
+    </div>
+
+    <div class="status-wrap">
+      <span class="status ${(payment.status || "completed").toLowerCase()}">${payment.status || "Completed"}</span>
+    </div>
+  </div>
+
+  <!-- SIGNATURES -->
+  <div class="signatures">
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">Juan D. Dela Cruz</div>
+      <div class="sig-title">Barangay Treasurer</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">${residentName}</div>
+      <div class="sig-title">Payor / Received By</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <strong>Barangay Bagocboc</strong> • Opol, Misamis Oriental<br/>
+    <span class="strip">Thank you for your payment</span><br/>
+    <em>This is a system-generated official receipt. Please keep this for your records.</em>
+  </div>
+
+  <script>setTimeout(() => window.print(), 400);</script>
+</body>
+</html>`;
 
     printHTML(html);
   };
 
+  /* ============================================================
+     RECORD PAYMENT
+     ============================================================ */
   const handleRecordPayment = async () => {
     const errors: Record<string, string> = {};
     if (!paymentForm.resident_id)
@@ -677,9 +819,9 @@ export default function Payments() {
     }
   };
 
-  // ============================================
-  // RENDER
-  // ============================================
+  /* ============================================================
+     RENDER
+     ============================================================ */
 
   if (isLoading) {
     return (
@@ -833,7 +975,6 @@ export default function Payments() {
           </div>
         ) : (
           <>
-            {/* Table Info Bar */}
             <div className="px-4 py-3 border-b border-theme flex items-center justify-between flex-wrap gap-2">
               <p className="text-sm text-theme-textSecondary">
                 Showing{" "}
@@ -950,12 +1091,8 @@ export default function Payments() {
               </table>
             </div>
 
-            {/* ============================================ */}
-            {/* PAGINATION CONTROLS */}
-            {/* ============================================ */}
             {totalPages > 1 && (
               <div className="px-4 py-4 border-t border-theme flex flex-col sm:flex-row items-center justify-between gap-3">
-                {/* Left: Item count info */}
                 <p className="text-sm text-theme-textSecondary order-2 sm:order-1">
                   Showing{" "}
                   <span className="font-semibold text-theme-text">
@@ -967,9 +1104,7 @@ export default function Payments() {
                   </span>
                 </p>
 
-                {/* Right: Page controls */}
                 <div className="flex items-center gap-1 order-1 sm:order-2">
-                  {/* First Page */}
                   <button
                     onClick={() => goToPage(1)}
                     disabled={currentPage === 1}
@@ -978,8 +1113,6 @@ export default function Payments() {
                   >
                     <ChevronsLeft className="w-4 h-4" />
                   </button>
-
-                  {/* Previous */}
                   <button
                     onClick={() => goToPage(currentPage - 1)}
                     disabled={currentPage === 1}
@@ -989,7 +1122,6 @@ export default function Payments() {
                     <ChevronLeft className="w-4 h-4" />
                   </button>
 
-                  {/* Page Numbers */}
                   <div className="flex items-center gap-1 mx-1">
                     {getPageNumbers().map((page, index) => {
                       if (page === "...") {
@@ -1019,7 +1151,6 @@ export default function Payments() {
                     })}
                   </div>
 
-                  {/* Next */}
                   <button
                     onClick={() => goToPage(currentPage + 1)}
                     disabled={currentPage === totalPages}
@@ -1028,8 +1159,6 @@ export default function Payments() {
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
-
-                  {/* Last Page */}
                   <button
                     onClick={() => goToPage(totalPages)}
                     disabled={currentPage === totalPages}
@@ -1067,7 +1196,6 @@ export default function Payments() {
         size="lg"
       >
         <div className="space-y-6">
-          {/* Resident Selection - Searchable Dropdown */}
           <div>
             <label className="block text-sm font-medium text-theme-text mb-1">
               Resident <span className="text-red-500">*</span>
@@ -1115,7 +1243,6 @@ export default function Payments() {
                 )}
               </div>
 
-              {/* Selected Resident Display */}
               {selectedResident && (
                 <div className="mt-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1149,7 +1276,6 @@ export default function Payments() {
                 </div>
               )}
 
-              {/* Dropdown Results */}
               {showResidentDropdown && !selectedResident && (
                 <div className="absolute z-50 left-0 right-0 mt-1 bg-theme-surface border border-theme rounded-lg shadow-lg max-h-60 overflow-y-auto">
                   {residents.length === 0 ? (
@@ -1224,7 +1350,6 @@ export default function Payments() {
             </p>
           </div>
 
-          {/* Payment Type */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-theme-text mb-1">
@@ -1258,7 +1383,6 @@ export default function Payments() {
               )}
             </div>
 
-            {/* Amount */}
             <div>
               <label className="block text-sm font-medium text-theme-text mb-1">
                 Amount (₱) <span className="text-red-500">*</span>
@@ -1284,7 +1408,6 @@ export default function Payments() {
             </div>
           </div>
 
-          {/* Payment Method */}
           <div>
             <label className="block text-sm font-medium text-theme-text mb-1">
               Payment Method <span className="text-red-500">*</span>
@@ -1314,7 +1437,6 @@ export default function Payments() {
             </div>
           </div>
 
-          {/* Description */}
           <div>
             <label className="block text-sm font-medium text-theme-text mb-1">
               Description
@@ -1330,7 +1452,6 @@ export default function Payments() {
             />
           </div>
 
-          {/* Summary */}
           {selectedResident &&
             paymentForm.amount &&
             parseFloat(paymentForm.amount) > 0 && (
@@ -1367,7 +1488,6 @@ export default function Payments() {
               </div>
             )}
 
-          {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t border-theme">
             <button
               onClick={() => {
@@ -1431,7 +1551,9 @@ export default function Payments() {
                   Status
                 </p>
                 <span
-                  className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full ${getStatusColor(selectedPayment.status || "pending")}`}
+                  className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full ${getStatusColor(
+                    selectedPayment.status || "pending",
+                  )}`}
                 >
                   {selectedPayment.status || "pending"}
                 </span>
