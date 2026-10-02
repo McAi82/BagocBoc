@@ -305,29 +305,58 @@ export default function Payments() {
   );
 
   /* ============================================================
-     IN-PAGE PRINT HELPER
-     ============================================================ */
+    PRINT HELPER — isolated iframe (no page chrome, no theme bleed)
+    ============================================================ */
   const printHTML = (html: string) => {
-    const existing = document.getElementById("print-portal");
+    // Remove any leftover iframe from a previous print
+    const existing = document.getElementById("print-iframe");
     if (existing) existing.remove();
 
-    const portal = document.createElement("div");
-    portal.id = "print-portal";
-    portal.innerHTML = html;
-    document.body.appendChild(portal);
+    const iframe = document.createElement("iframe");
+    iframe.id = "print-iframe";
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    document.body.appendChild(iframe);
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.print();
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      toast.error("Unable to prepare print document");
+      iframe.remove();
+      return;
+    }
 
-        const cleanup = () => {
-          const el = document.getElementById("print-portal");
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    // Wait for layout + fonts before printing
+    const doPrint = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.error("Print failed:", err);
+        toast.error("Print failed. Please try again.");
+      } finally {
+        // Give the browser time to render before removing the iframe
+        setTimeout(() => {
+          const el = document.getElementById("print-iframe");
           if (el) el.remove();
-          window.removeEventListener("afterprint", cleanup);
-        };
-        window.addEventListener("afterprint", cleanup);
-      });
-    });
+        }, 1000);
+      }
+    };
+
+    // Prefer the iframe's own onload; fall back to a timer
+    if (iframe.contentWindow) {
+      iframe.contentWindow.onload = () => setTimeout(doPrint, 300);
+    }
+    // Extra safety net
+    setTimeout(doPrint, 500);
   };
 
   /* ============================================================
@@ -407,8 +436,8 @@ export default function Payments() {
   };
 
   /* ============================================================
-     FORMAL OFFICIAL RECEIPT
-     ============================================================ */
+    FORMAL OFFICIAL RECEIPT
+    ============================================================ */
   const handlePrintReceipt = (payment: any) => {
     const residentName = payment.resident
       ? `${payment.resident.first_name || ""} ${payment.resident.last_name || ""
@@ -435,338 +464,421 @@ export default function Payments() {
     });
     const amountInWords = numberToWords(amount);
 
+    const statusClass = (payment.status || "completed").toLowerCase();
+
     const html = `
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Official Receipt — ${payment.or_number || "N/A"}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8">
+<title>Official Receipt — ${payment.or_number || "N/A"}</title>
+<style>
+  @page { size: A4 portrait; margin: 15mm 14mm; }
 
-    @page { size: A4 portrait; margin: 14mm 12mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
-      font-family: 'Georgia', 'Times New Roman', serif;
-      color: #1a1a1a;
-      background: #fff;
-      font-size: 11.5px;
-      line-height: 1.5;
-      padding: 24px;
-    }
+  html, body {
+    background: #ffffff;
+    color: #111111;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 11.5px;
+    line-height: 1.55;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 
-    /* ---------- LETTERHEAD ---------- */
-    .letterhead {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      padding-bottom: 14px;
-      border-bottom: 3px double #1a1a1a;
-      margin-bottom: 4px;
-    }
+  .sheet {
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 8px 0;
+  }
 
-    .seal {
-      width: 76px;
-      height: 76px;
-      border-radius: 50%;
-      border: 2px solid #1a1a1a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 9px;
-      letter-spacing: 1px;
-      color: #555;
-      flex-shrink: 0;
-      text-transform: uppercase;
-      background: #fafafa;
-    }
+  /* ---------- LETTERHEAD ---------- */
+  .letterhead {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding-bottom: 14px;
+    border-bottom: 3px double #1a1a1a;
+  }
 
-    .letterhead-text { flex: 1; text-align: center; line-height: 1.35; }
-    .letterhead-text .republic {
-      font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-      color: #444; margin-bottom: 4px;
-    }
-    .letterhead-text .province { font-size: 12px; color: #444; }
-    .letterhead-text .municipality { font-size: 12px; color: #444; margin-bottom: 4px; }
-    .letterhead-text .barangay {
-      font-size: 22px; font-weight: bold; letter-spacing: 1.5px;
-      color: #0f172a; margin: 4px 0;
-    }
-    .letterhead-text .office {
-      font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #555;
-    }
+  .seal {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 1.5px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8.5px;
+    letter-spacing: 1px;
+    color: #666;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    text-align: center;
+    line-height: 1.2;
+  }
 
-    .rule-thick {
-      border-top: 2px solid #1a1a1a;
-      margin-top: 2px;
-      margin-bottom: 22px;
-    }
+  .letterhead-text {
+    flex: 1;
+    text-align: center;
+    line-height: 1.35;
+  }
+  .letterhead-text .republic {
+    font-size: 10.5px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #444;
+  }
+  .letterhead-text .province,
+  .letterhead-text .municipality {
+    font-size: 11.5px;
+    color: #444;
+  }
+  .letterhead-text .barangay {
+    font-size: 22px;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    color: #0f172a;
+    margin: 4px 0;
+  }
+  .letterhead-text .office {
+    font-size: 10.5px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #555;
+  }
 
-    /* ---------- TITLE ---------- */
-    .title-block { text-align: center; margin-bottom: 26px; }
-    .title-block h1 {
-      font-size: 22px; letter-spacing: 5px; text-transform: uppercase;
-      color: #0f172a; margin-bottom: 6px; font-weight: bold;
-    }
-    .title-block .subtitle {
-      font-size: 12px; font-style: italic; color: #666;
-      letter-spacing: 1px; text-transform: uppercase;
-    }
+  .rule-thick {
+    border-top: 2px solid #1a1a1a;
+    margin-top: 2px;
+    margin-bottom: 22px;
+  }
 
-    /* ---------- RECEIPT NUMBER BAND ---------- */
-    .receipt-band {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 20px;
-      background: #f8f9fb;
-      border: 1px solid #d1d5db;
-      border-left: 4px solid #1e3a8a;
-      margin-bottom: 24px;
-    }
-    .receipt-band .lbl {
-      font-size: 10px; text-transform: uppercase;
-      letter-spacing: 1.5px; color: #666; font-weight: bold;
-    }
-    .receipt-band .val {
-      font-size: 18px; font-weight: bold; color: #1e3a8a;
-      font-family: 'Courier New', monospace; margin-top: 2px;
-    }
+  /* ---------- TITLE ---------- */
+  .title-block {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .title-block h1 {
+    font-size: 22px;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    color: #0f172a;
+    font-weight: bold;
+  }
+  .title-block .subtitle {
+    font-size: 11px;
+    font-style: italic;
+    color: #666;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
 
-    /* ---------- RECEIPT BODY ---------- */
-    .receipt-body {
-      border: 1px solid #e5e7eb;
-      padding: 26px 30px;
-      margin-bottom: 20px;
-    }
+  /* ---------- OR BAND ---------- */
+  .or-band {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: #f5f7fb;
+    border: 1px solid #d8dde6;
+    border-left: 4px solid #1e3a8a;
+    margin-bottom: 24px;
+  }
+  .or-band .lbl {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #555;
+    font-weight: bold;
+  }
+  .or-band .val {
+    font-size: 17px;
+    font-weight: bold;
+    color: #1e3a8a;
+    font-family: 'Courier New', monospace;
+    margin-top: 2px;
+  }
+  .or-band .date-val {
+    font-size: 13px;
+    font-weight: bold;
+    color: #0f172a;
+    margin-top: 2px;
+  }
 
-    .receipt-body .lead {
-      font-size: 13px;
-      margin-bottom: 18px;
-      text-align: justify;
-    }
+  /* ---------- BODY ---------- */
+  .body-block {
+    border: 1px solid #e5e7eb;
+    padding: 26px 30px;
+    margin-bottom: 22px;
+  }
 
-    .row {
-      display: flex;
-      align-items: flex-end;
-      margin-bottom: 14px;
-      font-size: 13px;
-    }
-    .row .label {
-      flex: 0 0 auto;
-      padding-right: 8px;
-      color: #555;
-    }
-    .row .dots {
-      flex: 1;
-      border-bottom: 1px dotted #888;
-      margin: 0 6px;
-      transform: translateY(-4px);
-    }
-    .row .value {
-      flex: 0 0 auto;
-      font-weight: bold;
-      color: #0f172a;
-      font-family: 'Courier New', monospace;
-      padding-left: 8px;
-      min-width: 60px;
-      text-align: right;
-    }
+  .lead {
+    font-size: 12.5px;
+    text-align: justify;
+    margin-bottom: 20px;
+    line-height: 1.7;
+  }
 
-    /* Amount panel */
-    .amount-panel {
-      margin-top: 26px;
-      border: 2px solid #1e3a8a;
-      background: #f0f4ff;
-      padding: 18px 22px;
-      text-align: center;
-    }
-    .amount-panel .lbl {
-      font-size: 10px; text-transform: uppercase;
-      letter-spacing: 2px; color: #1e3a8a; font-weight: bold;
-    }
-    .amount-panel .amt {
-      font-size: 30px; font-weight: bold; color: #1e3a8a;
-      font-family: 'Georgia', serif; margin-top: 4px;
-    }
-    .amount-panel .words {
-      margin-top: 8px;
-      font-size: 11px;
-      font-style: italic;
-      color: #4b5563;
-      letter-spacing: 0.3px;
-    }
+  .row {
+    display: flex;
+    align-items: flex-end;
+    margin-bottom: 14px;
+    font-size: 12.5px;
+  }
+  .row .label {
+    flex: 0 0 auto;
+    padding-right: 6px;
+    color: #555;
+  }
+  .row .dots {
+    flex: 1;
+    border-bottom: 1px dotted #999;
+    margin: 0 6px;
+    transform: translateY(-4px);
+    min-width: 40px;
+  }
+  .row .value {
+    flex: 0 0 auto;
+    font-weight: bold;
+    color: #0f172a;
+    font-family: 'Courier New', monospace;
+    padding-left: 6px;
+    text-align: right;
+    max-width: 300px;
+    word-break: break-word;
+  }
+  .row .value.plain {
+    font-family: 'Georgia', serif;
+    font-weight: normal;
+  }
 
-    /* Payment status badge */
-    .status-wrap {
-      display: flex;
-      justify-content: center;
-      margin-top: 18px;
-    }
-    .status {
-      display: inline-block;
-      padding: 4px 16px;
-      border-radius: 20px;
-      font-size: 10.5px;
-      font-weight: bold;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      background: #d1fae5;
-      color: #065f46;
-      border: 1px solid #6ee7b7;
-    }
-    .status.pending  { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
-    .status.failed   { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
-    .status.completed{ background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+  /* ---------- AMOUNT PANEL ---------- */
+  .amount-panel {
+    margin-top: 26px;
+    border: 2px solid #1e3a8a;
+    background: #eef3ff;
+    padding: 20px 22px;
+    text-align: center;
+  }
+  .amount-panel .lbl {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: #1e3a8a;
+    font-weight: bold;
+  }
+  .amount-panel .amt {
+    font-size: 30px;
+    font-weight: bold;
+    color: #1e3a8a;
+    font-family: 'Georgia', serif;
+    margin-top: 6px;
+    letter-spacing: 1px;
+  }
+  .amount-panel .words {
+    margin-top: 8px;
+    font-size: 10.5px;
+    font-style: italic;
+    color: #4b5563;
+    letter-spacing: 0.3px;
+  }
 
-    /* ---------- SIGNATURES ---------- */
-    .signatures {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 55px;
-      gap: 40px;
-      page-break-inside: avoid;
-    }
-    .sig-block { flex: 1; max-width: 260px; text-align: center; }
-    .sig-line {
-      border-top: 1px solid #333;
-      margin-bottom: 6px;
-      height: 36px;
-    }
-    .sig-name { font-size: 12px; font-weight: bold; color: #0f172a; }
-    .sig-title {
-      font-size: 10.5px; color: #666; text-transform: uppercase;
-      letter-spacing: 0.8px; margin-top: 2px;
-    }
+  /* ---------- STATUS BADGE ---------- */
+  .status-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 18px;
+  }
+  .status-badge {
+    display: inline-block;
+    padding: 4px 18px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 1px solid transparent;
+  }
+  .status-badge.completed {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #6ee7b7;
+  }
+  .status-badge.pending {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fcd34d;
+  }
+  .status-badge.failed {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+  }
 
-    /* ---------- FOOTER ---------- */
-    .footer {
-      margin-top: 40px;
-      padding-top: 14px;
-      border-top: 1px dashed #ccc;
-      font-size: 9.5px;
-      color: #888;
-      text-align: center;
-      line-height: 1.6;
-      page-break-inside: avoid;
-    }
-    .footer strong { color: #555; }
-    .footer .strip {
-      margin-top: 8px;
-      display: inline-block;
-      padding: 4px 12px;
-      border: 1px dashed #bbb;
-      font-size: 10px;
-      color: #666;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-  </style>
+  /* ---------- SIGNATURES ---------- */
+  .signatures {
+    display: flex;
+    justify-content: space-between;
+    gap: 50px;
+    margin-top: 60px;
+    page-break-inside: avoid;
+  }
+  .sig-block {
+    flex: 1;
+    max-width: 260px;
+    text-align: center;
+  }
+  .sig-line {
+    border-top: 1px solid #333;
+    margin-bottom: 6px;
+    height: 40px;
+  }
+  .sig-name {
+    font-size: 12px;
+    font-weight: bold;
+    color: #0f172a;
+  }
+  .sig-title {
+    font-size: 10px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  /* ---------- FOOTER ---------- */
+  .footer {
+    margin-top: 44px;
+    padding-top: 14px;
+    border-top: 1px dashed #bbb;
+    font-size: 9.5px;
+    color: #888;
+    text-align: center;
+    line-height: 1.6;
+    page-break-inside: avoid;
+  }
+  .footer strong { color: #555; }
+  .footer .strip {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 3px 12px;
+    border: 1px dashed #bbb;
+    font-size: 9.5px;
+    color: #666;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+  }
+</style>
 </head>
 <body>
+  <div class="sheet">
 
-  <!-- LETTERHEAD -->
-  <div class="letterhead">
-    <div class="seal">BARANGAY<br/>SEAL</div>
-    <div class="letterhead-text">
-      <div class="republic">Republic of the Philippines</div>
-      <div class="province">Province of Misamis Oriental</div>
-      <div class="municipality">Municipality of Opol</div>
-      <div class="barangay">BARANGAY BAGOCBOC</div>
-      <div class="office">Office of the Barangay Treasurer</div>
+    <!-- LETTERHEAD -->
+    <div class="letterhead">
+      <div class="seal">BARANGAY<br/>SEAL</div>
+      <div class="letterhead-text">
+        <div class="republic">Republic of the Philippines</div>
+        <div class="province">Province of Misamis Oriental</div>
+        <div class="municipality">Municipality of Opol</div>
+        <div class="barangay">BARANGAY BAGOCBOC</div>
+        <div class="office">Office of the Barangay Treasurer</div>
+      </div>
+      <div class="seal">DILG<br/>SEAL</div>
     </div>
-    <div class="seal">DILG<br/>SEAL</div>
-  </div>
-  <div class="rule-thick"></div>
+    <div class="rule-thick"></div>
 
-  <!-- TITLE -->
-  <div class="title-block">
-    <h1>Official Receipt</h1>
-    <div class="subtitle">Acknowledgement of Payment</div>
-  </div>
-
-  <!-- RECEIPT NUMBER BAND -->
-  <div class="receipt-band">
-    <div>
-      <div class="lbl">OR Number</div>
-      <div class="val">${payment.or_number || "N/A"}</div>
-    </div>
-    <div style="text-align:right">
-      <div class="lbl">Date Issued</div>
-      <div class="val" style="font-size:13px; color:#0f172a;">${formattedDate} • ${formattedTime}</div>
-    </div>
-  </div>
-
-  <!-- RECEIPT BODY -->
-  <div class="receipt-body">
-
-    <p class="lead">
-      Received from <strong>${residentName}</strong>
-      the sum of <strong>₱${amountFormatted}</strong>
-      (${amountInWords}) in payment of
-      <strong>${payment.payment_type || "N/A"}</strong>.
-    </p>
-
-    <div class="row">
-      <div class="label">Received From</div>
-      <div class="dots"></div>
-      <div class="value">${residentName}</div>
+    <!-- TITLE -->
+    <div class="title-block">
+      <h1>Official Receipt</h1>
+      <div class="subtitle">Acknowledgement of Payment</div>
     </div>
 
-    <div class="row">
-      <div class="label">Payment Type</div>
-      <div class="dots"></div>
-      <div class="value">${payment.payment_type || "N/A"}</div>
+    <!-- OR BAND -->
+    <div class="or-band">
+      <div>
+        <div class="lbl">OR Number</div>
+        <div class="val">${payment.or_number || "N/A"}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="lbl">Date Issued</div>
+        <div class="date-val">${formattedDate} &bull; ${formattedTime}</div>
+      </div>
     </div>
 
-    <div class="row">
-      <div class="label">Payment Method</div>
-      <div class="dots"></div>
-      <div class="value">${payment.payment_method || "Cash"}</div>
-    </div>
+    <!-- BODY -->
+    <div class="body-block">
 
-    ${payment.description
+      <p class="lead">
+        Received from <strong>${residentName}</strong>
+        the sum of <strong>&#8369;${amountFormatted}</strong>
+        (<em>${amountInWords}</em>) in payment of
+        <strong>${payment.payment_type || "N/A"}</strong>.
+      </p>
+
+      <div class="row">
+        <div class="label">Received From</div>
+        <div class="dots"></div>
+        <div class="value">${residentName}</div>
+      </div>
+
+      <div class="row">
+        <div class="label">Payment Type</div>
+        <div class="dots"></div>
+        <div class="value">${payment.payment_type || "N/A"}</div>
+      </div>
+
+      <div class="row">
+        <div class="label">Payment Method</div>
+        <div class="dots"></div>
+        <div class="value">${payment.payment_method || "Cash"}</div>
+      </div>
+
+      ${payment.description
         ? `
-    <div class="row">
-      <div class="label">Description</div>
-      <div class="dots"></div>
-      <div class="value" style="font-family:'Georgia',serif;font-weight:normal">${payment.description}</div>
-    </div>`
-        : ""}
+      <div class="row">
+        <div class="label">Description</div>
+        <div class="dots"></div>
+        <div class="value plain">${payment.description}</div>
+      </div>`
+        : ""
+      }
 
-    <div class="amount-panel">
-      <div class="lbl">Total Amount Paid</div>
-      <div class="amt">₱ ${amountFormatted}</div>
-      <div class="words">${amountInWords}</div>
+      <div class="amount-panel">
+        <div class="lbl">Total Amount Paid</div>
+        <div class="amt">&#8369; ${amountFormatted}</div>
+        <div class="words">${amountInWords}</div>
+      </div>
+
+      <div class="status-wrap">
+        <span class="status-badge ${statusClass}">${payment.status || "Completed"}</span>
+      </div>
     </div>
 
-    <div class="status-wrap">
-      <span class="status ${(payment.status || "completed").toLowerCase()}">${payment.status || "Completed"}</span>
+    <!-- SIGNATURES -->
+    <div class="signatures">
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">Juan D. Dela Cruz</div>
+        <div class="sig-title">Barangay Treasurer</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-line"></div>
+        <div class="sig-name">${residentName}</div>
+        <div class="sig-title">Payor / Received By</div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <strong>Barangay Bagocboc</strong> &bull; Opol, Misamis Oriental<br/>
+      <span class="strip">Thank you for your payment</span><br/>
+      <em>This is a system-generated official receipt. Please keep this for your records.</em>
     </div>
   </div>
-
-  <!-- SIGNATURES -->
-  <div class="signatures">
-    <div class="sig-block">
-      <div class="sig-line"></div>
-      <div class="sig-name">Juan D. Dela Cruz</div>
-      <div class="sig-title">Barangay Treasurer</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-line"></div>
-      <div class="sig-name">${residentName}</div>
-      <div class="sig-title">Payor / Received By</div>
-    </div>
-  </div>
-
-  <!-- FOOTER -->
-  <div class="footer">
-    <strong>Barangay Bagocboc</strong> • Opol, Misamis Oriental<br/>
-    <span class="strip">Thank you for your payment</span><br/>
-    <em>This is a system-generated official receipt. Please keep this for your records.</em>
-  </div>
-
-  <script>setTimeout(() => window.print(), 400);</script>
 </body>
 </html>`;
 
