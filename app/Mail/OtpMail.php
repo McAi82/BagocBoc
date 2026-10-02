@@ -17,10 +17,15 @@ class OtpMail extends Mailable
     public string $purpose;
     public string $email;
     public string $userName;
-    public string $subject;
-    public string $headline;
-    public string $intro;
-    public string $expiresIn;
+
+    // ⚠️ These must NOT be typed. The parent Mailable class declares
+    //    $subject (and a couple of others) without a type, and PHP
+    //    forbids a child class from adding a type to an untyped parent
+    //    property.
+    public $subject;
+    public $headline;
+    public $intro;
+    public $expiresIn;
 
     /**
      * Accepts EITHER:
@@ -39,11 +44,9 @@ class OtpMail extends Mailable
         $this->purpose = $purpose;
 
         if ($user instanceof \App\Models\User) {
-            // ── Existing flow (login / password reset) ──
             $this->email    = $user->email;
             $this->userName = $user->resident?->first_name ?? $user->email;
         } elseif (is_object($user)) {
-            // ── Registration flow (stdClass) ────────────
             $this->email    = $user->email ?? 'Resident';
             $this->userName = $user->resident?->first_name
                 ?? $user->first_name
@@ -55,13 +58,12 @@ class OtpMail extends Mailable
                 ?? $user['name']
                 ?? ($user['email'] ?? 'Resident');
         } else {
-            // ── Fallback: raw string ────────────────────
             $this->email    = (string) $user;
             $this->userName = (string) $user;
         }
 
-        // ✅ Resolve the copy for this purpose once, at construction
-        //    time, so both the envelope() and content() share it.
+        // Resolve the copy for this purpose once, at construction time,
+        // so both envelope() and content() share it.
         $copy = $this->copyForPurpose($purpose);
 
         $this->subject   = $copy['subject'];
@@ -71,8 +73,8 @@ class OtpMail extends Mailable
     }
 
     /**
-     * Per-purpose email copy. Keeps the subject + headline + intro
-     * in one place so a new purpose only needs a new case.
+     * Per-purpose email copy. Keeping subject + headline + intro
+     * in one place means a new purpose only needs a new case.
      */
     private function copyForPurpose(string $purpose): array
     {
@@ -93,13 +95,13 @@ class OtpMail extends Mailable
                 'subject'  => 'Barangay Bagocboc - Password Reset Code',
                 'headline' => 'Reset your password',
                 'intro'    => 'Enter the code below to reset your Barangay Bagocboc account password.',
-                'expires'  => '10 minutes',
+                'expires'  => '5 minutes',
             ],
             'change_password' => [
                 'subject'  => 'Barangay Bagocboc - Password Change Code',
                 'headline' => 'Confirm your password change',
                 'intro'    => 'Enter the code below to confirm the change to your password.',
-                'expires'  => '10 minutes',
+                'expires'  => '5 minutes',
             ],
             'registration' => [
                 'subject'  => 'Barangay Bagocboc - Registration Verification Code',

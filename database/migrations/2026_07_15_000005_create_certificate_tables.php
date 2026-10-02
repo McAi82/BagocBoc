@@ -68,7 +68,7 @@ return new class extends Migration
             $table->timestamp('issued_at')->nullable();
             $table->date('expiry_date')->nullable();
 
-            $table->enum('zl_clearance_status', ['pending', 'approved', 'rejected'])->default('pending');
+            $table->string('zl_clearance_status')->nullable()->default(null);
             $table->text('zl_clearance_notes')->nullable();
             $table->timestamp('zl_clearance_date')->nullable();
 
@@ -76,7 +76,7 @@ return new class extends Migration
             $table->json('virtual_documents')->nullable();
 
             $table->enum('payment_method', ['cash'])->nullable();
-            $table->enum('payment_status', ['inreview', 'pending', 'paid', 'failed'])->default('inreview');
+            $table->string('payment_status')->nullable()->default(null);
             $table->string('payment_reference')->nullable();
 
             $table->softDeletes();
