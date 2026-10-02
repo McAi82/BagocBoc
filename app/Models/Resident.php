@@ -6,6 +6,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Resident extends Model
 {
@@ -29,7 +32,7 @@ class Resident extends Model
         'education_attainment',
         'relationship_to_head',
         'PSC_with_disability',
-        'status'
+        'status',
     ];
 
     protected $casts = [
@@ -40,55 +43,75 @@ class Resident extends Model
 
     protected $appends = ['age', 'full_name'];
 
-    public function certifications()
+    /* ============================================================
+     | RELATIONSHIPS
+     ============================================================ */
+
+    /**
+     * Certifications requested by this resident.
+     *
+     * Path:
+     *   Resident → CertificateRequester (certificate_requesters.resident_id)
+     *            → Certification        (certifications.requester_id)
+     */
+    public function certifications(): HasManyThrough
     {
-        return $this->hasMany(Certification::class);
+        return $this->hasManyThrough(
+            \App\Models\Certification::class,          // final model
+            \App\Models\CertificateRequester::class,   // intermediate model
+            'resident_id',                              // FK on certificate_requesters
+            'requester_id',                             // FK on certifications
+            'id',                                       // local key on residents
+            'id'                                        // local key on certificate_requesters
+        );
     }
 
-    public function clearances()
+    public function clearances(): HasMany
     {
         return $this->hasMany(Clearance::class);
     }
-    public function patientRecords()
+
+    public function patientRecords(): HasMany
     {
         return $this->hasMany(\App\Models\PatientRecord::class, 'resident_id');
     }
-    public function payments()
+
+    public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
     }
 
-    public function taxPayments()
+    public function taxPayments(): HasMany
     {
         return $this->hasMany(TaxPayment::class);
     }
 
-    public function checkups()
+    public function checkups(): HasMany
     {
         return $this->hasMany(\App\Models\CheckupRecord::class, 'resident_id');
     }
 
-    public function penalties()
+    public function penalties(): HasMany
     {
         return $this->hasMany(Penalty::class);
     }
 
-    public function optPlusAssessments()
+    public function optPlusAssessments(): HasMany
     {
         return $this->hasMany(OptPlusAssessment::class);
     }
 
-    public function maternalProfiles()
+    public function maternalProfiles(): HasMany
     {
         return $this->hasMany(MaternalProfile::class);
     }
 
-    public function maternalProfile()
+    public function maternalProfile(): HasOne
     {
         return $this->hasOne(MaternalProfile::class);
     }
 
-    public function user()
+    public function user(): HasOne
     {
         return $this->hasOne(User::class);
     }
@@ -96,14 +119,28 @@ class Resident extends Model
     public function households(): BelongsToMany
     {
         return $this->belongsToMany(Household::class, 'resident_households')
-            ->withPivot('relationship_to_household', 'is_primary', 'start_date', 'end_date', 'status')
+            ->withPivot(
+                'relationship_to_household',
+                'is_primary',
+                'start_date',
+                'end_date',
+                'status'
+            )
             ->withTimestamps()
             ->wherePivot('status', 'active');
     }
 
+    /* ============================================================
+     | ACCESSORS
+     ============================================================ */
+
     public function getFullNameAttribute(): string
     {
-        return trim($this->first_name . ' ' . ($this->middle_name ? $this->middle_name . ' ' : '') . $this->last_name);
+        return trim(
+            $this->first_name . ' ' .
+                ($this->middle_name ? $this->middle_name . ' ' : '') .
+                $this->last_name
+        );
     }
 
     public function getAgeAttribute(): ?int
@@ -116,8 +153,7 @@ class Resident extends Model
                     return 0;
                 }
 
-                $age = $birthDate->diffInYears(now());
-                return max(0, $age);
+                return max(0, $birthDate->diffInYears(now()));
             } catch (\Exception $e) {
                 return null;
             }
@@ -135,8 +171,7 @@ class Resident extends Model
                     return 0;
                 }
 
-                $months = $birthDate->diffInMonths(now());
-                return max(0, $months);
+                return max(0, $birthDate->diffInMonths(now()));
             } catch (\Exception $e) {
                 return null;
             }
