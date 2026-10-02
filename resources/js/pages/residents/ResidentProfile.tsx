@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { printReport, statusBadge, esc } from "../../utils/printReport";
 import {
   User,
   Mail,
@@ -83,6 +84,249 @@ export default function ResidentProfile() {
     if (id) fetchResident();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  /* ============================================================
+   PRINT — generate a full resident profile report
+   ============================================================ */
+  const handlePrint = () => {
+    if (!resident) {
+      toast.error("No resident data to print");
+      return;
+    }
+
+    const household = resident.current_household || null;
+    const stats = resident.stats || {};
+
+    const patientRecords =
+      resident.patient_records || resident.patientRecords || [];
+    const maternalProfile =
+      resident.maternal_profile || resident.maternalProfile || null;
+    const optAssessments =
+      resident.opt_plus_assessments || resident.optPlusAssessments || [];
+
+    const certifications = resident.certifications || [];
+    const clearances = resident.clearances || [];
+    const penalties = resident.penalties || [];
+    const payments = resident.payments || [];
+    const taxPayments =
+      resident.tax_payments || resident.taxPayments || [];
+
+    /* ------------------------------------------------------------
+       Build a single "Field / Value" table with section rows
+       ------------------------------------------------------------ */
+    type Row = { field: string; value: string };
+    const rows: Row[] = [];
+
+    const spacer = (label: string) =>
+      rows.push({ field: `— ${label} —`, value: "" });
+
+    /* ---------- 1. Personal information ---------- */
+    spacer("Personal Information");
+    rows.push({ field: "Full Name", value: esc(resident.full_name || `${resident.first_name} ${resident.last_name}`) });
+    rows.push({ field: "Resident ID", value: `#${resident.id}` });
+    rows.push({ field: "Gender", value: esc(resident.gender) });
+    rows.push({ field: "Age", value: resident.age != null ? `${resident.age} yrs` : "—" });
+    rows.push({
+      field: "Birth Date",
+      value: resident.birth_date
+        ? esc(new Date(resident.birth_date).toLocaleDateString("en-PH", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }))
+        : "—",
+    });
+    rows.push({ field: "Place of Birth", value: esc(resident.place_of_birth) });
+    rows.push({ field: "Citizenship", value: esc(resident.citizenship || "Filipino") });
+    rows.push({ field: "Civil Status", value: esc(resident.civil_status) });
+    rows.push({ field: "Voter Status", value: esc(resident.voter_status) });
+    rows.push({ field: "Education", value: esc(resident.education_attainment) });
+    rows.push({ field: "Occupation", value: esc(resident.occupation) });
+    rows.push({
+      field: "Monthly Income",
+      value: resident.monthly_income
+        ? `₱${Number(resident.monthly_income).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+        : "—",
+    });
+    rows.push({ field: "Phone", value: esc(resident.phone_number) });
+    rows.push({ field: "Email", value: esc(resident.email) });
+    rows.push({ field: "Account Status", value: esc(resident.status || "active") });
+
+    /* ---------- 2. Household ---------- */
+    spacer("Household");
+    if (household) {
+      rows.push({ field: "Household #", value: esc(household.household_number) });
+      rows.push({ field: "Tracking #", value: esc(household.household_tracking_number) });
+      rows.push({ field: "Zone", value: esc(household.zone) });
+      rows.push({ field: "Street", value: esc(household.street) });
+      rows.push({ field: "Role in Household", value: esc(household.role || "Member") });
+      rows.push({ field: "Head of Household", value: household.is_primary ? "Yes" : "No" });
+      rows.push({ field: "Members", value: String(household.member_count || 0) });
+
+      if (Array.isArray(household.members) && household.members.length > 0) {
+        rows.push({ field: "Household Members", value: "" });
+        household.members.forEach((m: any) => {
+          const role = m.is_primary ? " (Head)" : "";
+          rows.push({
+            field: m.full_name + role,
+            value: `${esc(m.relationship || "Member")} • ${esc(m.gender)} • ${m.age ?? "—"} yrs`,
+          });
+        });
+      }
+    } else {
+      rows.push({ field: "Household", value: "Not assigned" });
+    }
+
+    /* ---------- 3. Health ---------- */
+    spacer("Health Records");
+    rows.push({ field: "Patient Records", value: String(patientRecords.length) });
+
+    patientRecords.forEach((pr: any) => {
+      rows.push({
+        field: `Patient Record #${pr.id}`,
+        value: `Type: ${esc(pr.patient_type)} • Status: ${esc(pr.status)} • Checkups: ${pr.checkups?.length || 0}`,
+      });
+    });
+
+    if (maternalProfile) {
+      rows.push({
+        field: "Maternal Profile",
+        value: `Status: ${esc(maternalProfile.pregnancy_status)} • EDD: ${maternalProfile.expected_delivery_date ? esc(new Date(maternalProfile.expected_delivery_date).toLocaleDateString("en-PH")) : "—"}`,
+      });
+    }
+
+    if (optAssessments.length > 0) {
+      rows.push({ field: "OPT+ Assessments", value: String(optAssessments.length) });
+      optAssessments.slice(0, 10).forEach((a: any) => {
+        rows.push({
+          field: `OPT+ ${a.assessment_date ? new Date(a.assessment_date).toLocaleDateString("en-PH") : "—"}`,
+          value: `Weight: ${a.weight_kg ?? "—"} kg • Height: ${a.height_cm ?? "—"} cm`,
+        });
+      });
+    }
+
+    /* ---------- 4. Documents ---------- */
+    spacer("Certifications & Clearances");
+    rows.push({ field: "Certifications", value: String(certifications.length) });
+    certifications.forEach((c: any) => {
+      rows.push({
+        field: c.reference_number || `Cert #${c.id}`,
+        value: `${esc(c.certification_type?.name || c.certificationType?.name || "—")} • ${esc(c.status)} • ${c.created_at ? esc(new Date(c.created_at).toLocaleDateString("en-PH")) : "—"}`,
+      });
+    });
+
+    rows.push({ field: "Clearances", value: String(clearances.length) });
+    clearances.forEach((c: any) => {
+      rows.push({
+        field: c.reference_number || `Clearance #${c.id}`,
+        value: `${esc(c.purpose || "—")} • ₱${Number(c.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} • ${esc(c.status)}`,
+      });
+    });
+
+    /* ---------- 5. Financial ---------- */
+    spacer("Financial Summary");
+    rows.push({
+      field: "Pending Penalties",
+      value: String(stats.penalties_pending ?? penalties.filter((p: any) => p.status === "pending").length),
+    });
+    rows.push({
+      field: "Payments Total",
+      value: `₱${Number(stats.payments_total ?? payments.reduce((s: number, p: any) => s + (parseFloat(p.amount) || 0), 0)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+    });
+    rows.push({
+      field: "Tax Payments Total",
+      value: `₱${Number(stats.tax_total ?? taxPayments.reduce((s: number, t: any) => s + (parseFloat(t.amount) || 0), 0)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+    });
+
+    if (penalties.length > 0) {
+      rows.push({ field: "Penalty Details", value: "" });
+      penalties.forEach((p: any) => {
+        rows.push({
+          field: p.reference_number || `Penalty #${p.id}`,
+          value: `${esc(p.reason || "—")} • ₱${Number(p.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} • ${esc(p.status)}`,
+        });
+      });
+    }
+
+    if (payments.length > 0) {
+      rows.push({ field: "Payment Details", value: "" });
+      payments.forEach((p: any) => {
+        rows.push({
+          field: p.or_number || `Payment #${p.id}`,
+          value: `${esc(p.payment_type || "—")} • ₱${Number(p.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} • ${esc(p.payment_method || "—")} • ${esc(p.status)}`,
+        });
+      });
+    }
+
+    if (taxPayments.length > 0) {
+      rows.push({ field: "Tax Payment Details", value: "" });
+      taxPayments.forEach((t: any) => {
+        rows.push({
+          field: t.receipt_number || `Tax #${t.id}`,
+          value: `${esc(t.tax_type || "—")} • ₱${Number(t.amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} • ${esc(t.payment_method || "—")}`,
+        });
+      });
+    }
+
+    /* ---------- 6. Account ---------- */
+    if (resident.user) {
+      spacer("Linked Account");
+      rows.push({ field: "Email", value: esc(resident.user.email) });
+      rows.push({ field: "Status", value: esc(resident.user.account_status) });
+      rows.push({
+        field: "Roles",
+        value: esc((resident.user.roles || []).map((r: any) => r.name).join(", ") || "—"),
+      });
+      rows.push({
+        field: "Last Login",
+        value: resident.user.last_login_at
+          ? esc(new Date(resident.user.last_login_at).toLocaleString("en-PH"))
+          : "Never",
+      });
+    }
+
+    /* ------------------------------------------------------------
+       Hand off to the shared print utility
+       ------------------------------------------------------------ */
+    const ok = printReport({
+      title: "Resident Profile",
+      subtitle: `${resident.full_name || `${resident.first_name} ${resident.last_name}`} • Resident ID #${resident.id}`,
+      periodLabel: `As of ${new Date().toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })}`,
+      columns: [
+        { key: "field", label: "Field", width: "35%" },
+        { key: "value", label: "Value" },
+      ],
+      rows,
+      summary: [
+        { label: "Certificates", value: certifications.length },
+        { label: "Clearances", value: clearances.length },
+        { label: "Penalties", value: penalties.length, color: "#dc2626" },
+        {
+          label: "Payments",
+          value: `₱${Number(stats.payments_total ?? payments.reduce((s: number, p: any) => s + (parseFloat(p.amount) || 0), 0)).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
+          color: "#059669",
+        },
+      ],
+      signatories: {
+        left: {
+          name: "Concordio A. Esber",
+          title: "Barangay Secretary",
+        },
+        right: {
+          name: "Marcos P. Gonzales",
+          title: "Punong Barangay",
+        },
+      },
+    });
+
+    if (!ok) {
+      toast.error("Please allow popups to print the resident profile");
+    }
+  };
 
   const fetchResident = async () => {
     setIsLoading(true);
@@ -347,7 +591,11 @@ export default function ResidentProfile() {
             </>
           ) : (
             <>
-              <button className="flex items-center gap-2 px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text">
+              {/* AFTER — wired up */}
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-2 px-4 py-2 border border-theme rounded-lg hover:bg-theme-hover transition-colors text-theme-text"
+              >
                 <Printer className="w-4 h-4" /> Print
               </button>
               <button
