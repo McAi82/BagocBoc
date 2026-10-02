@@ -590,7 +590,6 @@ class ResidentController extends Controller
                 return $this->respondError('Validation error', $validator->errors(), 422);
             }
 
-            // Confirm the certification belongs to this resident and is payable
             $certification = Certification::where('id', $request->request_id)
                 ->whereHas('requester', function ($q) use ($residentId) {
                     $q->where('resident_id', $residentId);
@@ -609,6 +608,7 @@ class ResidentController extends Controller
                 );
             }
 
+            // ✅ Already paid → block
             if ($certification->payment_status === 'paid') {
                 return $this->respondError(
                     'This certificate has already been paid.',
@@ -617,10 +617,20 @@ class ResidentController extends Controller
                 );
             }
 
+            // ✅ Already pending → block to avoid duplicate submissions
+            if ($certification->payment_status === 'pending') {
+                return $this->respondError(
+                    'A payment request is already pending. Please wait for the Treasurer to confirm it.',
+                    null,
+                    422
+                );
+            }
+
+            // ✅ From here: null or "failed" — allow (re)submission
+
             DB::beginTransaction();
 
             try {
-                // Create a pending payment for the Treasurer to confirm
                 $payment = Payment::create([
                     'resident_id'          => $residentId,
                     'processed_by_user_id' => Auth::id(),
@@ -628,16 +638,16 @@ class ResidentController extends Controller
                     'amount'               => $request->amount,
                     'payment_type'         => 'Certificate',
                     'payment_method'       => 'Cash',
-                    'status'               => 'pending',   // ⬅️ Treasurer confirms later
+                    'status'               => 'pending',
                     'paid_at'              => null,
                     'payable_id'           => $certification->id,
                     'payable_type'         => Certification::class,
                 ]);
 
-                // Track payment intent on the certification
+                // ✅ Reset to pending so the mobile UI reflects the new state
                 $certification->update([
-                    'payment_method'  => 'cash',
-                    'payment_status'  => 'pending',
+                    'payment_method'    => 'cash',
+                    'payment_status'    => 'pending',
                     'payment_reference' => $payment->or_number,
                 ]);
 
@@ -668,7 +678,7 @@ class ResidentController extends Controller
 
             return $this->respondSuccess([
                 'payment' => $payment,
-                'receipt' => null,   // receipt only after Treasurer confirms
+                'receipt' => null,
                 'message' => 'Please pay in cash at the Barangay Hall. The Treasurer will confirm your payment.',
             ], 'Payment request submitted. Please proceed to the Barangay Hall.', 201);
         } catch (\Exception $e) {

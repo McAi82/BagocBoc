@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Models\Certification;
 
 class FinanceController extends Controller
 {
@@ -25,11 +26,6 @@ class FinanceController extends Controller
 
     // app/Http/Controllers/Web/Financial/FinanceController.php
 
-    /**
-     * Treasurer confirms a pending payment was received in cash.
-     * Marks the payment completed, sets the OR, and moves the certificate
-     * to Ready for Release.
-     */
     public function confirmPayment(Request $request, $id)
     {
         try {
@@ -51,15 +47,14 @@ class FinanceController extends Controller
                     'paid_at' => now(),
                 ]);
 
-                // Move the linked certificate to Ready for Release
-                if ($payment->payable_type === Certification::class && $payment->payable_id) {
-                    $certification = Certification::find($payment->payable_id);
-                    if ($certification) {
-                        $certification->update([
-                            'payment_status' => 'paid',
-                            'status' => 'Ready for Release',
-                        ]);
-                    }
+                // ✅ Resolve the linked certification defensively
+                $certification = $this->resolveLinkedCertification($payment);
+
+                if ($certification) {
+                    $certification->update([
+                        'payment_status' => 'paid',
+                        'status'         => 'Ready for Release',
+                    ]);
                 }
 
                 DB::commit();
@@ -100,9 +95,6 @@ class FinanceController extends Controller
         }
     }
 
-    /**
-     * Treasurer rejects a payment (resident didn't show up, wrong amount, etc.).
-     */
     public function rejectPayment(Request $request, $id)
     {
         try {
@@ -128,13 +120,13 @@ class FinanceController extends Controller
             try {
                 $payment->update(['status' => 'failed']);
 
-                if ($payment->payable_type === Certification::class && $payment->payable_id) {
-                    $certification = Certification::find($payment->payable_id);
-                    if ($certification) {
-                        $certification->update([
-                            'payment_status' => 'failed',
-                        ]);
-                    }
+                // ✅ Resolve the linked certification defensively
+                $certification = $this->resolveLinkedCertification($payment);
+
+                if ($certification) {
+                    $certification->update([
+                        'payment_status' => 'failed',
+                    ]);
                 }
 
                 DB::commit();
@@ -152,10 +144,10 @@ class FinanceController extends Controller
                         '❌ Payment Could Not Be Confirmed',
                         'Your payment request was not confirmed. Reason: '
                             . $request->reason
-                            . '. Please contact the Barangay Treasurer.',
+                            . '. You can submit a new payment request from your requests screen.',
                         'payment',
                         'high',
-                        '/resident/payments/' . $payment->id,
+                        '/resident/certificates/' . ($certification?->id ?? $payment->payable_id),
                         Auth::id(),
                         'payment',
                         $payment->id
@@ -170,6 +162,29 @@ class FinanceController extends Controller
             Log::error('Reject payment error: ' . $e->getMessage());
             return $this->respondError('Failed to reject payment', null, 500);
         }
+    }
+
+    /**
+     * Resolve the certification a payment belongs to, tolerant of the
+     * "App\Models\Certification" vs "\App\Models\Certification" mismatch
+     * and of payments created with a null payable_type.
+     */
+    private function resolveLinkedCertification(Payment $payment): ?\App\Models\Certification
+    {
+        if ($payment->payable_id) {
+            $type = ltrim((string) $payment->payable_type, '\\');
+
+            if ($type === \App\Models\Certification::class) {
+                $cert = \App\Models\Certification::find($payment->payable_id);
+                if ($cert) return $cert;
+            }
+
+            // Fallback: still try by id, in case payable_type was stored oddly.
+            $cert = \App\Models\Certification::find($payment->payable_id);
+            if ($cert) return $cert;
+        }
+
+        return null;
     }
 
     public function indexPayments(Request $request)
