@@ -169,7 +169,10 @@ class DatabaseSeeder extends Seeder
         // 7. HOUSEHOLDS + RESIDENTS
         //
         // 9 households × 5 members = 45 residents
-        // Each household lives in its own zone (1 household per zone).
+        // Each household lives in its own zone.
+        //
+        // ✅ We track the head of each household separately so we can
+        //    attach one Zone Leader per zone to that household's head.
         // ============================================
         $zoneList = BarangayZone::orderBy('zone_number')->get();
 
@@ -228,7 +231,6 @@ class DatabaseSeeder extends Seeder
             'Lorna',
         ];
 
-        // ✅ 9 family surnames (one per zone)
         $surnames = [
             'Dela Cruz',
             'Santos',
@@ -243,6 +245,7 @@ class DatabaseSeeder extends Seeder
 
         $allResidents = [];
         $allHouseholds = [];
+        $householdHeads = []; // ✅ one head per household, indexed by zone order
 
         foreach ($surnames as $i => $surname) {
             $zone = $zoneList[$i];
@@ -260,10 +263,8 @@ class DatabaseSeeder extends Seeder
             ]);
             $allHouseholds[] = $household;
 
-            // Build 5 members per household
             $members = [];
 
-            // Head (male)
             $headAge = rand(35, 60);
             $members[] = [
                 'first'  => $firstNamesMale[$i % count($firstNamesMale)],
@@ -272,7 +273,6 @@ class DatabaseSeeder extends Seeder
                 'age'    => $headAge,
             ];
 
-            // Spouse (female)
             $spouseAge = $headAge - rand(1, 5);
             $members[] = [
                 'first'  => $firstNamesFemale[$i % count($firstNamesFemale)],
@@ -281,7 +281,6 @@ class DatabaseSeeder extends Seeder
                 'age'    => $spouseAge,
             ];
 
-            // Child 1 (mixed gender, school age)
             $childAge1 = rand(6, 17);
             $members[] = [
                 'first'  => $childAge1 % 2 === 0
@@ -292,7 +291,6 @@ class DatabaseSeeder extends Seeder
                 'age'    => $childAge1,
             ];
 
-            // Child 2 (mixed gender, school age)
             $childAge2 = rand(8, 17);
             $members[] = [
                 'first'  => $childAge2 % 2 === 0
@@ -303,7 +301,6 @@ class DatabaseSeeder extends Seeder
                 'age'    => $childAge2,
             ];
 
-            // Relative (could be senior, could be young adult)
             $relativeAge = rand(20, 70);
             $members[] = [
                 'first'  => $firstNamesMale[($i + 8) % count($firstNamesMale)],
@@ -348,6 +345,11 @@ class DatabaseSeeder extends Seeder
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                // ✅ Remember the head of this household
+                if ($member['role'] === 'Head') {
+                    $householdHeads[$i] = $resident;
+                }
             }
         }
         $this->command->info('✅ Residents seeded (' . count($allResidents) . ')');
@@ -390,9 +392,12 @@ class DatabaseSeeder extends Seeder
 
         // ============================================
         // 9. USERS
+        //
+        // ✅ Zone Leaders are now attached to the HEAD of the household
+        //    in their own zone. zoneleader1 → head of household 1 →
+        //    zone 1. zoneleader2 → head of household 2 → zone 2. Etc.
         // ============================================
-        // Super Admin + 8 staff + 9 zone leaders + 1 resident
-        $users = [
+        $userSpecs = [
             ['email' => 'superadmin@gmail.com',   'role' => 'Super Admin',                 'resident' => null],
             ['email' => 'captain@gmail.com',      'role' => 'Barangay Captain',            'resident' => $allResidents[0]],
             ['email' => 'secretary@gmail.com',    'role' => 'Barangay Secretary',          'resident' => $allResidents[1]],
@@ -403,25 +408,24 @@ class DatabaseSeeder extends Seeder
             ['email' => 'bhw@gmail.com',          'role' => 'Barangay Health Worker',      'resident' => $allResidents[6]],
             ['email' => 'bns@gmail.com',          'role' => 'Barangay Nutrition Scholar',  'resident' => $allResidents[7]],
 
-            // ✅ 9 Zone Leaders, one per zone
-            ['email' => 'zoneleader1@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[8]],
-            ['email' => 'zoneleader2@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[9]],
-            ['email' => 'zoneleader3@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[10]],
-            ['email' => 'zoneleader4@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[11]],
-            ['email' => 'zoneleader5@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[12]],
-            ['email' => 'zoneleader6@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[13]],
-            ['email' => 'zoneleader7@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[14]],
-            ['email' => 'zoneleader8@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[15]],
-            ['email' => 'zoneleader9@gmail.com',  'role' => 'Zone Leader', 'resident' => $allResidents[16]],
-
-            // Resident demo account
-            ['email' => 'resident@gmail.com',     'role' => 'Resident',    'resident' => $allResidents[17]],
+            // ✅ Resident demo account
+            ['email' => 'resident@gmail.com',     'role' => 'Resident',                    'resident' => $allResidents[17]],
         ];
+
+        // ✅ Build one zone-leader spec per zone, attached to the
+        //    head of that zone's household.
+        for ($z = 0; $z < 9; $z++) {
+            $userSpecs[] = [
+                'email'    => 'zoneleader' . ($z + 1) . '@gmail.com',
+                'role'     => 'Zone Leader',
+                'resident' => $householdHeads[$z],
+            ];
+        }
 
         $userMap = [];
         $zoneLeaderUsers = [];
 
-        foreach ($users as $u) {
+        foreach ($userSpecs as $u) {
             $user = User::create([
                 'resident_id' => $u['resident']?->id,
                 'email' => $u['email'],
@@ -434,19 +438,29 @@ class DatabaseSeeder extends Seeder
             ]);
             $user->roles()->attach($roleIds[$u['role']]);
 
-            // Non-resident roles also get the Resident role
             if ($u['resident'] && $u['role'] !== 'Resident') {
                 $user->roles()->syncWithoutDetaching([$roleIds['Resident']]);
             }
 
-            $userMap[$u['role']] = $user;
+            // Store by email so duplicates of a role (Zone Leader ×9)
+            // don't clobber each other in the map.
+            $userMap[$u['email']] = $user;
 
-            // Track zone leaders separately
             if ($u['role'] === 'Zone Leader') {
                 $zoneLeaderUsers[] = $user;
             }
         }
-        $this->command->info('✅ Users seeded (' . count($users) . ')');
+
+        // Also expose the primary staff users by role for the
+        // downstream seeding blocks that expect them.
+        $userMap['Barangay Health Worker']     = $userMap['bhw@gmail.com'];
+        $userMap['Barangay Secretary']         = $userMap['secretary@gmail.com'];
+        $userMap['Barangay Treasurer']         = $userMap['treasurer@gmail.com'];
+        $userMap['Barangay Captain']           = $userMap['captain@gmail.com'];
+        $userMap['Front Desk Clerk']           = $userMap['frontdesk@gmail.com'];
+        $userMap['Midwife']                    = $userMap['midwife@gmail.com'];
+
+        $this->command->info('✅ Users seeded (' . count($userSpecs) . ')');
 
         // ============================================
         // 10. RECORD ACTIVITY LOGS
@@ -580,7 +594,6 @@ class DatabaseSeeder extends Seeder
             ])
         ) ?? $adults->first() ?? $allResidentsCollection->first();
 
-        // Pregnant
         $pregnantRecord = PatientRecord::create([
             'resident_id' => $pregnantResident->id,
             'patient_type' => 'pregnant',
@@ -599,7 +612,6 @@ class DatabaseSeeder extends Seeder
             'risk_level' => 'low',
         ]);
 
-        // Child
         $childRecord = PatientRecord::create([
             'resident_id' => $childResident->id,
             'patient_type' => 'child',
@@ -615,7 +627,6 @@ class DatabaseSeeder extends Seeder
             'gestational_age_at_birth' => 38,
         ]);
 
-        // Lactating
         $lactatingRecord = PatientRecord::create([
             'resident_id' => $lactatingResident->id,
             'patient_type' => 'lactating',
@@ -629,7 +640,6 @@ class DatabaseSeeder extends Seeder
             'infant_age' => 3,
         ]);
 
-        // Senior
         $seniorRecord = PatientRecord::create([
             'resident_id' => $seniorResident->id,
             'patient_type' => 'senior',
@@ -643,7 +653,6 @@ class DatabaseSeeder extends Seeder
             'cognitive_assessment' => 'Normal',
         ]);
 
-        // NCD
         $ncdRecord = PatientRecord::create([
             'resident_id' => $ncdResident->id,
             'patient_type' => 'ncd',
@@ -658,7 +667,6 @@ class DatabaseSeeder extends Seeder
             'current_status' => 'stable',
         ]);
 
-        // Checkups for each type
         $pregnancyCheckup = CheckupRecord::create([
             'patient_record_id' => $pregnantRecord->id,
             'resident_id' => $pregnantResident->id,
@@ -927,7 +935,7 @@ class DatabaseSeeder extends Seeder
         $this->command->info('✅ Financial reports seeded (2)');
 
         // ============================================
-        // 21. FRONT DESK REQUEST / QUEUE / APPOINTMENT / CLAIM SLIP
+        // 21. FRONT DESK
         // ============================================
         $frontDesk = $userMap['Front Desk Clerk'];
 
@@ -1065,13 +1073,32 @@ class DatabaseSeeder extends Seeder
         // ============================================
         // 25. RESIDENT CONFIRMATIONS
         //
-        // ✅ One per zone leader (9 total), each for a different resident.
+        // ✅ Each zone leader confirms a resident from their own zone.
         // ============================================
         foreach ($zoneLeaderUsers as $index => $zoneLeader) {
-            // Rotate through residents so each zone leader confirms someone different
-            $pickIndex = ($index * 4 + 2) % count($allResidents);
-            $residentToConfirm = $allResidentsCollection[$pickIndex]
-                ?? $allResidentsCollection->first();
+            // The zone leader's own resident record tells us their zone.
+            $leaderResident = $zoneLeader->resident;
+
+            // Pick a resident who lives in the same zone but isn't the
+            // leader themselves.
+            $zoneId = DB::table('resident_households')
+                ->join('households', 'resident_households.household_id', '=', 'households.id')
+                ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
+                ->where('resident_households.resident_id', $leaderResident->id)
+                ->where('resident_households.status', 'active')
+                ->value('household_addresses.zone');
+
+            $candidate = Resident::query()
+                ->join('resident_households', 'residents.id', '=', 'resident_households.resident_id')
+                ->join('households', 'resident_households.household_id', '=', 'households.id')
+                ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
+                ->where('household_addresses.zone', $zoneId)
+                ->where('resident_households.status', 'active')
+                ->where('residents.id', '!=', $leaderResident->id)
+                ->select('residents.*')
+                ->first();
+
+            $residentToConfirm = $candidate ?? $allResidentsCollection->first();
 
             ResidentConfirmation::create([
                 'resident_id' => $residentToConfirm->id,
@@ -1096,8 +1123,6 @@ class DatabaseSeeder extends Seeder
 
         // ============================================
         // 27. ZONE CHECK-INS
-        //
-        // ✅ One per zone leader (9 total), one per zone.
         // ============================================
         foreach ($zoneLeaderUsers as $index => $zoneLeader) {
             $zone = $zoneList[$index % 9];
@@ -1144,7 +1169,7 @@ class DatabaseSeeder extends Seeder
         $this->command->info('   - BHW: bhw@gmail.com');
         $this->command->info('   - BNS: bns@gmail.com');
         for ($i = 1; $i <= 9; $i++) {
-            $this->command->info("   - Zone Leader {$i}: zoneleader{$i}@gmail.com");
+            $this->command->info("   - Zone Leader {$i}: zoneleader{$i}@gmail.com (Zone {$i})");
         }
         $this->command->info('   - Resident: resident@gmail.com');
         $this->command->info('═══════════════════════════════════════');
