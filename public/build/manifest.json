@@ -28,7 +28,7 @@
     "src": "_instrument-sans-600-normal-B9e8oLYv.woff"
   },
   "node_modules/canvg/lib/index.es.js": {
-    "file": "assets/index.es-DbdsyLve.js",
+    "file": "assets/index.es-BtTv66NO.js",
     "name": "index.es",
     "src": "node_modules/canvg/lib/index.es.js",
     "isDynamicEntry": true,
@@ -55,7 +55,7 @@
     "src": "node_modules/leaflet/dist/images/marker-icon.png"
   },
   "resources/css/app.css": {
-    "file": "assets/app-Dt5TnlNA.css",
+    "file": "assets/app-B46TIqBv.css",
     "name": "app",
     "names": [
       "app.css"
@@ -68,7 +68,7 @@
     "src": "resources/js/assets/barangay-logo.png"
   },
   "resources/js/main.tsx": {
-    "file": "assets/main-BJq-HzWV.js",
+    "file": "assets/main-Bu8pi5GF.js",
     "name": "main",
     "src": "resources/js/main.tsx",
     "isEntry": true,
