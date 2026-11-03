@@ -1,0 +1,399 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   THEME TOKENS
+   Applied via data-theme on <html> and .dark class on <html>
+   ============================================================ */
+
+:root,
+[data-theme="light"] {
+    --theme-background: #f1f5f9;
+    --theme-surface: #ffffff;
+    --theme-primary: #2563eb;
+    --theme-secondary: #3b82f6;
+    --theme-accent: #8b5cf6;
+    --theme-text: #0f172a;
+    --theme-text-secondary: #64748b;
+    --theme-border: #e2e8f0;
+    --theme-hover: #f1f5f9;
+    --theme-sidebar: #ffffff;
+    --theme-header: #ffffff;
+    --theme-shadow: rgba(0, 0, 0, 0.1);
+}
+
+.dark,
+[data-theme="dark"] {
+    --theme-background: #0f172a;
+    --theme-surface: #1e293b;
+    --theme-primary: #3b82f6;
+    --theme-secondary: #60a5fa;
+    --theme-accent: #a78bfa;
+    --theme-text: #f1f5f9;
+    --theme-text-secondary: #94a3b8;
+    --theme-border: #334155;
+    --theme-hover: #1e293b;
+    --theme-sidebar: #1e293b;
+    --theme-header: #1e293b;
+    --theme-shadow: rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================
+   BASE RESET
+   ============================================================ */
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system,
+        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--theme-background);
+    color: var(--theme-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+button {
+    font-family: inherit;
+    cursor: pointer;
+}
+
+input,
+textarea,
+select {
+    font-family: inherit;
+}
+
+/* ============================================================
+   SCROLLBARS
+   ============================================================ */
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--theme-border);
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--theme-text-secondary);
+}
+
+/* Firefox */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--theme-border) transparent;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* ============================================================
+   FORM INPUTS — consistent appearance across themes
+   ============================================================ */
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+textarea,
+select {
+    color: var(--theme-text);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--theme-text-secondary);
+    opacity: 1;
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Remove the default browser number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* ============================================================
+   LINE CLAMP UTILITIES
+   ============================================================ */
+
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* ============================================================
+   ANIMATIONS USED BY MODALS / DROPDOWNS / SLIDE PANELS
+   ============================================================ */
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes zoomIn95 {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes slideInFromTop {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInFromRight {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInFromLeft {
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}
+
+.animate-in {
+    animation-duration: 0.2s;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+}
+
+.fade-in {
+    animation-name: fadeIn;
+}
+
+.zoom-in-95 {
+    animation-name: zoomIn95;
+}
+
+.slide-in-from-top-2 {
+    animation-name: slideInFromTop;
+}
+
+.slide-in-from-right {
+    animation-name: slideInFromRight;
+}
+
+.slide-in-from-left {
+    animation-name: slideInFromLeft;
+}
+
+/* ============================================================
+   LEAFLET OVERRIDES
+   ============================================================ */
+
+.leaflet-container {
+    font-family: inherit;
+    background: var(--theme-background);
+}
+
+.leaflet-popup-content-wrapper {
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.leaflet-popup-content {
+    margin: 0;
+}
+
+/* Fix Leaflet marker default icons (they 404 when bundled) */
+.leaflet-default-icon-path {
+    background-image: url(https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png);
+}
+
+/* ============================================================
+   CERTIFICATE / PRINT STYLES
+   ============================================================ */
+
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    body {
+        background: #ffffff !important;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Certificate export helper */
+    [data-exporting="true"] * {
+        transition: none !important;
+        animation: none !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+    }
+
+    [data-exporting="true"] [data-sidebar="true"] {
+        background: #4a6b30 !important;
+        color: #ffffff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    [data-exporting="true"] [data-sidebar="true"] * {
+        color: #ffffff !important;
+    }
+
+    [data-exporting="true"] p,
+    [data-exporting="true"] h1,
+    [data-exporting="true"] div,
+    [data-exporting="true"] span,
+    [data-exporting="true"] strong {
+        color: #111111 !important;
+    }
+
+    [data-exporting="true"] {
+        background: #ffffff !important;
+        color: #111111 !important;
+    }
+
+    [data-exporting="true"] .clickable-field {
+        background: transparent !important;
+    }
+}
+
+/* ============================================================
+   MISC UTILITIES
+   ============================================================ */
+
+/* Prevent focus ring on mouse click, show on keyboard nav */
+:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* Selection */
+::selection {
+    background: var(--theme-primary);
+    color: #ffffff;
+}
+
+/* Smooth theme transition */
+html {
+    transition: background-color 0.3s ease;
+}
+
+body,
+.theme-transition {
+    transition: background-color 0.3s ease, color 0.3s ease,
+        border-color 0.3s ease;
+}
+
+/* Skeleton shimmer (optional, if you use it) */
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.skeleton {
+    background: linear-gradient(90deg,
+            var(--theme-hover) 25%,
+            var(--theme-border) 50%,
+            var(--theme-hover) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+/* Disable tap highlight on mobile */
+* {
+    -webkit-tap-highlight-color: transparent;
+}

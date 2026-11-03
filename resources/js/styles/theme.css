@@ -1,0 +1,202 @@
+/* src/styles/theme.css */
+
+:root {
+  /* Default theme variables (will be overridden by JavaScript) */
+  --theme-background: #f1f5f9;
+  --theme-surface: #ffffff;
+  --theme-primary: #2563eb;
+  --theme-secondary: #3b82f6;
+  --theme-accent: #8b5cf6;
+  --theme-text: #0f172a;
+  --theme-textSecondary: #64748b;
+  --theme-border: #e2e8f0;
+  --theme-hover: #f1f5f9;
+  --theme-shadow: rgba(0, 0, 0, 0.1);
+  --theme-sidebar: #ffffff;
+  --theme-header: #ffffff;
+}
+
+/* Dark mode variables */
+.dark {
+  --theme-background: #0f172a;
+  --theme-surface: #1e293b;
+  --theme-primary: #3b82f6;
+  --theme-secondary: #60a5fa;
+  --theme-accent: #a78bfa;
+  --theme-text: #f1f5f9;
+  --theme-textSecondary: #94a3b8;
+  --theme-border: #334155;
+  --theme-hover: #1e293b;
+  --theme-shadow: rgba(0, 0, 0, 0.3);
+  --theme-sidebar: #1e293b;
+  --theme-header: #1e293b;
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    background-image 0.3s ease;
+}
+
+/* Apply theme variables globally */
+body {
+  background-color: var(--theme-background);
+  color: var(--theme-text);
+}
+
+/* Custom scrollbar for themed pages */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--theme-background);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--theme-border);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-textSecondary);
+}
+
+/* Theme utility classes */
+.bg-theme-background {
+  background-color: var(--theme-background);
+}
+
+.bg-theme-surface {
+  background-color: var(--theme-surface);
+}
+
+.bg-theme-primary {
+  background-color: var(--theme-primary);
+}
+
+.bg-theme-secondary {
+  background-color: var(--theme-secondary);
+}
+
+.bg-theme-accent {
+  background-color: var(--theme-accent);
+}
+
+.text-theme-primary {
+  color: var(--theme-primary);
+}
+
+.text-theme-secondary {
+  color: var(--theme-secondary);
+}
+
+.text-theme-accent {
+  color: var(--theme-accent);
+}
+
+.text-theme-text {
+  color: var(--theme-text);
+}
+
+.text-theme-textSecondary {
+  color: var(--theme-textSecondary);
+}
+
+.border-theme {
+  border-color: var(--theme-border);
+}
+
+.shadow-theme {
+  box-shadow: 0 4px 12px var(--theme-shadow);
+}
+
+.hover\\:bg-theme-hover:hover {
+  background-color: var(--theme-hover);
+}
+
+.hover\\:text-theme-primary:hover {
+  color: var(--theme-primary);
+}
+
+/* Theme for input fields */
+input,
+select,
+textarea {
+  background-color: var(--theme-surface);
+  color: var(--theme-text);
+  border-color: var(--theme-border);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--theme-primary);
+  box-shadow: 0 0 0 2px var(--theme-primary);
+}
+
+/* Theme for cards */
+.card {
+  background-color: var(--theme-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px var(--theme-shadow);
+}
+
+/* Theme for modals */
+.modal-overlay {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+  background-color: var(--theme-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 1rem;
+}
+
+/* Theme for tables */
+table {
+  background-color: var(--theme-surface);
+}
+
+thead {
+  background-color: var(--theme-background);
+}
+
+th {
+  color: var(--theme-textSecondary);
+  border-bottom: 1px solid var(--theme-border);
+}
+
+td {
+  border-bottom: 1px solid var(--theme-border);
+}
+
+tr:hover {
+  background-color: var(--theme-hover);
+}
+
+/* Theme for buttons */
+.btn-primary {
+  background-color: var(--theme-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--theme-secondary);
+}
+
+.btn-secondary {
+  background-color: var(--theme-surface);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+}
+
+.btn-secondary:hover {
+  background-color: var(--theme-hover);
+}
