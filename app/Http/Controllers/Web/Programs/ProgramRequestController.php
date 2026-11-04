@@ -4,7 +4,7 @@
 namespace App\Http\Controllers\Web\Programs;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProgramRequest;
+use App\Models\Programrequest;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
