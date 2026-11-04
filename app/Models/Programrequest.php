@@ -10,6 +10,9 @@ class Programrequest extends Model
 {
     use HasFactory;
 
+    // Explicit so it always matches the migration / manual-setup.sql table
+    protected $table = 'program_requests';
+
     protected $fillable = [
         'requested_by_user_id',
         'title',
