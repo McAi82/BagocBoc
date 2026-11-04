@@ -47,70 +47,10 @@ class ProgramRequestController extends Controller
     private const DEEP_LINK = '/barangay-bagocboc/program-requests';
 
     /* ============================================================
-     | TEMPORARY DEBUG WRAPPERS - remove once the 500 is fixed
-     ============================================================ */
-
-    public function index(Request $request)
-    {
-        return $this->guard(fn() => $this->index_inner($request));
-    }
-
-    public function show($id)
-    {
-        return $this->guard(fn() => $this->show_inner($id));
-    }
-
-    public function store(Request $request)
-    {
-        return $this->guard(fn() => $this->store_inner($request));
-    }
-
-    public function cancel($id)
-    {
-        return $this->guard(fn() => $this->cancel_inner($id));
-    }
-
-    public function recipients()
-    {
-        return $this->guard(fn() => $this->recipients_inner());
-    }
-
-    public function approve(Request $request, $id)
-    {
-        return $this->guard(fn() => $this->approve_inner($request, $id));
-    }
-
-    public function reject(Request $request, $id)
-    {
-        return $this->guard(fn() => $this->reject_inner($request, $id));
-    }
-
-    private function guard(callable $fn)
-    {
-        try {
-            return $fn();
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            Log::error('ProgramRequest debug', [
-                'error' => $e->getMessage(),
-                'file'  => $e->getFile(),
-                'line'  => $e->getLine(),
-            ]);
-
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'DEBUG: ' . get_class($e) . ': ' . $e->getMessage()
-                    . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(),
-            ], 500);
-        }
-    }
-
-    /* ============================================================
      | LIST / SHOW
      ============================================================ */
 
-    private function index_inner(Request $request)
+    public function index(Request $request)
     {
         [$isApprover, $isRequester] = $this->access();
 
@@ -146,7 +86,7 @@ class ProgramRequestController extends Controller
         return $this->respondSuccess($requests);
     }
 
-    private function show_inner($id)
+    public function show($id)
     {
         $pr = ProgramRequest::with(['requester.resident', 'reviewer.resident'])->find($id);
 
@@ -168,7 +108,7 @@ class ProgramRequestController extends Controller
      | CREATE (BNS / NDP / Midwife)
      ============================================================ */
 
-    private function store_inner(Request $request)
+    public function store(Request $request)
     {
         [, $isRequester] = $this->access();
 
@@ -227,7 +167,7 @@ class ProgramRequestController extends Controller
         );
     }
 
-    private function cancel_inner($id)
+    public function cancel($id)
     {
         $pr = ProgramRequest::find($id);
 
@@ -253,7 +193,7 @@ class ProgramRequestController extends Controller
      ============================================================ */
 
     /** Users that can be picked as notification recipients. */
-    private function recipients_inner()
+    public function recipients()
     {
         [$isApprover] = $this->access();
 
@@ -289,7 +229,7 @@ class ProgramRequestController extends Controller
         return $this->respondSuccess($users);
     }
 
-    private function approve_inner(Request $request, $id)
+    public function approve(Request $request, $id)
     {
         [$isApprover] = $this->access();
 
@@ -404,7 +344,7 @@ class ProgramRequestController extends Controller
         return $this->respondSuccess($data, 'Request approved and program created');
     }
 
-    private function reject_inner(Request $request, $id)
+    public function reject(Request $request, $id)
     {
         [$isApprover] = $this->access();
 
