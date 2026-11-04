@@ -13,6 +13,7 @@ use App\Http\Controllers\Web\Financial\FinanceController;
 use App\Http\Controllers\Web\Financial\FinancialReportController;
 use App\Http\Controllers\Web\FrontDesk\FrontDeskController;
 use App\Http\Controllers\Web\Announcements\AnnouncementController;
+use App\Http\Controllers\Web\Programs\ProgramRequestController;
 use App\Http\Controllers\Web\Settings\UserController;
 use App\Http\Controllers\Web\Settings\SystemSettingsController;
 use App\Http\Controllers\Web\Settings\AdminUserController;
@@ -379,6 +380,17 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
     });
 
     // ============================================
+    // 3.15b PROGRAM REQUESTS (BNS / NDP / Midwife request, Secretary / Captain / Super Admin review)
+    Route::prefix('/program-requests')->group(function () {
+        Route::get('/',                 [ProgramRequestController::class, 'index']);
+        Route::post('/',                [ProgramRequestController::class, 'store']);
+        Route::get('/recipients',       [ProgramRequestController::class, 'recipients']); // keep above /{id}
+        Route::get('/{id}',             [ProgramRequestController::class, 'show']);
+        Route::post('/{id}/approve',    [ProgramRequestController::class, 'approve']);
+        Route::post('/{id}/reject',     [ProgramRequestController::class, 'reject']);
+        Route::post('/{id}/cancel',     [ProgramRequestController::class, 'cancel']);
+    });
+
     // 3.16 ANNOUNCEMENTS
     // ============================================
     // NOTE: "/public" must come before "/{id}" or it'll be treated as an id.

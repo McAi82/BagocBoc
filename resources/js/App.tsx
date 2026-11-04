@@ -108,6 +108,7 @@ import SystemSettings from "./pages/settings/SystemSettings";
 // ANNOUNCEMENTS
 // ============================================
 import Announcements from "./pages/announcements/Announcements";
+import ProgramRequests from "./pages/programs/ProgramRequests";
 
 // ============================================
 // MAP VIEW
@@ -695,6 +696,26 @@ function App() {
                                     element={
                                         <ProtectedRoute>
                                             <Announcements />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* PROGRAM REQUESTS */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="program-requests"
+                                    element={
+                                        <ProtectedRoute
+                                            allowedRoles={[
+                                                BNS,
+                                                NDP,
+                                                MIDWIFE,
+                                                SECRETARY,
+                                                CAPTAIN,
+                                            ]}
+                                        >
+                                            <ProgramRequests />
                                         </ProtectedRoute>
                                     }
                                 />
