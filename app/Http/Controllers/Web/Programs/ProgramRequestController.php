@@ -4,7 +4,7 @@
 namespace App\Http\Controllers\Web\Programs;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProgramRequest;
+use App\Models\Programrequest;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -58,7 +58,7 @@ class ProgramRequestController extends Controller
             return $this->respondError('You do not have access to program requests.', null, 403);
         }
 
-        $query = ProgramRequest::with(['requester.resident', 'reviewer.resident']);
+        $query = Programrequest::with(['requester.resident', 'reviewer.resident']);
 
         // Requesters only ever see their own; approvers see everything
         if (!$isApprover || $request->boolean('mine')) {
@@ -81,14 +81,14 @@ class ProgramRequestController extends Controller
         $perPage = min(max((int) $request->get('per_page', 15), 1), 100);
 
         $requests = $query->latest()->paginate($perPage)
-            ->through(fn(ProgramRequest $r) => $this->format($r));
+            ->through(fn(Programrequest $r) => $this->format($r));
 
         return $this->respondSuccess($requests);
     }
 
     public function show($id)
     {
-        $pr = ProgramRequest::with(['requester.resident', 'reviewer.resident'])->find($id);
+        $pr = Programrequest::with(['requester.resident', 'reviewer.resident'])->find($id);
 
         if (!$pr) {
             return $this->respondNotFound('Program request not found');
@@ -136,7 +136,7 @@ class ProgramRequestController extends Controller
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        $pr = ProgramRequest::create($validator->validated() + [
+        $pr = Programrequest::create($validator->validated() + [
             'requested_by_user_id' => Auth::id(),
             'status'               => 'pending',
         ]);
@@ -169,7 +169,7 @@ class ProgramRequestController extends Controller
 
     public function cancel($id)
     {
-        $pr = ProgramRequest::find($id);
+        $pr = Programrequest::find($id);
 
         if (!$pr) {
             return $this->respondNotFound('Program request not found');
@@ -262,7 +262,7 @@ class ProgramRequestController extends Controller
             return $this->respondError('Only the Secretary, Captain or Super Admin can approve requests.', null, 403);
         }
 
-        $pr = ProgramRequest::with(['requester.resident'])->find($id);
+        $pr = Programrequest::with(['requester.resident'])->find($id);
 
         if (!$pr) {
             return $this->respondNotFound('Program request not found');
@@ -394,7 +394,7 @@ class ProgramRequestController extends Controller
             return $this->respondError('Only the Secretary, Captain or Super Admin can reject requests.', null, 403);
         }
 
-        $pr = ProgramRequest::with(['requester.resident'])->find($id);
+        $pr = Programrequest::with(['requester.resident'])->find($id);
 
         if (!$pr) {
             return $this->respondNotFound('Program request not found');
@@ -508,7 +508,7 @@ class ProgramRequestController extends Controller
         ];
     }
 
-    private function canView(ProgramRequest $pr): bool
+    private function canView(Programrequest $pr): bool
     {
         [$isApprover] = $this->access();
 
@@ -579,7 +579,7 @@ class ProgramRequestController extends Controller
             ->all();
     }
 
-    private function format(ProgramRequest $r): array
+    private function format(Programrequest $r): array
     {
         return [
             'id'                   => $r->id,
