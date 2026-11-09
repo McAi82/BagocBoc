@@ -4,7 +4,7 @@
 namespace App\Http\Controllers\Web\Programs;
 
 use App\Http\Controllers\Controller;
-use App\Models\Programrequest;
+use App\Models\ProgramRequest;
 use App\Traits\SendsNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -99,7 +99,9 @@ class ProgramRequestController extends Controller
         }
 
         $data = $this->format($pr);
-        $data['notified_users'] = $this->namesFor($pr->notified_user_ids ?? []);
+        $ids = $pr->notified_user_ids ?? [];
+        $data['notified_users'] = $this->namesFor(array_slice($ids, 0, 30));
+        $data['notified_more'] = max(0, count($ids) - 30);
 
         return $this->respondSuccess($data);
     }
@@ -127,9 +129,7 @@ class ProgramRequestController extends Controller
             'program_type'         => 'required|in:nutrition,drug,sexual_health,maternal,other',
             'start_date'           => 'required|date',
             'end_date'             => 'required|date|after_or_equal:start_date',
-            'target_beneficiaries' => 'nullable|integer|min:1|max:1000000',
             'location'             => 'nullable|string|max:255',
-            'budget'               => 'nullable|numeric|min:0|max:9999999999.99',
         ]);
 
         if ($validator->fails()) {
@@ -192,7 +192,10 @@ class ProgramRequestController extends Controller
      | REVIEW (Secretary / Captain / Super Admin)
      ============================================================ */
 
-    /** Users that can be picked as notification recipients. */
+    /**
+     * Audience options for the approval screen:
+     * every active user (with roles and the zone they live in) plus the zone list.
+     */
     public function recipients()
     {
         [$isApprover] = $this->access();
@@ -207,26 +210,48 @@ class ProgramRequestController extends Controller
             ->get()
             ->groupBy('user_id');
 
+        // zone each account's resident currently lives in
+        $zoneByUser = DB::table('users as u')
+            ->join('resident_households as rh', function ($j) {
+                $j->on('rh.resident_id', '=', 'u.resident_id')->where('rh.status', '=', 'active');
+            })
+            ->join('households as h', 'h.id', '=', 'rh.household_id')
+            ->join('household_addresses as a', 'a.id', '=', 'h.address_id')
+            ->join('barangay_zones as z', 'z.id', '=', 'a.zone')
+            ->select('u.id as user_id', 'z.id as zone_id', 'z.name as zone_name')
+            ->get()
+            ->unique('user_id')
+            ->keyBy('user_id');
+
         $users = DB::table('users')
             ->leftJoin('residents', 'residents.id', '=', 'users.resident_id')
             ->where('users.account_status', 'active')
-            ->select('users.id', 'users.email', 'residents.first_name', 'residents.middle_name', 'residents.last_name')
+            ->select('users.id', 'users.email', 'residents.first_name', 'residents.last_name')
             ->get()
-            ->map(function ($u) use ($roles) {
+            ->map(function ($u) use ($roles, $zoneByUser) {
                 $name = trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? ''));
+                $zone = $zoneByUser->get($u->id);
 
                 return [
-                    'id'    => (int) $u->id,
-                    'name'  => $name !== '' ? $name : $u->email,
-                    'email' => $u->email,
-                    'roles' => ($roles[$u->id] ?? collect())->pluck('name')->values()->all(),
+                    'id'        => (int) $u->id,
+                    'name'      => $name !== '' ? $name : $u->email,
+                    'email'     => $u->email,
+                    'roles'     => ($roles[$u->id] ?? collect())->pluck('name')->values()->all(),
+                    'zone_id'   => $zone ? (int) $zone->zone_id : null,
+                    'zone_name' => $zone->zone_name ?? null,
                 ];
             })
             ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values()
             ->all();
 
-        return $this->respondSuccess($users);
+        $zones = DB::table('barangay_zones')
+            ->orderBy('zone_number')
+            ->get(['id', 'zone_number', 'name'])
+            ->map(fn($z) => ['id' => (int) $z->id, 'zone_number' => (int) $z->zone_number, 'name' => $z->name])
+            ->all();
+
+        return $this->respondSuccess(['users' => $users, 'zones' => $zones]);
     }
 
     public function approve(Request $request, $id)
@@ -248,19 +273,33 @@ class ProgramRequestController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'recipient_user_ids'   => 'required|array|min:1',
-            'recipient_user_ids.*' => 'integer|distinct|exists:users,id',
+            'audience'             => 'required_without:recipient_user_ids|array',
+            'audience.everyone'    => 'sometimes|boolean',
+            'audience.roles'       => 'sometimes|array',
+            'audience.roles.*'     => 'string|exists:roles,name',
+            'audience.zone_ids'    => 'sometimes|array',
+            'audience.zone_ids.*'  => 'integer|exists:barangay_zones,id',
+            'audience.user_ids'    => 'sometimes|array',
+            'audience.user_ids.*'  => 'integer',
+            'recipient_user_ids'   => 'sometimes|array',   // legacy payload
+            'recipient_user_ids.*' => 'integer',
             'remarks'              => 'nullable|string|max:2000',
-        ], [
-            'recipient_user_ids.required' => 'Choose at least one user to receive the program notification.',
-            'recipient_user_ids.min'      => 'Choose at least one user to receive the program notification.',
         ]);
 
         if ($validator->fails()) {
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        $recipientIds = array_values(array_unique(array_map('intval', $validator->validated()['recipient_user_ids'])));
+        $data = $validator->validated();
+        $recipientIds = $this->resolveAudience($data['audience'] ?? [], $data['recipient_user_ids'] ?? []);
+
+        if (empty($recipientIds)) {
+            return $this->respondError(
+                'No active users match the audience you selected. Choose at least one group or person.',
+                null,
+                422
+            );
+        }
 
         try {
             DB::transaction(function () use ($pr, $request, $recipientIds) {
@@ -303,6 +342,8 @@ class ProgramRequestController extends Controller
         $typeLbl = self::TYPE_LABELS[$pr->program_type];
         $by      = $this->displayName(Auth::user());
 
+        @set_time_limit(0); // large audiences (e.g. all residents) can take a while
+
         // 1. Selected recipients (the requester gets their own message below)
         foreach ($recipientIds as $userId) {
             if ($userId === $pr->requested_by_user_id) {
@@ -339,7 +380,8 @@ class ProgramRequestController extends Controller
         );
 
         $data = $this->format($pr);
-        $data['notified_users'] = $this->namesFor($recipientIds);
+        $data['notified_users'] = $this->namesFor(array_slice($recipientIds, 0, 30));
+        $data['notified_more'] = max(0, count($recipientIds) - 30);
 
         return $this->respondSuccess($data, 'Request approved and program created');
     }
@@ -395,6 +437,65 @@ class ProgramRequestController extends Controller
     /* ============================================================
      | HELPERS
      ============================================================ */
+
+    /**
+     * Turn the approver's audience choices into a list of ACTIVE user ids.
+     *
+     * audience = {
+     *   everyone: bool,        // every active account
+     *   roles:    string[],    // users holding any of these roles
+     *   zone_ids: int[],       // users whose resident lives in these zones
+     *   user_ids: int[],       // hand-picked people
+     * }
+     */
+    private function resolveAudience(array $audience, array $legacyUserIds = []): array
+    {
+        $active = fn() => DB::table('users')->where('users.account_status', 'active');
+        $ids = [];
+
+        if (!empty($audience['everyone'])) {
+            $ids = array_merge($ids, $active()->pluck('users.id')->all());
+        } else {
+            if (!empty($audience['roles'])) {
+                $roleNames = $audience['roles'];
+                $ids = array_merge($ids, $active()
+                    ->whereIn('users.id', function ($s) use ($roleNames) {
+                        $s->select('user_roles.user_id')
+                            ->from('user_roles')
+                            ->join('roles', 'roles.id', '=', 'user_roles.role_id')
+                            ->whereIn('roles.name', $roleNames);
+                    })
+                    ->pluck('users.id')
+                    ->all());
+            }
+
+            if (!empty($audience['zone_ids'])) {
+                $zoneIds = $audience['zone_ids'];
+                $ids = array_merge($ids, $active()
+                    ->whereIn('users.resident_id', function ($s) use ($zoneIds) {
+                        $s->select('rh.resident_id')
+                            ->from('resident_households as rh')
+                            ->join('households as h', 'h.id', '=', 'rh.household_id')
+                            ->join('household_addresses as a', 'a.id', '=', 'h.address_id')
+                            ->where('rh.status', 'active')
+                            ->whereIn('a.zone', $zoneIds);
+                    })
+                    ->pluck('users.id')
+                    ->all());
+            }
+        }
+
+        $specific = array_values(array_unique(array_map(
+            'intval',
+            array_merge($audience['user_ids'] ?? [], $legacyUserIds)
+        )));
+
+        foreach (array_chunk($specific, 500) as $chunk) {
+            $ids = array_merge($ids, $active()->whereIn('users.id', $chunk)->pluck('users.id')->all());
+        }
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
 
     /** @return array{0:bool,1:bool} [isApprover, isRequester] */
     private function access(): array
@@ -489,9 +590,7 @@ class ProgramRequestController extends Controller
             'program_type_label'   => self::TYPE_LABELS[$r->program_type] ?? $r->program_type,
             'start_date'           => $r->start_date?->toDateString(),
             'end_date'             => $r->end_date?->toDateString(),
-            'target_beneficiaries' => $r->target_beneficiaries,
             'location'             => $r->location,
-            'budget'               => $r->budget !== null ? (float) $r->budget : null,
             'status'               => $r->status,
             'review_remarks'       => $r->review_remarks,
             'reviewed_at'          => $r->reviewed_at?->toIso8601String(),
