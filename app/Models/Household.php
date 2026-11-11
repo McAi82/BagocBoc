@@ -26,6 +26,18 @@ class Household extends Model
         'status' => 'active',
     ];
 
+    // Included in every JSON response so the mobile app can print it in the QR
+    protected $appends = ['qr_url'];
+
+    /**
+     * Link printed in the household's QR code (opens the public landing page).
+     * See App\Support\HouseholdLink.
+     */
+    public function getQrUrlAttribute(): ?string
+    {
+        return $this->id ? \App\Support\HouseholdLink::url((int) $this->id) : null;
+    }
+
     public function address(): BelongsTo
     {
         return $this->belongsTo(HouseholdAddress::class, 'address_id');

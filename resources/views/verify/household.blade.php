@@ -1,216 +1,145 @@
-<!DOCTYPE html>
-<html lang="en">
+@extends('verify.layout')
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Household {{ $household->household_number }} — Barangay Bagocboc</title>
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+@section('title', 'Household ' . $household['household_number'])
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f7fa;
-            padding: 20px;
-            color: #1a1a1a;
-            min-height: 100vh;
-        }
+@section('content')
 
-        .card {
-            background: #fff;
-            border-radius: 16px;
-            max-width: 520px;
-            margin: 0 auto;
-            padding: 24px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-        }
-
-        .badge {
-            display: inline-block;
-            background: #4CAF50;
-            color: #fff;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 4px 12px;
-            border-radius: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-        }
-
-        h1 {
-            color: #2E7D32;
-            font-size: 24px;
-            margin: 12px 0 4px;
-        }
-
-        .sub {
-            color: #666;
-            font-size: 13px;
-            margin-bottom: 20px;
-        }
-
-        .status-pill {
-            display: inline-block;
-            background: #E8F5E9;
-            color: #2E7D32;
-            font-size: 10px;
-            font-weight: 700;
-            padding: 3px 10px;
-            border-radius: 10px;
-            text-transform: uppercase;
-            margin-left: 8px;
-        }
-
-        .section {
-            margin-bottom: 20px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .section:last-child {
-            border: 0;
-            padding-bottom: 0;
-            margin-bottom: 0;
-        }
-
-        .section h2 {
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            color: #999;
-            margin-bottom: 10px;
-        }
-
-        .row {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-        }
-
-        .row span:first-child {
-            color: #666;
-            font-size: 13px;
-        }
-
-        .row span:last-child {
-            color: #1a1a1a;
-            font-size: 13px;
-            font-weight: 600;
-            text-align: right;
-        }
-
-        .member {
-            padding: 10px 0;
-            border-bottom: 1px solid #f5f5f5;
-        }
-
-        .member:last-child {
-            border: 0;
-        }
-
-        .member-name {
-            font-weight: 600;
-            margin-bottom: 2px;
-            font-size: 14px;
-        }
-
-        .member-meta {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .head-tag {
-            background: #FF9800;
-            color: #fff;
-            font-size: 9px;
-            font-weight: 800;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 6px;
-            vertical-align: middle;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 24px;
-            color: #999;
-            font-size: 11px;
-            line-height: 1.6;
-        }
-    </style>
-</head>
-
-<body>
-    <div class="card">
-        <span class="badge">✓ Verified Household</span>
-        <h1>{{ $household->household_number }}</h1>
-        <div class="sub">
-            Tracking: {{ $household->household_tracking_number }}
-            <span class="status-pill">{{ strtoupper($household->status ?? 'active') }}</span>
-        </div>
-
-        <div class="section">
-            <h2>Address</h2>
-            <div class="row">
-                <span>Zone</span>
-                <span>{{ $household->address->barangayZone->name ?? 'N/A' }}</span>
-            </div>
-            <div class="row">
-                <span>Street</span>
-                <span>{{ $household->address->street ?? 'N/A' }}</span>
-            </div>
-            @if ($household->address->subdivision ?? null)
-            <div class="row">
-                <span>Subdivision</span>
-                <span>{{ $household->address->subdivision }}</span>
-            </div>
+{{-- Verified banner --}}
+<section class="card">
+    <div class="banner {{ $household['is_active'] ? '' : 'bad' }}">
+        <div class="icon">
+            @if ($household['is_active'])
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 6L9 17l-5-5" />
+            </svg>
+            @else
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </svg>
             @endif
         </div>
-
-        <div class="section">
-            <h2>Members ({{ $household->residents->count() }})</h2>
-            @foreach ($household->residents as $resident)
-            <div class="member">
-                <div class="member-name">
-                    {{ trim($resident->first_name . ' ' . $resident->last_name) }}
-                    @if ($resident->pivot->is_primary)
-                    <span class="head-tag">HEAD</span>
-                    @endif
-                </div>
-                <div class="member-meta">
-                    {{ $resident->pivot->relationship_to_household ?? 'N/A' }}
-                    • {{ $resident->gender ?? 'N/A' }}
-                    @if ($resident->age) • {{ $resident->age }} yrs @endif
-                </div>
-            </div>
-            @endforeach
-        </div>
-
-        @if ($household->censusRecords->first())
-        @php $census = $household->censusRecords->first(); @endphp
-        <div class="section">
-            <h2>Census ({{ $census->census_year }})</h2>
-            <div class="row">
-                <span>Data Status</span>
-                <span>{{ $census->data_status ?? 'N/A' }}</span>
-            </div>
-            <div class="row">
-                <span>Monthly Income</span>
-                <span>₱{{ number_format((float) ($census->monthly_income ?? 0), 2) }}</span>
-            </div>
-        </div>
-        @endif
-
-        <div class="footer">
-            <strong>Barangay {{ $household->address->barangayZone->name ?? '' }} Bagocboc</strong><br>
-            Opol, Misamis Oriental<br>
-            Verified by Barangay Management System
+        <div>
+            <strong>{{ $household['is_active'] ? 'Registered household' : 'Household record is not active' }}</strong>
+            <span>Found in the {{ $barangay['name'] }} household registry</span>
         </div>
     </div>
-</body>
 
-</html>
+    <div class="big">{{ $household['household_number'] }}</div>
+    <span class="badge {{ $household['is_active'] ? '' : 'bad' }}">{{ $household['status'] }}</span>
+</section>
+
+{{-- Household details --}}
+<section class="card">
+    <h2>Household</h2>
+    <dl>
+        <div class="row">
+            <dt>Household No.</dt>
+            <dd>{{ $household['household_number'] }}</dd>
+        </div>
+        @if (!empty($household['tracking_number']))
+        <div class="row">
+            <dt>Tracking No.</dt>
+            <dd>{{ $household['tracking_number'] }}</dd>
+        </div>
+        @endif
+        <div class="row">
+            <dt>Head of household</dt>
+            <dd>{{ $household['head'] ?: 'Not recorded' }}</dd>
+        </div>
+        <div class="row">
+            <dt>Living members</dt>
+            <dd>{{ $household['member_count'] }}</dd>
+        </div>
+        @if (!empty($household['census_year']))
+        <div class="row">
+            <dt>Last census</dt>
+            <dd>{{ $household['census_year'] }}</dd>
+        </div>
+        @endif
+    </dl>
+</section>
+
+{{-- Address --}}
+<section class="card">
+    <h2>Address</h2>
+    <dl>
+        <div class="row">
+            <dt>Zone</dt>
+            <dd>{{ $household['zone'] ?: 'Not recorded' }}</dd>
+        </div>
+        <div class="row">
+            <dt>Street / Purok</dt>
+            <dd>{{ $household['street'] ?: 'Not recorded' }}</dd>
+        </div>
+    </dl>
+
+    @if (!empty($household['map_url']))
+    <div style="margin-top: 14px;">
+        <a class="btn ghost" href="{{ $household['map_url'] }}" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z" />
+                <circle cx="12" cy="10" r="2.5" />
+            </svg>
+            Open location in Maps
+        </a>
+    </div>
+    @endif
+</section>
+
+{{-- Members --}}
+@if ($household['show_members'])
+<section class="card">
+    <h2>Household members ({{ count($household['members']) }})</h2>
+
+    @if (count($household['members']) > 0)
+    <ul class="members">
+        @foreach ($household['members'] as $member)
+        <li>
+            <div>
+                <div class="name">{{ $member['name'] }}</div>
+                @if (!empty($member['relationship']))
+                <div class="rel">{{ $member['relationship'] }}</div>
+                @endif
+            </div>
+            <div class="tags">
+                @if ($member['is_head'])
+                <span class="badge head">Head</span>
+                @endif
+                @if (!empty($member['note']))
+                <span class="badge note">{{ $member['note'] }}</span>
+                @endif
+            </div>
+        </li>
+        @endforeach
+    </ul>
+    @else
+    <p class="muted" style="margin: 0;">No members are recorded for this household yet.</p>
+    @endif
+</section>
+@endif
+
+{{-- Privacy note + staff access --}}
+<section class="card">
+    <div class="privacy">
+        For privacy, only basic household details are shown here. Personal,
+        health and census information is available to authorized barangay
+        staff only.
+    </div>
+
+    <div style="margin-top: 14px;">
+        <a class="btn primary" href="{{ $household['staff_url'] }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4" y="11" width="16" height="9" rx="2" />
+                <path d="M8 11V8a4 4 0 018 0v3" />
+            </svg>
+            Barangay staff: open full record
+        </a>
+    </div>
+</section>
+
+<p class="center muted" style="font-size: .8rem; margin: 6px 0 0;">
+    Scanned on {{ $scanned_at }}
+</p>
+
+@endsection

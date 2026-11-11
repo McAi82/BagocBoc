@@ -14,6 +14,7 @@ use App\Http\Controllers\Web\Financial\FinancialReportController;
 use App\Http\Controllers\Web\FrontDesk\FrontDeskController;
 use App\Http\Controllers\Web\Announcements\AnnouncementController;
 use App\Http\Controllers\Web\Programs\ProgramRequestController;
+use App\Http\Controllers\HouseholdLandingController;
 use App\Http\Controllers\Web\Settings\UserController;
 use App\Http\Controllers\Web\Settings\SystemSettingsController;
 use App\Http\Controllers\Web\Settings\AdminUserController;
@@ -39,26 +40,12 @@ Route::get(
 
 Route::post('/{id}/reissue', [CertificationController::class, 'reissue']);
 
-Route::get('/verify/{householdNumber}', function ($householdNumber) {
-    $household = Household::with([
-        'address.barangayZone',
-        'residents' => function ($q) {
-            $q->orderBy('resident_households.is_primary', 'desc');
-        },
-        'censusRecords' => function ($q) {
-            $q->latest()->limit(1);
-        },
-    ])
-        ->where('household_number', $householdNumber)
-        ->orWhere('household_tracking_number', $householdNumber)
-        ->first();
-
-    if (!$household) {
-        return view('verify.not-found', ['number' => $householdNumber]);
-    }
-
-    return view('verify.household', ['household' => $household]);
-})->name('household.verify');
+// LEGACY QR links (already printed / stored with /api/web/verify/{number}).
+// Same privacy-safe page as the new signed links (/h/{token} in routes/web.php).
+// Delete this route once every label has been reprinted.
+Route::get('/verify/{householdNumber}', [HouseholdLandingController::class, 'showLegacy'])
+    ->middleware('throttle:60,1')
+    ->name('household.verify');
 
 /*
 |--------------------------------------------------------------------------
