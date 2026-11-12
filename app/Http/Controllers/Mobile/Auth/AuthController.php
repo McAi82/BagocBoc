@@ -46,7 +46,6 @@ class AuthController extends Controller
             'Barangay Health Worker',
             'Zone Leader',
             'Resident',
-            'Barangay Nutrition Scholar',
         ];
 
         $webAccessibleRoles = [
@@ -57,6 +56,7 @@ class AuthController extends Controller
             'Barangay Treasurer',
             'Midwife',
             'Nurse Deployment Program',
+            'Barangay Nutrition Scholar',
         ];
 
         $userRoles = $user->roles->pluck('name')->toArray();

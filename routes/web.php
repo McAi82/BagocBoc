@@ -14,6 +14,13 @@ use Illuminate\Support\Facades\Route;
 | wildcard Route::get('/{any}') — the wildcard would swallow API calls.
 */
 
+Route::get('/sw.js', function () {
+    return response()->file(public_path('build/sw.js'), [
+        'Content-Type' => 'application/javascript',
+        'Cache-Control' => 'no-cache',
+    ]);
+});
+
 Route::fallback(function () {
     // If someone hits an unmatched /api/* path, return a JSON 404
     // instead of the SPA HTML (so the frontend gets a proper error).
