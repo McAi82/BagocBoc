@@ -18,7 +18,7 @@ class SystemSettingsController extends Controller
 
     public function indexRoles()
     {
-        $roles = Role::orderBy('name')->get();
+        $roles = Role::withCount('users')->orderBy('name')->get();
 
         return $this->respondSuccess($roles);
     }
