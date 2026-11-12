@@ -14,10 +14,9 @@ export default defineConfig({
         }),
         react(),
         VitePWA({
-            injectRegister: false, // we register manually in main.tsx
+            injectRegister: false, // registered manually in main.tsx
             registerType: "autoUpdate",
             manifestFilename: "manifest.webmanifest",
-            includeAssets: [],
             manifest: {
                 name: "Barangay Bagocboc Management System",
                 short_name: "Bagocboc",
@@ -48,6 +47,7 @@ export default defineConfig({
                 ],
             },
             workbox: {
+                maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MiB (your main bundle is ~4.2 MB)
                 inlineWorkboxRuntime: true, // makes sw.js self-contained so it can be served from /sw.js
                 navigateFallback: null, // HTML comes from Laravel, not Vite
                 globPatterns: ["**/*.{js,css,woff2,png,svg}"],
@@ -59,7 +59,7 @@ export default defineConfig({
                         handler: "NetworkOnly",
                     },
                     {
-                        // Pages: always try the network first
+                        // Pages: try the network first
                         urlPattern: ({ request }) =>
                             request.mode === "navigate",
                         handler: "NetworkFirst",
@@ -74,7 +74,7 @@ export default defineConfig({
     ],
     resolve: {
         alias: {
-            "@": path.resolve(__dirname, "./resources/js"),
+            "@": path.resolve(import.meta.dirname, "./resources/js"),
         },
     },
     server: {
