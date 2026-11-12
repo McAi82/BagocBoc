@@ -1,210 +1,276 @@
 // utils/boundaryData.ts
+//
+// Zones are now ROADS (GPS polylines), not rectangles.
+// Each path is a list of [latitude, longitude] points in order along the road.
+// To fix a road, edit its `path` (or `branch`) below.
 
-export const bagocbocBoundary: [number, number][] = [
-  [8.4165, 124.4955],
-  [8.4165, 124.5055],
-  [8.4235, 124.5055],
-  [8.4235, 124.4955],
-  [8.4165, 124.4955],
+export type LatLngTuple = [number, number];
+
+export interface ZoneRoad {
+    id: number;
+    label: string;
+    color: string;
+    path: LatLngTuple[];
+    branch?: LatLngTuple[]; // optional side road drawn in the same zone
+    from: string;
+    to: string;
+    note: string;
+    /** Kept for backward compatibility with older code that read `.coordinates` */
+    coordinates: LatLngTuple[];
+}
+
+// Kept so existing imports don't break. Not drawn on the map anymore.
+export const bagocbocBoundary: LatLngTuple[] = [
+    [8.4165, 124.4955],
+    [8.4165, 124.5055],
+    [8.4235, 124.5055],
+    [8.4235, 124.4955],
+    [8.4165, 124.4955],
 ];
 
-// ============================================
-// CONFIG
-// ============================================
-const BOUNDARY_MIN_LAT = 8.41;
-const BOUNDARY_MAX_LAT = 8.43;
-const BOUNDARY_MIN_LNG = 124.49;
-const BOUNDARY_MAX_LNG = 124.515;
+const make = (
+    id: number,
+    color: string,
+    from: string,
+    to: string,
+    note: string,
+    path: LatLngTuple[],
+    branch?: LatLngTuple[],
+): ZoneRoad => ({
+    id,
+    label: `Zone ${id}`,
+    color,
+    from,
+    to,
+    note,
+    path,
+    branch,
+    coordinates: path,
+});
 
-const TOTAL_HEIGHT = BOUNDARY_MAX_LAT - BOUNDARY_MIN_LAT; // 0.0200
-const TOTAL_WIDTH = BOUNDARY_MAX_LNG - BOUNDARY_MIN_LNG;  // 0.0250
-
-// ============================================
-// GRID LAYOUT — 3 columns × 3 rows = 9 zones
-// ============================================
-const GRID_WIDTH_RATIO = 0.2;
-const GRID_HEIGHT_RATIO = 0.3; // ✅ bumped from 0.2 → 0.3 to fit 3 rows
-
-const GRID_WIDTH = TOTAL_WIDTH * GRID_WIDTH_RATIO;
-const GRID_HEIGHT = TOTAL_HEIGHT * GRID_HEIGHT_RATIO;
-
-const COLS = 3;
-const ROWS = 3; // ✅ was 2, now 3
-const ZONE_WIDTH = GRID_WIDTH / COLS;
-const ZONE_HEIGHT = GRID_HEIGHT / ROWS;
-
-// Center of the boundary
-const GRID_CENTER_LAT = (BOUNDARY_MIN_LAT + BOUNDARY_MAX_LAT) / 2;
-const GRID_CENTER_LNG = (BOUNDARY_MIN_LNG + BOUNDARY_MAX_LNG) / 2;
-
-// Offset the grid to the left by some fraction of the total width.
-const LEFTWARD_OFFSET = 0.1;
-const SHIFTED_CENTER_LNG = GRID_CENTER_LNG - TOTAL_WIDTH * LEFTWARD_OFFSET;
-
-const GRID_MIN_LAT = GRID_CENTER_LAT - GRID_HEIGHT / 2;
-const GRID_MIN_LNG = SHIFTED_CENTER_LNG - GRID_WIDTH / 2;
-
-// ============================================
-// BUILD ZONE RECTANGLES
-// ============================================
-const makeZoneAt = (row: number, col: number): [number, number][] => {
-  const latMin = GRID_MIN_LAT + row * ZONE_HEIGHT;
-  const latMax = latMin + ZONE_HEIGHT;
-  const lngMin = GRID_MIN_LNG + col * ZONE_WIDTH;
-  const lngMax = lngMin + ZONE_WIDTH;
-
-  return [
-    [latMin, lngMin],
-    [latMin, lngMax],
-    [latMax, lngMax],
-    [latMax, lngMin],
-    [latMin, lngMin],
-  ];
-};
-
-const ZONE_COORDINATES: Record<string, [number, number][]> = {
-  "Zone 1": makeZoneAt(0, 0),
-  "Zone 2": makeZoneAt(0, 1),
-  "Zone 3": makeZoneAt(0, 2),
-  "Zone 4": makeZoneAt(1, 0),
-  "Zone 5": makeZoneAt(1, 1),
-  "Zone 6": makeZoneAt(1, 2),
-  "Zone 7": makeZoneAt(2, 0), // ✅ new
-  "Zone 8": makeZoneAt(2, 1), // ✅ new
-  "Zone 9": makeZoneAt(2, 2), // ✅ new
-};
-
-// ============================================
-// ZONE METADATA
-// ============================================
-export const zoneBoundaries: Record<string, any> = {
-  "Zone 1": {
-    label: "Zone 1 - Bagocboc Proper",
-    color: "#EF4444",
-    fillColor: "rgba(239, 68, 68, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 1"],
-  },
-  "Zone 2": {
-    label: "Zone 2 - Bagocboc Heights",
-    color: "#3B82F6",
-    fillColor: "rgba(59, 130, 246, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 2"],
-  },
-  "Zone 3": {
-    label: "Zone 3 - Bagocboc Riverside",
-    color: "#10B981",
-    fillColor: "rgba(16, 185, 129, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 3"],
-  },
-  "Zone 4": {
-    label: "Zone 4 - Bagocboc Upland",
-    color: "#8B5CF6",
-    fillColor: "rgba(139, 92, 246, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 4"],
-  },
-  "Zone 5": {
-    label: "Zone 5 - Bagocboc East",
-    color: "#F59E0B",
-    fillColor: "rgba(245, 158, 11, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 5"],
-  },
-  "Zone 6": {
-    label: "Zone 6 - Bagocboc West",
-    color: "#EC4899",
-    fillColor: "rgba(236, 72, 153, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 6"],
-  },
-  // ✅ New zones 7-9
-  "Zone 7": {
-    label: "Zone 7 - Bagocboc South",
-    color: "#06B6D4",
-    fillColor: "rgba(6, 182, 212, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 7"],
-  },
-  "Zone 8": {
-    label: "Zone 8 - Bagocboc Central",
-    color: "#84CC16",
-    fillColor: "rgba(132, 204, 22, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 8"],
-  },
-  "Zone 9": {
-    label: "Zone 9 - Bagocboc North",
-    color: "#F97316",
-    fillColor: "rgba(249, 115, 22, 0.35)",
-    coordinates: ZONE_COORDINATES["Zone 9"],
-  },
+export const zoneBoundaries: Record<string, ZoneRoad> = {
+    "Zone 1": make(
+        1,
+        "#a23fb0",
+        "Bagocboc National High School",
+        "Opol Sanitary Landfill road",
+        "Southern stretch connecting the school area to the landfill road.",
+        [
+            [8.418168, 124.50175],
+            [8.418844, 124.505467],
+            [8.414503, 124.509951],
+            [8.413781, 124.52051],
+            [8.41938, 124.525636],
+        ],
+    ),
+    "Zone 2": make(
+        2,
+        "#8b0a1e",
+        "Ruperto Domingo Heights area",
+        "Bagocboc National High School",
+        "Winding road running south from the heights toward the school.",
+        [
+            [8.436445, 124.496217],
+            [8.436466, 124.496938],
+            [8.429712, 124.49977],
+            [8.425466, 124.497965],
+            [8.418168, 124.50175],
+        ],
+        [
+            [8.429712, 124.49977],
+            [8.427298, 124.504363],
+            [8.422592, 124.505085],
+            [8.418916, 124.505468],
+        ],
+    ),
+    "Zone 3": make(
+        3,
+        "#e8262b",
+        "Opol Agri Industrial area (north)",
+        "Bayugbayogan junction",
+        "Eastern road coming down from the north to the Bayugbayogan junction.",
+        [
+            [8.460675, 124.508586],
+            [8.459462, 124.511321],
+            [8.457061, 124.51143],
+            [8.454629, 124.512713],
+            [8.453987, 124.516103],
+            [8.443244, 124.519373],
+            [8.441538, 124.518197],
+            [8.43874, 124.516753],
+            [8.439103, 124.514825],
+            [8.4353, 124.513537],
+            [8.433636, 124.508069],
+            [8.427307, 124.504456],
+        ],
+    ),
+    "Zone 4": make(
+        4,
+        "#f2d21b",
+        "Zone 8 / Zone 9 junction",
+        "Zone 2 start",
+        "Short link passing Ruperto Domingo Heights.",
+        [
+            [8.444239, 124.495645],
+            [8.441326, 124.496073],
+            [8.440019, 124.494294],
+            [8.438279, 124.494236],
+            [8.436445, 124.496217],
+        ],
+    ),
+    "Zone 5": make(
+        5,
+        "#f7a8c4",
+        "Hanan God's Oracle area",
+        "Zone 3 start",
+        "Northern climb between the Oracle area and the Opol Agri Industrial area.",
+        [
+            [8.460675, 124.508586],
+            [8.459862, 124.507964],
+            [8.457969, 124.50624],
+            [8.456067, 124.505782],
+            [8.454124, 124.503755],
+        ],
+    ),
+    "Zone 6": make(
+        6,
+        "#3b3fcf",
+        "Bayugbayogan junction",
+        "East boundary",
+        "Eastern road heading out past the church and AGTBZ farm.",
+        [
+            [8.443244, 124.519373],
+            [8.444875, 124.521947],
+            [8.443197, 124.525943],
+            [8.44025, 124.529978],
+        ],
+    ),
+    "Zone 7": make(
+        7,
+        "#6f8fc0",
+        "Zone 1 end",
+        "Opol Sanitary Landfill",
+        "South-east road reaching the Opol Sanitary Landfill.",
+        [
+            [8.41938, 124.525636],
+            [8.417712, 124.52803],
+            [8.417243, 124.530627],
+            [8.416514, 124.531827],
+            [8.417064, 124.532472],
+            [8.417262, 124.535087],
+            [8.419964, 124.538417],
+        ],
+    ),
+    "Zone 8": make(
+        8,
+        "#1fa84a",
+        "Zone 9 / Zone 4 junction",
+        "Hanan God's Oracle area",
+        "North-east diagonal road toward the Oracle area.",
+        [
+            [8.454124, 124.503755],
+            [8.451594, 124.50218],
+            [8.448368, 124.498701],
+            [8.445899, 124.496347],
+            [8.444239, 124.495645],
+        ],
+    ),
+    "Zone 9": make(
+        9,
+        "#10a5ec",
+        "Gregory's Peak side",
+        "Zone 8 / Zone 4 junction",
+        "Western road coming in from the Gregory's Peak side.",
+        [
+            [8.444239, 124.495645],
+            [8.441937, 124.493052],
+            [8.440332, 124.490695],
+            [8.442851, 124.489925],
+            [8.440554, 124.486509],
+        ],
+    ),
 };
 
 // ============================================
 // PUBLIC HELPERS
 // ============================================
-export const getZoneBoundary = (zoneName: string) => {
-  return zoneBoundaries[zoneName] || null;
-};
+export const getZoneBoundary = (zoneName: string): ZoneRoad | null =>
+    zoneBoundaries[zoneName] || null;
 
-export const getZoneNames = (): string[] => {
-  return Object.keys(zoneBoundaries);
-};
+export const getZoneNames = (): string[] => Object.keys(zoneBoundaries);
 
-export const getZoneColor = (zoneName: string): string => {
-  const zone = zoneBoundaries[zoneName];
-  return zone?.color || "#6B7280";
-};
+export const getZoneColor = (zoneName: string): string =>
+    zoneBoundaries[zoneName]?.color || "#6B7280";
 
-export const getZoneByNumber = (zoneNumber: number) => {
-  const zoneName = `Zone ${zoneNumber}`;
-  return getZoneBoundary(zoneName);
-};
+export const getZoneByNumber = (zoneNumber: number) =>
+    getZoneBoundary(`Zone ${zoneNumber}`);
 
 export const getZoneNumber = (zoneName: string): number => {
-  const match = zoneName.match(/(\d+)/);
-  return match ? parseInt(match[1]) : 0;
+    const match = zoneName.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
 };
+
+/** All polylines (main path + optional branch) of a zone. */
+export const getZoneLines = (zoneName: string): LatLngTuple[][] => {
+    const z = getZoneBoundary(zoneName);
+    if (!z) return [];
+    return z.branch ? [z.path, z.branch] : [z.path];
+};
+
+/** Rough bounding box around every road (with a small margin). */
+const allPoints = (): LatLngTuple[] =>
+    getZoneNames().flatMap((n) => getZoneLines(n).flat());
+
+const BOX_MARGIN = 0.003;
 
 export const isWithinBarangayBoundary = (lat: number, lng: number): boolean => {
-  return (
-    lat >= BOUNDARY_MIN_LAT &&
-    lat <= BOUNDARY_MAX_LAT &&
-    lng >= BOUNDARY_MIN_LNG &&
-    lng <= BOUNDARY_MAX_LNG
-  );
+    const pts = allPoints();
+    const lats = pts.map((p) => p[0]);
+    const lngs = pts.map((p) => p[1]);
+    return (
+        lat >= Math.min(...lats) - BOX_MARGIN &&
+        lat <= Math.max(...lats) + BOX_MARGIN &&
+        lng >= Math.min(...lngs) - BOX_MARGIN &&
+        lng <= Math.max(...lngs) + BOX_MARGIN
+    );
 };
 
+// Distance from a point to a segment (in degrees – fine for this small area)
+const distToSegment = (
+    p: LatLngTuple,
+    a: LatLngTuple,
+    b: LatLngTuple,
+): number => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+};
+
+/**
+ * Zones are roads now, so a point can't be "inside" one.
+ * Instead return the zone whose road is NEAREST to the point
+ * (within ~300 m by default), or null if none is close enough.
+ */
 export const getZoneForCoordinate = (
-  lat: number,
-  lng: number,
+    lat: number,
+    lng: number,
+    maxDistanceDeg = 0.0027,
 ): string | null => {
-  const zoneNames = getZoneNames();
-  for (const zoneName of zoneNames) {
-    const zone = getZoneBoundary(zoneName);
-    if (!zone) continue;
-    if (isPointInPolygon(lat, lng, zone.coordinates)) {
-      return zoneName;
+    let best: string | null = null;
+    let bestDist = Infinity;
+    for (const name of getZoneNames()) {
+        for (const line of getZoneLines(name)) {
+            for (let i = 0; i < line.length - 1; i++) {
+                const d = distToSegment([lat, lng], line[i], line[i + 1]);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = name;
+                }
+            }
+        }
     }
-  }
-  return null;
+    return bestDist <= maxDistanceDeg ? best : null;
 };
-
-function isPointInPolygon(
-  lat: number,
-  lng: number,
-  polygon: [number, number][],
-): boolean {
-  let inside = false;
-  const n = polygon.length;
-
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = polygon[i][0];
-    const yi = polygon[i][1];
-    const xj = polygon[j][0];
-    const yj = polygon[j][1];
-
-    const intersect =
-      yi > lng !== yj > lng &&
-      lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi;
-
-    if (intersect) inside = !inside;
-  }
-
-  return inside;
-}
