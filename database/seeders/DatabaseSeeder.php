@@ -68,15 +68,15 @@ class DatabaseSeeder extends Seeder
         // 1. BARANGAY ZONES (9 zones)
         // ============================================
         $zones = [
-            ['zone_number' => 1, 'name' => 'Zone 1 - Poblacion',  'latitude' => 8.4198, 'longitude' => 124.5022],
-            ['zone_number' => 2, 'name' => 'Zone 2 - Riverside',  'latitude' => 8.4220, 'longitude' => 124.5040],
-            ['zone_number' => 3, 'name' => 'Zone 3 - Upland',     'latitude' => 8.4170, 'longitude' => 124.5000],
-            ['zone_number' => 4, 'name' => 'Zone 4 - Seaside',    'latitude' => 8.4200, 'longitude' => 124.5060],
-            ['zone_number' => 5, 'name' => 'Zone 5 - Highway',    'latitude' => 8.4240, 'longitude' => 124.5010],
-            ['zone_number' => 6, 'name' => 'Zone 6 - Interior',   'latitude' => 8.4160, 'longitude' => 124.5080],
-            ['zone_number' => 7, 'name' => 'Zone 7 - South',      'latitude' => 8.4150, 'longitude' => 124.5030],
-            ['zone_number' => 8, 'name' => 'Zone 8 - Central',    'latitude' => 8.4180, 'longitude' => 124.5070],
-            ['zone_number' => 9, 'name' => 'Zone 9 - North',      'latitude' => 8.4250, 'longitude' => 124.5050],
+            ['zone_number' => 1, 'name' => 'Zone 1 - Santo Niño',  'latitude' => 8.4198, 'longitude' => 124.5022],
+            ['zone_number' => 2, 'name' => 'Zone 2 - Poblacion',  'latitude' => 8.4220, 'longitude' => 124.5040],
+            ['zone_number' => 3, 'name' => 'Zone 3 - Bayugbayogan',     'latitude' => 8.4170, 'longitude' => 124.5000],
+            ['zone_number' => 4, 'name' => 'Zone 4 - Inayao',    'latitude' => 8.4200, 'longitude' => 124.5060],
+            ['zone_number' => 5, 'name' => 'Zone 5 - Masayon',    'latitude' => 8.4240, 'longitude' => 124.5010],
+            ['zone_number' => 6, 'name' => 'Zone 6 - Nakulian',   'latitude' => 8.4160, 'longitude' => 124.5080],
+            ['zone_number' => 7, 'name' => 'Zone 7 - Kala Kala',      'latitude' => 8.4150, 'longitude' => 124.5030],
+            ['zone_number' => 8, 'name' => 'Zone 8 - Siot',    'latitude' => 8.4180, 'longitude' => 124.5070],
+            ['zone_number' => 9, 'name' => 'Zone 9 - Tingkulan',      'latitude' => 8.4250, 'longitude' => 124.5050],
         ];
         foreach ($zones as $zone) {
             BarangayZone::updateOrCreate(

@@ -121,7 +121,6 @@ const pesoPdf = (n: any) =>
         maximumFractionDigits: 2,
     })}`;
 
-// Zone names may already include the number (e.g. "Zone 1 - Poblacion")
 const zoneLabel = (num: number | string | null | undefined, name: string) =>
     /^zone\b/i.test(name || "") || !num ? name : `Zone ${num} - ${name}`;
 
