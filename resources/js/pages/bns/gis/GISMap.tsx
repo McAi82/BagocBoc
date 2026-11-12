@@ -1,6 +1,6 @@
 // src/pages/bns/gis/GISMap.tsx
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -19,12 +19,17 @@ import {
   TileLayer,
   Marker,
   Popup,
-  Polygon,
+  Polyline,
+  Tooltip,
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { bagocbocBoundary, zoneBoundaries } from "../../../utils/boundaryData";
+import {
+  getZoneBoundary,
+  getZoneLines,
+  getZoneNames,
+} from "../../../utils/boundaryData";
 import { bnsApi } from "../../../api/endpoints";
 import toast from "react-hot-toast";
 
@@ -111,56 +116,55 @@ interface ZoneStatistics {
   last_updated: string;
 }
 
-// Component to handle map view without zoom/pan
-function MapViewHandler({
-  center,
-  zoom,
+// Fits the map to the given bounds (all roads, or the selected zone's road).
+// Leaves room on the right when the statistics sidebar is open.
+function FitTo({
+  bounds,
+  rightPadding,
 }: {
-  center: [number, number];
-  zoom: number;
+  bounds: L.LatLngBounds;
+  rightPadding: number;
 }) {
   const map = useMap();
 
   useEffect(() => {
-    const clamped = Math.min(17, Math.max(17, zoom));
-    map.setView(center, clamped, { animate: false });
-
-    // Disable all interactions
-    map.dragging.disable();
-    map.touchZoom.disable();
-    map.doubleClickZoom.disable();
-    map.scrollWheelZoom.disable();
-    map.boxZoom.disable();
-    map.keyboard.disable();
-
-    if ((map as any).tap) {
-      (map as any).tap.disable();
-    }
-
-    const preventZoom = () => {
-      map.setZoom(clamped, { animate: false });
-    };
-
-    map.on("zoomstart", preventZoom);
-    map.on("zoomend", preventZoom);
-
-    return () => {
-      map.off("zoomstart", preventZoom);
-      map.off("zoomend", preventZoom);
-    };
-  }, [map, center, zoom]);
+    map.fitBounds(bounds, {
+      paddingTopLeft: [40, 80],
+      paddingBottomRight: [40 + rightPadding, 40],
+      maxZoom: 17,
+    });
+  }, [bounds, rightPadding, map]);
 
   return null;
 }
+
+// Middle point of a zone's main road (used for the label badge)
+const getZoneCenter = (zoneName: string): [number, number] => {
+  const zone = getZoneBoundary(zoneName);
+  if (!zone) return [8.4198476, 124.5022159];
+  return zone.path[Math.floor(zone.path.length / 2)];
+};
 
 export default function GISMap() {
   const navigate = useNavigate();
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [zoneStats, setZoneStats] = useState<ZoneStatistics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [mapCenter] = useState<[number, number]>([8.4198476, 124.5022159]);
-  const [mapZoom] = useState<number>(18);
-  const mapRef = useRef<any>(null);
+  const [hoverZone, setHoverZone] = useState<string | null>(null);
+
+  const zoneNames = useMemo(() => getZoneNames().sort(), []);
+
+  const allBounds = useMemo(
+    () => L.latLngBounds(zoneNames.flatMap((n) => getZoneLines(n).flat())),
+    [zoneNames],
+  );
+  const fitBounds = useMemo(
+    () =>
+      selectedZone
+        ? L.latLngBounds(getZoneLines(selectedZone).flat())
+        : allBounds,
+    [selectedZone, allBounds],
+  );
 
   useEffect(() => {
     if (selectedZone) {
@@ -192,31 +196,6 @@ export default function GISMap() {
     setZoneStats(null);
   };
 
-  const getZoneColor = (zoneName: string) => {
-    const zone = zoneBoundaries[zoneName];
-    return zone?.color || "#6B7280";
-  };
-
-  const getZoneFillColor = (zoneName: string) => {
-    const zone = zoneBoundaries[zoneName];
-    return zone?.fillColor || "rgba(107, 114, 128, 0.15)";
-  };
-
-  // Get zone center for marker placement
-  const getZoneCenter = (zoneName: string): [number, number] => {
-    const zone = zoneBoundaries[zoneName];
-    if (!zone) return [8.4198476, 124.5022159];
-
-    const coords = zone.coordinates;
-    const centerLat =
-      coords.reduce((sum: number, c: [number, number]) => sum + c[0], 0) /
-      coords.length;
-    const centerLng =
-      coords.reduce((sum: number, c: [number, number]) => sum + c[1], 0) /
-      coords.length;
-    return [centerLat, centerLng];
-  };
-
   return (
     <div className="h-[calc(100vh-8rem)] w-full relative">
       {/* Header */}
@@ -240,83 +219,86 @@ export default function GISMap() {
       {/* Map */}
       <div className="h-full w-full rounded-xl overflow-hidden border border-theme">
         <MapContainer
-          center={mapCenter}
-          zoom={mapZoom}
+          bounds={allBounds}
+          boundsOptions={{ padding: [40, 40] }}
           zoomControl={false}
           attributionControl={true}
-          dragging={false}
-          touchZoom={false}
-          doubleClickZoom={false}
-          scrollWheelZoom={false}
-          boxZoom={false}
-          keyboard={false}
-          tap={false}
-          zoomSnap={0.1}
-          zoomDelta={0.1}
-          minZoom={17}
-          maxZoom={17}
+          minZoom={13}
+          maxZoom={18}
           className="h-full w-full"
-          ref={mapRef}
         >
-          <MapViewHandler center={mapCenter} zoom={mapZoom} />
+          <FitTo bounds={fitBounds} rightPadding={selectedZone ? 400 : 0} />
 
           {/* Satellite imagery (Esri World Imagery) */}
           <TileLayer
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             attribution='&copy; <a href="https://www.esri.com/en-us/home">Esri</a>'
-            maxZoom={17}
-            maxNativeZoom={17}
+            maxZoom={18}
           />
 
-          {/* Barangay Boundary */}
-          <Polygon
-            positions={bagocbocBoundary}
-            pathOptions={{
-              color: "#1e293b",
-              fillColor: "transparent",
-              weight: 3,
-              dashArray: "8, 8",
-            }}
-          />
-
-          {/* Zone Polygons */}
-          {Object.entries(zoneBoundaries).map(([zoneName, zoneData]) => {
-            const isSelected = selectedZone === zoneName;
-            return (
-              <Polygon
-                key={zoneName}
-                positions={zoneData.coordinates}
-                pathOptions={{
-                  color: isSelected ? "#3b82f6" : getZoneColor(zoneName),
-                  fillColor: isSelected
-                    ? "rgba(59, 130, 246, 0.3)"
-                    : getZoneFillColor(zoneName),
-                  weight: isSelected ? 4 : 2,
-                  fillOpacity: isSelected ? 0.4 : 0.2,
-                }}
-                eventHandlers={{
-                  click: () => handleZoneClick(zoneName),
-                }}
-              ></Polygon>
-            );
-          })}
-
-          {/* ✅ Zone Markers with zone-name labels */}
-          {Object.entries(zoneBoundaries).map(([zoneName]) => {
-            const center = getZoneCenter(zoneName);
-            const isSelected = selectedZone === zoneName;
-            const color = getZoneColor(zoneName);
-            const icon = createZoneLabelIcon(zoneName, color, isSelected);
+          {/* Zone roads */}
+          {zoneNames.map((zoneName) => {
+            const zone = getZoneBoundary(zoneName);
+            if (!zone) return null;
+            const isActive = selectedZone === zoneName;
+            const isHover = hoverZone === zoneName;
+            const dim = selectedZone !== null && !isActive;
+            const handlers = {
+              click: () => handleZoneClick(zoneName),
+              mouseover: () => setHoverZone(zoneName),
+              mouseout: () => setHoverZone(null),
+            };
 
             return (
-              <Marker
-                key={zoneName}
-                position={center}
-                icon={icon}
-                eventHandlers={{
-                  click: () => handleZoneClick(zoneName),
-                }}
-              ></Marker>
+              <Fragment key={zoneName}>
+                {getZoneLines(zoneName).map((line, i) => (
+                  <Fragment key={i}>
+                    {(isActive || isHover) && (
+                      <Polyline
+                        positions={line}
+                        pathOptions={{
+                          color: "#fff",
+                          weight: 11,
+                          opacity: 0.9,
+                          lineCap: "round",
+                          lineJoin: "round",
+                        }}
+                        interactive={false}
+                      />
+                    )}
+                    <Polyline
+                      positions={line}
+                      pathOptions={{
+                        color: zone.color,
+                        weight: isActive || isHover ? 7 : 5,
+                        opacity: dim ? 0.45 : 1,
+                        lineCap: "round",
+                        lineJoin: "round",
+                      }}
+                      eventHandlers={handlers}
+                    />
+                    {/* wide transparent line = easier to tap on phones */}
+                    <Polyline
+                      positions={line}
+                      pathOptions={{
+                        color: "#000",
+                        weight: 26,
+                        opacity: 0.01,
+                      }}
+                      eventHandlers={handlers}
+                    >
+                      <Tooltip sticky>{zoneName}</Tooltip>
+                    </Polyline>
+                  </Fragment>
+                ))}
+
+                {/* Zone label badge */}
+                <Marker
+                  position={getZoneCenter(zoneName)}
+                  icon={createZoneLabelIcon(zoneName, zone.color, isActive)}
+                  eventHandlers={{ click: () => handleZoneClick(zoneName) }}
+                />
+              </Fragment>
             );
           })}
         </MapContainer>
@@ -428,7 +410,7 @@ export default function GISMap() {
                         <div
                           className="h-full bg-blue-500 rounded-full"
                           style={{
-                            width: `${(zoneStats.male_population / zoneStats.total_population) * 100}%`,
+                            width: `${(zoneStats.male_population / (zoneStats.total_population || 1)) * 100}%`,
                           }}
                         />
                       </div>
@@ -446,7 +428,7 @@ export default function GISMap() {
                         <div
                           className="h-full bg-pink-500 rounded-full"
                           style={{
-                            width: `${(zoneStats.female_population / zoneStats.total_population) * 100}%`,
+                            width: `${(zoneStats.female_population / (zoneStats.total_population || 1)) * 100}%`,
                           }}
                         />
                       </div>
