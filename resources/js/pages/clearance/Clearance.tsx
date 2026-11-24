@@ -19,7 +19,6 @@ import {
     Edit,
     X,
     Download,
-    FileUp,
     ChevronRight,
     AlertCircle,
     Inbox,
@@ -316,12 +315,6 @@ export default function Clearance() {
         try {
             const formData = new FormData();
             formData.append("document_name", documentForm.document_name);
-            if (documentForm.file) formData.append("file", documentForm.file);
-            if (documentForm.document_content)
-                formData.append(
-                    "document_content",
-                    documentForm.document_content,
-                );
 
             await api.post(
                 `/web/clearance/${selectedClearance.id}/generate-document`,
@@ -329,13 +322,10 @@ export default function Clearance() {
                 { headers: { "Content-Type": "multipart/form-data" } },
             );
 
-            const uploadedManually = !!documentForm.file;
             const target = selectedClearance;
 
             toast.success(
-                uploadedManually
-                    ? "Document uploaded successfully!"
-                    : "Document ready. Review the preview and save the PDF to make it downloadable.",
+                "Document ready. Edit it in the preview, then save the PDF to make it downloadable.",
             );
             setShowDocumentModal(false);
             setDocumentForm({
@@ -345,13 +335,11 @@ export default function Clearance() {
             });
             fetchData();
 
-            if (!uploadedManually) {
-                setPreviewClearance({
-                    ...target,
-                    document_name: documentForm.document_name,
-                });
-                setShowPreviewModal(true);
-            }
+            setPreviewClearance({
+                ...target,
+                document_name: documentForm.document_name,
+            });
+            setShowPreviewModal(true);
         } catch (error: any) {
             toast.error(
                 error?.response?.data?.message || "Failed to generate document",
@@ -1525,44 +1513,11 @@ export default function Clearance() {
                             placeholder="e.g., Barangay_Clearance_John_Doe"
                         />
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-theme-text mb-1">
-                            Upload File (PDF, DOC, DOCX)
-                        </label>
-                        <input
-                            type="file"
-                            accept=".pdf,.doc,.docx"
-                            onChange={(e) => {
-                                if (e.target.files && e.target.files[0]) {
-                                    setDocumentForm({
-                                        ...documentForm,
-                                        file: e.target.files[0],
-                                    });
-                                }
-                            }}
-                            className="w-full px-4 py-2 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-theme-primary file:text-white file:cursor-pointer hover:file:opacity-90"
-                        />
-                        <p className="text-xs text-theme-textSecondary mt-1">
-                            Max size: 5MB
-                        </p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-theme-text mb-1">
-                            Or Enter Content (Text)
-                        </label>
-                        <textarea
-                            value={documentForm.document_content}
-                            onChange={(e) =>
-                                setDocumentForm({
-                                    ...documentForm,
-                                    document_content: e.target.value,
-                                })
-                            }
-                            rows={4}
-                            className="w-full px-4 py-2 border border-theme rounded-lg bg-theme-surface text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none transition-colors placeholder:text-theme-textSecondary"
-                            placeholder="Enter document content or upload a file above..."
-                        />
-                    </div>
+                    <p className="text-xs text-theme-textSecondary">
+                        The clearance preview will open next. Edit any field
+                        directly on the document, then click{" "}
+                        <strong>Save PDF to Server</strong>.
+                    </p>
                     <div className="flex justify-end gap-3">
                         <button
                             onClick={() => {
@@ -1589,7 +1544,7 @@ export default function Clearance() {
                                 </>
                             ) : (
                                 <>
-                                    <FileUp className="w-4 h-4" /> Generate
+                                    <FileText className="w-4 h-4" /> Generate
                                     Document
                                 </>
                             )}

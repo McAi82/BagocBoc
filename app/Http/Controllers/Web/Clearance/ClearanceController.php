@@ -143,43 +143,23 @@ class ClearanceController extends Controller
         $validator = Validator::make($request->all(), [
             'document_name' => 'required|string|max:255',
             'document_content' => 'nullable|string',
-            'file' => 'nullable|file|mimes:pdf,doc,docx|max:5120',
         ]);
 
         if ($validator->fails()) {
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        // Same flow as Certifications: no file -> just record the name and let the
-        // preview modal build + upload the PDF (uploadPdf moves it to ready_for_release).
-        if (!$request->hasFile('file')) {
-            $clearance->update([
-                'document_name' => $request->document_name,
-                'processed_by_user_id' => Auth::id(),
-            ]);
-
-            return $this->respondSuccess(
-                $clearance->fresh()->load('resident'),
-                'Ready to preview. Save the PDF to make it downloadable.'
-            );
-        }
-
-        // A manually uploaded PDF/DOC/DOCX is stored as-is
-        $documentPath = $request->file('file')->store('clearances/documents', 'public');
-        $ext = pathinfo($documentPath, PATHINFO_EXTENSION) ?: 'pdf';
-
+        // Same flow as Certifications: only record the name. The preview modal
+        // builds the PDF and saves it via uploadPdf(), which moves the clearance
+        // to ready_for_release.
         $clearance->update([
-            'status' => 'ready_for_release',
-            'document_path' => $documentPath,
-            'document_name' => pathinfo($request->document_name, PATHINFO_FILENAME) . '.' . $ext,
+            'document_name' => $request->document_name,
             'processed_by_user_id' => Auth::id(),
         ]);
 
-        $this->notifyReady($clearance);
-
         return $this->respondSuccess(
-            $clearance->load('resident'),
-            'Document generated successfully'
+            $clearance->fresh()->load('resident'),
+            'Ready to preview. Save the PDF to make it downloadable.'
         );
     }
 
