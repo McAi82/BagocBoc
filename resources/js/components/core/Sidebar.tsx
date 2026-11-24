@@ -944,6 +944,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                         icon: ClipboardList,
                     },
                     {
+                        name: "Household Surveys",
+                        path: "/barangay-bagocboc/bns/household-surveys",
+                        icon: Home,
+                    },
+                    {
                         name: "GIS Map",
                         path: "/barangay-bagocboc/bns/gis",
                         icon: Map,

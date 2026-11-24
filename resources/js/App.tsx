@@ -9,6 +9,7 @@ import Layout from "./components/core/Layout";
 import ProtectedRoute from "./components/core/ProtectedRoute";
 import { NotificationProvider } from "./contexts/NotificationContext";
 import BNSRecordDetails from "./pages/bns/reports/BNSRecordDetails";
+import HouseholdSurveyResults from "./pages/bns/reports/HouseholdSurveyResults";
 
 // ============================================
 // AUTH PAGES
@@ -540,6 +541,16 @@ function App() {
                                             allowedRoles={[BNS, SUPER_ADMIN]}
                                         >
                                             <DemographicConsolidation />
+                                        </ProtectedRoute>
+                                    }
+                                />
+                                <Route
+                                    path="bns/household-surveys"
+                                    element={
+                                        <ProtectedRoute
+                                            allowedRoles={[BNS, SUPER_ADMIN]}
+                                        >
+                                            <HouseholdSurveyResults />
                                         </ProtectedRoute>
                                     }
                                 />
