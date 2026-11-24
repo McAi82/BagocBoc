@@ -28,7 +28,7 @@
     "src": "_instrument-sans-600-normal-B9e8oLYv.woff"
   },
   "node_modules/canvg/lib/index.es.js": {
-    "file": "assets/index.es-D9XDDdGD.js",
+    "file": "assets/index.es-CcO4kS9c.js",
     "name": "index.es",
     "src": "node_modules/canvg/lib/index.es.js",
     "isDynamicEntry": true,
@@ -67,8 +67,12 @@
     "file": "assets/barangay-logo-BOxVfw6v.png",
     "src": "resources/js/assets/barangay-logo.png"
   },
+  "resources/js/assets/barangay-seal.png": {
+    "file": "assets/barangay-seal-Bkctl5b6.png",
+    "src": "resources/js/assets/barangay-seal.png"
+  },
   "resources/js/main.tsx": {
-    "file": "assets/main-3low3F0N.js",
+    "file": "assets/main-DUhbANHx.js",
     "name": "main",
     "src": "resources/js/main.tsx",
     "isEntry": true,
@@ -82,6 +86,7 @@
     ],
     "assets": [
       "assets/barangay-logo-BOxVfw6v.png",
+      "assets/barangay-seal-Bkctl5b6.png",
       "assets/layers-BWBAp2CZ.png",
       "assets/layers-2x-Bpkbi35X.png",
       "assets/marker-icon-hN30_KVU.png"
