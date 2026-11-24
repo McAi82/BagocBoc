@@ -28,11 +28,6 @@ import SystemOverview from "./pages/dashboards/SystemOverview";
 import OverallReports from "./pages/reports/OverallReports";
 import TreasurerDashboard from "./pages/dashboards/TreasurerDashboard";
 
-// ============================================
-// CAPTAIN PAGES
-// ============================================
-import CaptainDashboard from "./pages/captain/CaptainDashboard";
-
 import {
     HealthDashboard,
     PatientRecords,
@@ -136,7 +131,6 @@ const queryClient = new QueryClient({
 // ============================================
 
 const SUPER_ADMIN = "Super Admin";
-const CAPTAIN = "Barangay Captain";
 const SECRETARY = "Barangay Secretary";
 const TREASURER = "Barangay Treasurer";
 const FRONT_DESK = "Front Desk Clerk";
@@ -146,13 +140,13 @@ const BNS = "Barangay Nutrition Scholar";
 
 // ✅ Reusable role lists — Super Admin included everywhere
 const HEALTH_ROLES = [MIDWIFE, NDP, SUPER_ADMIN];
-const POPULATION_ROLES = [CAPTAIN, SECRETARY, SUPER_ADMIN];
+const POPULATION_ROLES = [ SECRETARY, SUPER_ADMIN];
 const CERT_ROLES = [SECRETARY, SUPER_ADMIN];
 const FINANCE_ROLES = [SECRETARY, TREASURER, SUPER_ADMIN];
-const MAP_ROLES = [CAPTAIN, SUPER_ADMIN];
+const MAP_ROLES = [ SUPER_ADMIN];
 const CONFIRM_ROLES = [SECRETARY, FRONT_DESK, SUPER_ADMIN];
 const ARCHIVE_ROLES = [SECRETARY, FRONT_DESK, SUPER_ADMIN];
-const REPORT_VIEW_ROLES = [SECRETARY, TREASURER, CAPTAIN, SUPER_ADMIN];
+const REPORT_VIEW_ROLES = [SECRETARY, TREASURER, SUPER_ADMIN];
 
 function App() {
     return (
@@ -221,23 +215,6 @@ function App() {
                                             allowedRoles={[SUPER_ADMIN]}
                                         >
                                             <OverallReports />
-                                        </ProtectedRoute>
-                                    }
-                                />
-
-                                {/* ============================================ */}
-                                {/* CAPTAIN ROUTES */}
-                                {/* ============================================ */}
-                                <Route
-                                    path="captain"
-                                    element={
-                                        <ProtectedRoute
-                                            allowedRoles={[
-                                                CAPTAIN,
-                                                SUPER_ADMIN,
-                                            ]}
-                                        >
-                                            <CaptainDashboard />
                                         </ProtectedRoute>
                                     }
                                 />
@@ -739,7 +716,6 @@ function App() {
                                                 NDP,
                                                 MIDWIFE,
                                                 SECRETARY,
-                                                CAPTAIN,
                                             ]}
                                         >
                                             <ProgramRequests />
@@ -770,7 +746,6 @@ function App() {
                                         <ProtectedRoute
                                             allowedRoles={[
                                                 SUPER_ADMIN,
-                                                CAPTAIN,
                                             ]}
                                         >
                                             <Settings />

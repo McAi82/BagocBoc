@@ -91,7 +91,6 @@ class DatabaseSeeder extends Seeder
         // ============================================
         $roles = [
             ['name' => 'Super Admin', 'description' => 'Full system access'],
-            ['name' => 'Barangay Captain', 'description' => 'Barangay Captain'],
             ['name' => 'Barangay Secretary', 'description' => 'Barangay Secretary'],
             ['name' => 'Barangay Treasurer', 'description' => 'Barangay Treasurer'],
             ['name' => 'Front Desk Clerk', 'description' => 'Front Desk Clerk'],
@@ -420,8 +419,7 @@ class DatabaseSeeder extends Seeder
         //    zone 1. zoneleader2 → head of household 2 → zone 2. Etc.
         // ============================================
         $userSpecs = [
-            ['email' => 'superadmin@gmail.com',   'role' => 'Super Admin',                 'resident' => null],
-            ['email' => 'captain@gmail.com',      'role' => 'Barangay Captain',            'resident' => $allResidents[0]],
+            ['email' => 'captain@gmail.com',      'role' => 'Super Admin',            'resident' => $allResidents[0]],
             ['email' => 'secretary@gmail.com',    'role' => 'Barangay Secretary',          'resident' => $allResidents[1]],
             ['email' => 'treasurer@gmail.com',    'role' => 'Barangay Treasurer',          'resident' => $allResidents[2]],
             ['email' => 'frontdesk@gmail.com',    'role' => 'Front Desk Clerk',            'resident' => $allResidents[3]],
@@ -1257,7 +1255,6 @@ class DatabaseSeeder extends Seeder
         $this->command->info('═══════════════════════════════════════');
         $this->command->info('');
         $this->command->info('🔑 LOGIN CREDENTIALS (password: password)');
-        $this->command->info('   - Super Admin: superadmin@gmail.com');
         $this->command->info('   - Captain: captain@gmail.com');
         $this->command->info('   - Secretary: secretary@gmail.com');
         $this->command->info('   - Treasurer: treasurer@gmail.com');

@@ -8,7 +8,6 @@ import { api } from "../../api/apiClient";
 // ✅ Web accessible roles — accounts that can use the web app at all
 const WEB_ACCESSIBLE_ROLES = [
   "Super Admin",
-  "Barangay Captain",
   "Barangay Secretary",
   "Front Desk Clerk",
   "Barangay Treasurer",
