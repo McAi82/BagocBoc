@@ -1,6 +1,6 @@
 // src/pages/bns/reports/reportPdf.ts
 // One place that draws a BNS report into a jsPDF document, so every page
-// (consolidation, collected records, report viewer) prints the same detailed report.
+// (consolidation, collected records, report viewer) prints the same formal report.
 
 import type jsPDF from "jspdf";
 
@@ -27,6 +27,13 @@ export interface ReportData {
     metadata?: { generated_at: string; source: string };
 }
 
+export interface DrawOptions {
+    /** Printed under the "Prepared by" line, e.g. the logged-in BNS name */
+    preparedBy?: string;
+    /** Printed under the "Noted by" line, e.g. the Barangay Captain */
+    notedBy?: string;
+}
+
 export const SECTION_TITLES: Record<string, string> = {
     age_brackets: "By Age Bracket",
     sex: "By Sex",
@@ -37,117 +44,349 @@ export const SECTION_TITLES: Record<string, string> = {
 export const sectionTitle = (data: ReportData, key: string) =>
     data.section_titles?.[key] || SECTION_TITLES[key] || key;
 
-const BLUE: [number, number, number] = [26, 86, 219];
-const DARK: [number, number, number] = [51, 51, 51];
-const GRAY: [number, number, number] = [102, 102, 102];
+type RGB = [number, number, number];
+const NAVY: RGB = [23, 54, 112];
+const BLUE: RGB = [26, 86, 219];
+const DARK: RGB = [33, 37, 41];
+const GRAY: RGB = [108, 117, 125];
+const LIGHT: RGB = [243, 245, 249];
+const LINE: RGB = [206, 212, 218];
 
-function heading(doc: jsPDF, text: string, y: number, x = 20) {
-    doc.setFontSize(14);
-    doc.setTextColor(...BLUE);
-    doc.text(text, x, y);
-}
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
-function ensureSpace(doc: jsPDF, y: number, needed: number): number {
-    const h = doc.internal.pageSize.getHeight();
-    if (y + needed > h - 20) {
-        doc.addPage();
-        return 20;
-    }
-    return y;
-}
+const longDate = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00`);
+    return isNaN(d.getTime())
+        ? iso
+        : d.toLocaleDateString("en-PH", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+          });
+};
 
-function drawRows(doc: jsPDF, rows: ReportRow[], y: number): number {
+const isLandscape = (doc: jsPDF) =>
+    doc.internal.pageSize.getWidth() > doc.internal.pageSize.getHeight();
+
+const newPage = (doc: jsPDF, landscape = isLandscape(doc)) =>
+    doc.addPage("a4", landscape ? "landscape" : "portrait");
+
+/* ------------------------------------------------------------------ */
+/* Building blocks                                                     */
+/* ------------------------------------------------------------------ */
+
+function sectionHeading(doc: jsPDF, no: string, text: string, y: number) {
+    const m = 18;
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
-    doc.setTextColor(...DARK);
-    rows.forEach((item) => {
-        y = ensureSpace(doc, y, 8);
-        doc.text(
-            `${item.category}: ${item.count} (${Number(item.percentage).toFixed(1)}%)`,
-            20,
-            y,
-        );
-        y += 8;
-    });
-    return y;
+    doc.setTextColor(...NAVY);
+    doc.text(`${no}.  ${text.toUpperCase()}`, m, y);
+    doc.setDrawColor(...NAVY);
+    doc.setLineWidth(0.5);
+    doc.line(m, y + 1.8, doc.internal.pageSize.getWidth() - m, y + 1.8);
+    doc.setFont("helvetica", "normal");
+    return y + 8;
 }
 
-function drawDetailsTable(doc: jsPDF, details: ReportDetails) {
-    // Details go on their own landscape page(s) so wide tables fit.
-    doc.addPage("a4", "landscape");
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const margin = 12;
-    const usable = pageW - margin * 2;
+interface Col {
+    header: string;
+    width: number;
+    align?: "left" | "center" | "right";
+}
 
-    let y = 18;
-    heading(
-        doc,
-        `Details: ${details.title} (${details.rows.length})`,
-        y,
-        margin,
-    );
-    y += 8;
+function drawTable(
+    doc: jsPDF,
+    startY: number,
+    x: number,
+    cols: Col[],
+    rows: (string | number | null)[][],
+    opts: {
+        rowH?: number;
+        fontSize?: number;
+        totalRow?: (string | number)[];
+        repeatTop?: number;
+        onNewPage?: () => number; // returns the y to continue from
+        barCol?: number; // index of a % column to draw a small bar in
+    } = {},
+): number {
+    const rowH = opts.rowH ?? 7;
+    const fs = opts.fontSize ?? 9;
+    const totalW = cols.reduce((a, c) => a + c.width, 0);
+    const pageH = () => doc.internal.pageSize.getHeight();
+    let y = startY;
 
-    // column widths proportional to the longest text (capped), "No." stays narrow
-    const weights = details.columns.map((c, i) => {
-        const longest = Math.max(
-            c.length,
-            ...details.rows.slice(0, 300).map((r) => String(r[i] ?? "").length),
-        );
-        return Math.min(Math.max(longest, 4), 28);
-    });
-    const sum = weights.reduce((a, b) => a + b, 0);
-    const widths = weights.map((w) => (w / sum) * usable);
-
-    const rowH = 6.5;
+    const cellX = (c: Col, cx: number) =>
+        c.align === "right"
+            ? cx + c.width - 2
+            : c.align === "center"
+              ? cx + c.width / 2
+              : cx + 2;
 
     const drawHeader = () => {
-        doc.setFillColor(26, 86, 219);
-        doc.rect(margin, y - 4.5, usable, rowH, "F");
-        doc.setFontSize(8);
+        doc.setFillColor(...NAVY);
+        doc.rect(x, y - 5, totalW, rowH, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(fs);
         doc.setTextColor(255, 255, 255);
-        let x = margin;
-        details.columns.forEach((c, i) => {
-            doc.text(c, x + 1.5, y);
-            x += widths[i];
+        let cx = x;
+        cols.forEach((c) => {
+            doc.text(c.header, cellX(c, cx), y - 0.3, {
+                align: c.align || "left",
+            });
+            cx += c.width;
         });
+        doc.setFont("helvetica", "normal");
         y += rowH;
+    };
+
+    const ensure = (needed: number) => {
+        if (y + needed > pageH() - 22) {
+            if (opts.onNewPage) {
+                y = opts.onNewPage();
+            } else {
+                newPage(doc);
+                y = 24;
+            }
+            drawHeader();
+        }
     };
 
     drawHeader();
 
-    if (details.rows.length === 0) {
-        doc.setTextColor(...GRAY);
-        doc.text("No records for this period.", margin + 1.5, y);
-        return;
-    }
-
-    details.rows.forEach((row, ri) => {
-        if (y > pageH - 18) {
-            doc.addPage("a4", "landscape");
-            y = 18;
-            drawHeader();
-        }
+    rows.forEach((row, ri) => {
+        ensure(rowH);
         if (ri % 2 === 1) {
-            doc.setFillColor(243, 244, 246);
-            doc.rect(margin, y - 4.5, usable, rowH, "F");
+            doc.setFillColor(...LIGHT);
+            doc.rect(x, y - 5, totalW, rowH, "F");
         }
-        doc.setFontSize(8);
+        doc.setFontSize(fs);
         doc.setTextColor(...DARK);
-        let x = margin;
+        let cx = x;
         row.forEach((cell, i) => {
-            const lines = doc.splitTextToSize(
-                String(cell ?? "—"),
-                widths[i] - 3,
-            );
+            const c = cols[i];
+            const lines = doc.splitTextToSize(String(cell ?? "—"), c.width - 4);
             const text =
                 lines.length > 1 ? `${lines[0].slice(0, -1)}…` : lines[0];
-            doc.text(text || "", x + 1.5, y);
-            x += widths[i];
+            if (opts.barCol === i && typeof cell === "number") {
+                // percentage: print value on the right, bar on the left
+                doc.text(`${cell.toFixed(1)}%`, cx + c.width - 2, y - 0.3, {
+                    align: "right",
+                });
+                const barMax = c.width - 20;
+                doc.setFillColor(...LINE);
+                doc.rect(cx + 2, y - 3.2, barMax, 2.6, "F");
+                doc.setFillColor(...BLUE);
+                doc.rect(
+                    cx + 2,
+                    y - 3.2,
+                    Math.max(0, (barMax * cell) / 100),
+                    2.6,
+                    "F",
+                );
+            } else {
+                doc.text(text || "", cellX(c, cx), y - 0.3, {
+                    align: c.align || "left",
+                });
+            }
+            cx += c.width;
         });
+        doc.setDrawColor(...LINE);
+        doc.setLineWidth(0.1);
+        doc.line(x, y + rowH - 5, x + totalW, y + rowH - 5);
         y += rowH;
     });
+
+    if (opts.totalRow) {
+        ensure(rowH);
+        doc.setFillColor(226, 232, 240);
+        doc.rect(x, y - 5, totalW, rowH, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(fs);
+        doc.setTextColor(...DARK);
+        let cx = x;
+        opts.totalRow.forEach((cell, i) => {
+            const c = cols[i];
+            doc.text(String(cell), cellX(c, cx), y - 0.3, {
+                align: c.align || "left",
+            });
+            cx += c.width;
+        });
+        doc.setFont("helvetica", "normal");
+        y += rowH;
+    }
+
+    return y + 2;
 }
+
+function breakdownTable(
+    doc: jsPDF,
+    y: number,
+    rows: ReportRow[],
+    firstHeader: string,
+): number {
+    const m = 18;
+    const w = doc.internal.pageSize.getWidth() - m * 2;
+    const cols: Col[] = [
+        { header: firstHeader, width: w * 0.46 },
+        { header: "No.", width: w * 0.14, align: "center" },
+        { header: "Percentage", width: w * 0.4 },
+    ];
+    const total = rows.reduce((a, r) => a + Number(r.count || 0), 0);
+    const body = rows.map((r) => [r.category, r.count, Number(r.percentage)]);
+    return drawTable(doc, y, m, cols, body, {
+        barCol: 2,
+        totalRow: ["Total", total, ""],
+        onNewPage: () => {
+            newPage(doc, false);
+            return 24;
+        },
+    });
+}
+
+/* ------------------------------------------------------------------ */
+/* Page furniture                                                      */
+/* ------------------------------------------------------------------ */
+
+function letterhead(doc: jsPDF) {
+    const w = doc.internal.pageSize.getWidth();
+    doc.setFont("times", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...DARK);
+    doc.text("Republic of the Philippines", w / 2, 15, { align: "center" });
+    doc.text("Province of Misamis Oriental", w / 2, 20, { align: "center" });
+    doc.text("Municipality of Opol", w / 2, 25, { align: "center" });
+
+    doc.setFont("times", "bold");
+    doc.setFontSize(17);
+    doc.setTextColor(...NAVY);
+    doc.text("BARANGAY BAGOCBOC", w / 2, 33, { align: "center" });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...GRAY);
+    doc.text("Barangay Nutrition Scholar (BNS) Office", w / 2, 38.5, {
+        align: "center",
+    });
+
+    doc.setDrawColor(...NAVY);
+    doc.setLineWidth(0.9);
+    doc.line(18, 42, w - 18, 42);
+    doc.setLineWidth(0.25);
+    doc.line(18, 43.6, w - 18, 43.6);
+}
+
+function runningHeader(doc: jsPDF, text: string) {
+    const w = doc.internal.pageSize.getWidth();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...NAVY);
+    doc.text("BARANGAY BAGOCBOC", 12, 11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...GRAY);
+    doc.text(text, w - 12, 11, { align: "right" });
+    doc.setDrawColor(...NAVY);
+    doc.setLineWidth(0.4);
+    doc.line(12, 13.5, w - 12, 13.5);
+}
+
+function statCards(
+    doc: jsPDF,
+    y: number,
+    cards: { label: string; value: string }[],
+) {
+    const m = 18;
+    const total = doc.internal.pageSize.getWidth() - m * 2;
+    const gap = 4;
+    const n = cards.length;
+    const cw = (total - gap * (n - 1)) / n;
+    const h = 20;
+    cards.forEach((c, i) => {
+        const cx = m + i * (cw + gap);
+        doc.setFillColor(...LIGHT);
+        doc.setDrawColor(...LINE);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(cx, y, cw, h, 1.5, 1.5, "FD");
+        doc.setFillColor(...BLUE);
+        doc.rect(cx, y, 1.6, h, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(...NAVY);
+        doc.text(c.value, cx + 5, y + 9.5);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(...GRAY);
+        const label = doc.splitTextToSize(c.label, cw - 8)[0];
+        doc.text(label, cx + 5, y + 15.5);
+    });
+    return y + h + 8;
+}
+
+function metaBox(doc: jsPDF, y: number, rows: [string, string][]) {
+    const m = 18;
+    const w = doc.internal.pageSize.getWidth() - m * 2;
+    const rowH = 6.2;
+    const h = rows.length * rowH + 4;
+    doc.setDrawColor(...LINE);
+    doc.setLineWidth(0.3);
+    doc.rect(m, y, w, h);
+    rows.forEach(([k, v], i) => {
+        const ry = y + 6 + i * rowH;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(...GRAY);
+        doc.text(k, m + 4, ry);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...DARK);
+        const val = doc.splitTextToSize(v, w - 48)[0];
+        doc.text(val, m + 44, ry);
+    });
+    return y + h + 8;
+}
+
+function signatures(doc: jsPDF, y: number, opts: DrawOptions) {
+    const w = doc.internal.pageSize.getWidth();
+    const m = 18;
+    const colW = (w - m * 2 - 20) / 2;
+    const blocks = [
+        {
+            role: "Prepared by:",
+            name: opts.preparedBy || "",
+            title: "Barangay Nutrition Scholar",
+        },
+        {
+            role: "Noted by:",
+            name: opts.notedBy || "",
+            title: "Barangay Captain",
+        },
+    ];
+    blocks.forEach((b, i) => {
+        const bx = m + i * (colW + 20);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(...GRAY);
+        doc.text(b.role, bx, y);
+        doc.setDrawColor(...DARK);
+        doc.setLineWidth(0.3);
+        doc.line(bx, y + 16, bx + colW, y + 16);
+        if (b.name) {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(10);
+            doc.setTextColor(...DARK);
+            doc.text(b.name.toUpperCase(), bx + colW / 2, y + 14, {
+                align: "center",
+            });
+        }
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(...GRAY);
+        doc.text(b.title, bx + colW / 2, y + 21, { align: "center" });
+    });
+    return y + 28;
+}
+
+/* ------------------------------------------------------------------ */
+/* Public API                                                          */
+/* ------------------------------------------------------------------ */
 
 /**
  * Draws one full report. Call with first=true for the first report in a document,
@@ -158,86 +397,188 @@ export function drawReport(
     label: string,
     data: ReportData,
     first = true,
+    options: DrawOptions = {},
 ) {
-    if (!first) doc.addPage("a4", "portrait");
+    if (!first) newPage(doc, false);
     const w = doc.internal.pageSize.getWidth();
+    const m = 18;
+    const periodLabel = data.period?.label || "";
+    const total = data.total ?? 0;
 
-    doc.setFontSize(18);
-    doc.setTextColor(...BLUE);
-    doc.text("Barangay Bagocboc", w / 2, 20, { align: "center" });
+    letterhead(doc);
 
-    doc.setFontSize(14);
+    // Title block
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
     doc.setTextColor(...DARK);
-    const periodText = data.period?.label ? ` - ${data.period.label}` : "";
-    doc.text(`${label} Report${periodText}`, w / 2, 30, { align: "center" });
-
-    doc.setFontSize(10);
+    doc.text(`${label.toUpperCase()} REPORT`, w / 2, 56, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
     doc.setTextColor(...GRAY);
+    const covered = data.date_range
+        ? `${longDate(data.date_range.from)}  to  ${longDate(data.date_range.to)}`
+        : "";
+    doc.text(periodLabel ? `${periodLabel}` : "", w / 2, 62.5, {
+        align: "center",
+    });
+    if (covered) {
+        doc.setFontSize(9.5);
+        doc.text(covered, w / 2, 68, { align: "center" });
+    }
+
+    let y = 78;
+
+    // I. Report information
+    y = sectionHeading(doc, ROMAN[0], "Report Information", y);
     const generated = data.metadata?.generated_at
         ? new Date(data.metadata.generated_at)
         : new Date();
-    doc.text(`Generated on: ${generated.toLocaleString()}`, w / 2, 38, {
-        align: "center",
-    });
+    y = metaBox(doc, y, [
+        ["Report", `${label} Demographic Report`],
+        ["Reporting period", periodLabel || "—"],
+        ["Data source", data.metadata?.source || "Barangay records"],
+        ["Date generated", generated.toLocaleString("en-PH")],
+    ]);
 
-    doc.setDrawColor(200, 200, 200);
-    doc.line(20, 45, w - 20, 45);
-
-    let y = 55;
-    heading(doc, "Summary", y);
-    y += 10;
-    doc.setFontSize(11);
-    doc.setTextColor(...DARK);
-    doc.text(`Total Records: ${data.total ?? 0}`, 20, y);
-    y += 8;
-    if (data.date_range) {
-        doc.text(
-            `Period covered: ${data.date_range.from} to ${data.date_range.to}`,
-            20,
-            y,
+    // II. Highlights
+    let sec = 1;
+    y = sectionHeading(doc, ROMAN[sec++], "Summary of Findings", y);
+    const cards = [{ label: "Total records counted", value: String(total) }];
+    [...(data.breakdown || [])]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+        .forEach((r) =>
+            cards.push({
+                label: r.category,
+                value: `${r.count}  (${Number(r.percentage).toFixed(1)}%)`,
+            }),
         );
-        y += 8;
-    }
-    if (data.metadata?.source) {
-        doc.text(`Source: ${data.metadata.source}`, 20, y);
-        y += 8;
-    }
-    y += 4;
+    y = statCards(doc, y, cards);
+
+    // III. Breakdown + sections
+    const need = (rows: number) => 14 + (rows + 2) * 7;
+    const toPage = () => {
+        newPage(doc, false);
+        return 28;
+    };
 
     if (data.breakdown && data.breakdown.length > 0) {
-        y = ensureSpace(doc, y, 20);
-        heading(doc, "Breakdown", y);
-        y += 10;
-        y = drawRows(doc, data.breakdown, y);
+        if (
+            y + need(data.breakdown.length) >
+            doc.internal.pageSize.getHeight() - 22
+        )
+            y = toPage();
+        y = sectionHeading(doc, ROMAN[sec++], "Breakdown", y);
+        y = breakdownTable(doc, y, data.breakdown, "Category");
+        y += 4;
     }
 
     Object.entries(data.sections || {}).forEach(([key, rows]) => {
-        y = ensureSpace(doc, y + 5, 28);
-        heading(doc, sectionTitle(data, key), y);
-        y += 10;
-        y = drawRows(doc, rows, y);
+        if (!rows || rows.length === 0) return;
+        if (
+            y + need(Math.min(rows.length, 6)) >
+            doc.internal.pageSize.getHeight() - 22
+        )
+            y = toPage();
+        y = sectionHeading(
+            doc,
+            ROMAN[sec++] || String(sec),
+            sectionTitle(data, key),
+            y,
+        );
+        y = breakdownTable(
+            doc,
+            y,
+            rows,
+            sectionTitle(data, key).replace(/^By\s+/i, ""),
+        );
+        y += 4;
     });
 
-    if (data.details) drawDetailsTable(doc, data.details);
+    // Signatures (end of summary pages)
+    if (y + 36 > doc.internal.pageSize.getHeight() - 22) y = toPage();
+    signatures(doc, y + 6, options);
+
+    // Annex: itemised list on landscape pages
+    if (data.details) {
+        const d = data.details;
+        newPage(doc, true);
+        const lw = doc.internal.pageSize.getWidth();
+        const header = () =>
+            runningHeader(
+                doc,
+                `${label} Report${periodLabel ? " - " + periodLabel : ""}`,
+            );
+        header();
+
+        let ty = 24;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(...NAVY);
+        doc.text(`ANNEX: ${d.title.toUpperCase()}`, 12, ty);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(...GRAY);
+        doc.text(`${d.rows.length} record(s)`, lw - 12, ty, { align: "right" });
+        ty += 8;
+
+        const usable = lw - 24;
+        const weights = d.columns.map((c, i) => {
+            const longest = Math.max(
+                c.length,
+                ...d.rows.slice(0, 300).map((r) => String(r[i] ?? "").length),
+            );
+            return Math.min(Math.max(longest, 4), 28);
+        });
+        const sum = weights.reduce((a, b) => a + b, 0);
+        const cols: Col[] = d.columns.map((c, i) => {
+            const numeric = d.rows.every(
+                (r) => typeof r[i] === "number" || r[i] === "—" || r[i] == null,
+            );
+            return {
+                header: c,
+                width: (weights[i] / sum) * usable,
+                align: numeric ? "center" : "left",
+            };
+        });
+
+        if (d.rows.length === 0) {
+            doc.setFontSize(10);
+            doc.setTextColor(...GRAY);
+            doc.text("No records for this period.", 12, ty + 4);
+        } else {
+            drawTable(doc, ty, 12, cols, d.rows, {
+                rowH: 6.4,
+                fontSize: 8,
+                onNewPage: () => {
+                    newPage(doc, true);
+                    header();
+                    return 24;
+                },
+            });
+        }
+    }
 }
 
-/** Adds "Page x of y" and the system footer to every page. Call once, last. */
+/** Adds the footer, "Page x of y" and a confidentiality note to every page. Call once, last. */
 export function finalizePdf(doc: jsPDF) {
     const total = doc.getNumberOfPages();
     for (let i = 1; i <= total; i++) {
         doc.setPage(i);
         const w = doc.internal.pageSize.getWidth();
         const h = doc.internal.pageSize.getHeight();
-        doc.setFontSize(9);
-        doc.setTextColor(153, 153, 153);
-        doc.text("This is a system-generated report.", w / 2, h - 12, {
-            align: "center",
-        });
+        const m = w > h ? 12 : 18;
+        doc.setDrawColor(...LINE);
+        doc.setLineWidth(0.3);
+        doc.line(m, h - 14, w - m, h - 14);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(...GRAY);
         doc.text(
-            `Barangay Bagocboc Management System  •  Page ${i} of ${total}`,
-            w / 2,
-            h - 7,
-            { align: "center" },
+            "Barangay Bagocboc Management System  |  System-generated report  |  Confidential",
+            m,
+            h - 9,
         );
+        doc.text(`Page ${i} of ${total}`, w - m, h - 9, { align: "right" });
     }
 }

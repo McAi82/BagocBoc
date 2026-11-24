@@ -28,7 +28,7 @@
     "src": "_instrument-sans-600-normal-B9e8oLYv.woff"
   },
   "node_modules/canvg/lib/index.es.js": {
-    "file": "assets/index.es-DMnOrtda.js",
+    "file": "assets/index.es-Z-dFybMG.js",
     "name": "index.es",
     "src": "node_modules/canvg/lib/index.es.js",
     "isDynamicEntry": true,
@@ -72,7 +72,7 @@
     "src": "resources/js/assets/barangay-seal.png"
   },
   "resources/js/main.tsx": {
-    "file": "assets/main-Bf63j0sz.js",
+    "file": "assets/main-DK2hG1bK.js",
     "name": "main",
     "src": "resources/js/main.tsx",
     "isEntry": true,
