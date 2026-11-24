@@ -363,7 +363,11 @@ class CertificateRequestController extends Controller
             $requester = $certification->requester;
             if (!$requester || !$requester->resident_id) return;
 
-            $existingRequest = \App\Models\FrontDeskRequest::where('reference_number', $certification->reference_number)->first();
+            $existingRequest = \App\Models\FrontDeskRequest::withArchived()
+                ->where('reference_number', $certification->reference_number)->first();
+
+            // Don't revive a front-desk copy that was archived
+            if ($existingRequest && $existingRequest->isArchived()) return;
 
             if ($existingRequest) {
                 $existingRequest->update([

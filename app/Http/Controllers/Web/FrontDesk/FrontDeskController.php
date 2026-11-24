@@ -275,11 +275,16 @@ class FrontDeskController extends Controller
             return $this->respondError('Completed requests cannot be cancelled', null, 422);
         }
 
+        $previousStatus = $frontDeskRequest->status;
+
         $frontDeskRequest->update([
             'status' => 'cancelled',
             'cancelled_at' => now(),
             'cancelled_by_user_id' => Auth::id(),
         ]);
+
+        // Move to archive (kept 15 days; only the cancelling user can restore)
+        $frontDeskRequest->archiveRecord(Auth::id(), 'cancelled', $previousStatus);
 
         $this->removeFromQueueInternal($frontDeskRequest->id);
 
@@ -918,7 +923,7 @@ class FrontDeskController extends Controller
         $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
         $number = "{$prefix}-{$year}{$month}-{$random}";
 
-        while (FrontDeskRequest::where('reference_number', $number)->exists()) {
+        while (FrontDeskRequest::withArchived()->where('reference_number', $number)->exists()) {
             $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
             $number = "{$prefix}-{$year}{$month}-{$random}";
         }

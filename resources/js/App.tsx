@@ -74,6 +74,7 @@ import HouseholdProfile from "./pages/households/HouseholdProfile";
 // ============================================
 import Certifications from "./pages/certificates/Certifications";
 import Clearance from "./pages/clearance/Clearance";
+import ArchivePage from "./pages/archive/ArchivePage";
 
 // ============================================
 // FINANCIAL PAGES
@@ -149,6 +150,7 @@ const CERT_ROLES = [SECRETARY, SUPER_ADMIN];
 const FINANCE_ROLES = [SECRETARY, TREASURER, SUPER_ADMIN];
 const MAP_ROLES = [CAPTAIN, SUPER_ADMIN];
 const CONFIRM_ROLES = [SECRETARY, FRONT_DESK, SUPER_ADMIN];
+const ARCHIVE_ROLES = [SECRETARY, FRONT_DESK, SUPER_ADMIN];
 const REPORT_VIEW_ROLES = [SECRETARY, TREASURER, CAPTAIN, SUPER_ADMIN];
 
 function App() {
@@ -660,6 +662,20 @@ function App() {
                                             allowedRoles={CERT_ROLES}
                                         >
                                             <Clearance />
+                                        </ProtectedRoute>
+                                    }
+                                />
+
+                                {/* ============================================ */}
+                                {/* ARCHIVE */}
+                                {/* ============================================ */}
+                                <Route
+                                    path="archive"
+                                    element={
+                                        <ProtectedRoute
+                                            allowedRoles={ARCHIVE_ROLES}
+                                        >
+                                            <ArchivePage />
                                         </ProtectedRoute>
                                     }
                                 />

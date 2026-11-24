@@ -283,11 +283,16 @@ class ClearanceController extends Controller
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
+        $previousStatus = $clearance->status;
+
         $clearance->update([
             'status' => 'rejected',
             'remarks' => $request->remarks ?? 'Rejected by barangay official',
             'processed_by_user_id' => Auth::id(),
         ]);
+
+        // Move to archive (kept 15 days; only the rejecting user can restore)
+        $clearance->archiveRecord(Auth::id(), 'rejected', $previousStatus);
 
         $this->notifyResident(
             $clearance,

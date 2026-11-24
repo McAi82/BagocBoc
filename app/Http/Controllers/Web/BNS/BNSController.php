@@ -15,7 +15,11 @@ use App\Models\RecordActivityLog;
 use App\Models\MaternalProfile;
 use App\Models\LactatingRecord;
 use App\Models\ProgramParticipant;
+use App\Models\OptPlusAssessment;
+use App\Support\ReportPeriod;
+use App\Support\WhoWeightForAge;
 use App\Traits\SendsNotifications;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -37,7 +41,7 @@ class BNSController extends Controller
                 'total_records' => RecordActivityLog::count(),
                 'total_households' => Household::count(),
                 'total_zones' => BarangayZone::count(),
-                'total_demographics' => 6,
+                'total_demographics' => 7,
                 'pending_records' => RecordActivityLog::where('data_status', 'Pending')->count(),
                 'approved_records' => RecordActivityLog::where('data_status', 'Approved')->count(),
             ];
@@ -168,7 +172,7 @@ class BNSController extends Controller
     public function consolidateDemographic(Request $request, $type)
     {
         try {
-            $validTypes = ['household', 'family', 'gender', 'age', 'pregnant', 'breastfeeding'];
+            $validTypes = ['household', 'family', 'gender', 'age', 'pregnant', 'breastfeeding', 'child-nutrition'];
 
             if (!in_array($type, $validTypes)) {
                 return $this->respondError('Invalid demographic type', null, 422);
@@ -457,12 +461,17 @@ class BNSController extends Controller
     private function getAgeConsolidation($request)
     {
         try {
-            $residents = Resident::whereNotNull('birth_date')->get();
+            // Population as of the end of the period: registered by then, already born by then,
+            // age counted on that date.
+            $p = ReportPeriod::fromRequest($request);
+            $residents = Resident::whereNotNull('birth_date')
+                ->where('created_at', '<=', $p->asOf)
+                ->where('birth_date', '<=', $p->asOf)
+                ->get(['id', 'birth_date']);
             $ageGroups = ['0-12' => 0, '13-18' => 0, '19-35' => 0, '36-60' => 0, '60+' => 0];
 
             foreach ($residents as $resident) {
-                $age = $resident->age;
-                if ($age === null) continue;
+                $age = (int) Carbon::parse($resident->birth_date)->diffInYears($p->asOf);
                 if ($age <= 12) $ageGroups['0-12']++;
                 elseif ($age <= 18) $ageGroups['13-18']++;
                 elseif ($age <= 35) $ageGroups['19-35']++;
@@ -484,7 +493,8 @@ class BNSController extends Controller
                 'demographic' => 'age',
                 'total' => $total,
                 'breakdown' => $breakdown,
-                'date_range' => ['from' => $request->date_from ?? '2024-01-01', 'to' => $request->date_to ?? '2024-12-31'],
+                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+                'period' => ReportPeriod::fromRequest($request)->toArray(),
                 'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Resident Records'],
             ];
         } catch (\Exception $e) {
@@ -496,12 +506,13 @@ class BNSController extends Controller
     private function getHouseholdConsolidation($request)
     {
         try {
+            $p = ReportPeriod::fromRequest($request);
             $zones = BarangayZone::all();
             $breakdown = [];
             $total = 0;
 
             foreach ($zones as $zone) {
-                $count = HouseholdAddress::where('zone', $zone->id)->count();
+                $count = HouseholdAddress::where('zone', $zone->id)->where('created_at', '<=', $p->asOf)->count();
                 $breakdown[] = ['category' => $zone->name, 'count' => $count, 'percentage' => 0];
                 $total += $count;
             }
@@ -514,7 +525,8 @@ class BNSController extends Controller
                 'demographic' => 'household',
                 'total' => $total,
                 'breakdown' => $breakdown,
-                'date_range' => ['from' => $request->date_from ?? '2024-01-01', 'to' => $request->date_to ?? '2024-12-31'],
+                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+                'period' => ReportPeriod::fromRequest($request)->toArray(),
                 'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Household Records'],
             ];
         } catch (\Exception $e) {
@@ -526,7 +538,8 @@ class BNSController extends Controller
     private function getFamilyConsolidation($request)
     {
         try {
-            $households = Household::all();
+            $p = ReportPeriod::fromRequest($request);
+            $households = Household::where('created_at', '<=', $p->asOf)->get();
             $sizes = ['1 member' => 0, '2-3 members' => 0, '4-5 members' => 0, '6+ members' => 0];
 
             foreach ($households as $household) {
@@ -551,7 +564,8 @@ class BNSController extends Controller
                 'demographic' => 'family',
                 'total' => $total,
                 'breakdown' => $breakdown,
-                'date_range' => ['from' => $request->date_from ?? '2024-01-01', 'to' => $request->date_to ?? '2024-12-31'],
+                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+                'period' => ReportPeriod::fromRequest($request)->toArray(),
                 'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Household Records'],
             ];
         } catch (\Exception $e) {
@@ -563,8 +577,9 @@ class BNSController extends Controller
     private function getGenderConsolidation($request)
     {
         try {
-            $maleCount = Resident::where('gender', 'Male')->count();
-            $femaleCount = Resident::where('gender', 'Female')->count();
+            $p = ReportPeriod::fromRequest($request);
+            $maleCount = Resident::where('gender', 'Male')->where('created_at', '<=', $p->asOf)->count();
+            $femaleCount = Resident::where('gender', 'Female')->where('created_at', '<=', $p->asOf)->count();
             $total = $maleCount + $femaleCount;
 
             $breakdown = [
@@ -576,7 +591,8 @@ class BNSController extends Controller
                 'demographic' => 'gender',
                 'total' => $total,
                 'breakdown' => $breakdown,
-                'date_range' => ['from' => $request->date_from ?? '2024-01-01', 'to' => $request->date_to ?? '2024-12-31'],
+                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+                'period' => ReportPeriod::fromRequest($request)->toArray(),
                 'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Resident Records'],
             ];
         } catch (\Exception $e) {
@@ -588,6 +604,7 @@ class BNSController extends Controller
     private function getPregnantConsolidation($request)
     {
         try {
+            $p = ReportPeriod::fromRequest($request);
             $zones = BarangayZone::all();
             $breakdown = [];
             $total = 0;
@@ -601,7 +618,8 @@ class BNSController extends Controller
                     ->pluck('resident_households.resident_id');
 
                 $count = MaternalProfile::whereIn('resident_id', $zoneResidentIds)
-                    ->where('pregnancy_status', 'pregnant')->count();
+                    ->where('pregnancy_status', 'pregnant')
+                    ->whereBetween('created_at', [$p->from, $p->to])->count();
 
                 $breakdown[] = ['category' => $zone->name, 'count' => $count, 'percentage' => 0];
                 $total += $count;
@@ -615,7 +633,8 @@ class BNSController extends Controller
                 'demographic' => 'pregnant',
                 'total' => $total,
                 'breakdown' => $breakdown,
-                'date_range' => ['from' => $request->date_from ?? '2024-01-01', 'to' => $request->date_to ?? '2024-12-31'],
+                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+                'period' => ReportPeriod::fromRequest($request)->toArray(),
                 'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Maternal Records'],
             ];
         } catch (\Exception $e) {
@@ -627,6 +646,7 @@ class BNSController extends Controller
     private function getBreastfeedingConsolidation($request)
     {
         try {
+            $p = ReportPeriod::fromRequest($request);
             $zones = BarangayZone::all();
             $breakdown = [];
             $total = 0;
@@ -639,7 +659,8 @@ class BNSController extends Controller
                     ->where('resident_households.status', 'active')
                     ->pluck('resident_households.resident_id');
 
-                $count = LactatingRecord::whereIn('resident_id', $zoneResidentIds)->count();
+                $count = LactatingRecord::whereIn('resident_id', $zoneResidentIds)
+                    ->whereBetween('created_at', [$p->from, $p->to])->count();
                 $breakdown[] = ['category' => $zone->name, 'count' => $count, 'percentage' => 0];
                 $total += $count;
             }
@@ -652,11 +673,116 @@ class BNSController extends Controller
                 'demographic' => 'breastfeeding',
                 'total' => $total,
                 'breakdown' => $breakdown,
-                'date_range' => ['from' => $request->date_from ?? '2024-01-01', 'to' => $request->date_to ?? '2024-12-31'],
+                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+                'period' => ReportPeriod::fromRequest($request)->toArray(),
                 'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Lactating Records'],
             ];
         } catch (\Exception $e) {
             Log::error('BNS Breastfeeding Consolidation Error: ' . $e->getMessage());
+            return $this->getDefaultConsolidation($request);
+        }
+    }
+
+    /**
+     * Child nutrition (0-23 months) — from each child's latest OPT Plus assessment.
+     * Status = WHO weight-for-age: Underweight (below -2 SD), Normal, Overweight (above +2 SD).
+     */
+    private function getChildNutritionConsolidation($request)
+    {
+        try {
+            $p = ReportPeriod::fromRequest($request);
+
+            // 0-23 months as of the end of the period (born by then, still under 2 years old)
+            $children = Resident::whereNotNull('birth_date')
+                ->where('birth_date', '<=', $p->asOf)
+                ->where('birth_date', '>', $p->asOf->copy()->subMonths(24))
+                ->where(function ($q) {
+                    $q->whereNull('vital_status')->orWhere('vital_status', '!=', 'deceased');
+                })
+                ->where(function ($q) {
+                    $q->whereNull('status')->orWhere('status', '!=', 'deceased');
+                })
+                ->get(['id', 'gender', 'birth_date']);
+
+            // Latest OPT Plus assessment per child INSIDE the period, by assessment_date then id
+            $latest = OptPlusAssessment::whereIn('resident_id', $children->pluck('id'))
+                ->whereBetween('assessment_date', [$p->from->toDateString(), $p->to->toDateString()])
+                ->orderBy('assessment_date')
+                ->orderBy('id')
+                ->get()
+                ->groupBy('resident_id')
+                ->map(fn($group) => $group->last());
+
+            $total = $children->count();
+            $pct   = fn($n) => $total > 0 ? round(($n / $total) * 100, 1) : 0;
+
+            $status = [
+                WhoWeightForAge::UNDERWEIGHT => 0,
+                WhoWeightForAge::NORMAL      => 0,
+                WhoWeightForAge::OVERWEIGHT  => 0,
+                'Not Assessed'               => 0, // no OPT Plus record in this period
+                'Cannot Classify'            => 0, // has a record, but missing gender / invalid date or weight
+            ];
+            $brackets = ['0-5 months' => 0, '6-11 months' => 0, '12-17 months' => 0, '18-23 months' => 0];
+            $sex      = ['Male' => 0, 'Female' => 0];
+
+            foreach ($children as $child) {
+                $birth = Carbon::parse($child->birth_date);
+
+                // Age bracket at the end of the period
+                $months = max(0, (int) $birth->diffInMonths($p->asOf));
+                if ($months <= 5)       $brackets['0-5 months']++;
+                elseif ($months <= 11)  $brackets['6-11 months']++;
+                elseif ($months <= 17)  $brackets['12-17 months']++;
+                else                    $brackets['18-23 months']++;
+
+                if (isset($sex[$child->gender])) $sex[$child->gender]++;
+
+                // Nutrition status from the latest OPT Plus record
+                $a = $latest->get($child->id);
+                if (!$a) {
+                    $status['Not Assessed']++;
+                    continue;
+                }
+
+                $assessedOn = Carbon::parse($a->assessment_date);
+                $result = null;
+
+                if ($assessedOn->gte($birth)) {
+                    // Age in completed months at the time of weighing
+                    $ageAtAssessment = (int) $birth->diffInMonths($assessedOn);
+                    $result = WhoWeightForAge::classify((float) $a->weight_kg, $ageAtAssessment, $child->gender);
+                }
+
+                $status[$result ?? 'Cannot Classify']++;
+            }
+
+            $breakdown = [];
+            foreach ($status as $label => $count) {
+                // Hide "Cannot Classify" when there is nothing in it; always show the rest
+                if ($label === 'Cannot Classify' && $count === 0) continue;
+                $breakdown[] = ['category' => $label, 'count' => $count, 'percentage' => $pct($count)];
+            }
+
+            $toRows = fn(array $counts) => collect($counts)
+                ->map(fn($c, $k) => ['category' => $k, 'count' => $c, 'percentage' => $pct($c)])
+                ->values()
+                ->all();
+
+            return [
+                'demographic' => 'child-nutrition',
+                'total'       => $total,
+                'breakdown'   => $breakdown,
+                'sections'    => [
+                    'age_brackets' => $toRows($brackets),
+                    'sex'          => $toRows($sex),
+                ],
+                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+                'period' => ReportPeriod::fromRequest($request)->toArray(),
+                'metadata'   => ['generated_at' => now()->toISOString(), 'source' => 'OPT Plus Assessments (children 0-23 months, WHO weight-for-age)'],
+            ];
+        } catch (\Exception $e) {
+            Log::error('BNS Child Nutrition Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);
         }
     }
@@ -667,7 +793,8 @@ class BNSController extends Controller
             'demographic' => 'unknown',
             'total' => 0,
             'breakdown' => [],
-            'date_range' => ['from' => $request->date_from ?? '2024-01-01', 'to' => $request->date_to ?? '2024-12-31'],
+            'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
+            'period' => ReportPeriod::fromRequest($request)->toArray(),
             'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'No Data'],
         ];
     }
@@ -679,8 +806,12 @@ class BNSController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'demographic' => 'required|string|in:household,family,gender,age,pregnant,breastfeeding,all',
+                'demographic' => 'required|string|in:household,family,gender,age,pregnant,breastfeeding,child-nutrition,all',
                 'generate_all' => 'required|boolean',
+                'period' => 'nullable|string|in:monthly,quarterly,yearly',
+                'year' => 'nullable|integer|min:2000|max:2100',
+                'month' => 'nullable|integer|min:1|max:12',
+                'quarter' => 'nullable|integer|min:1|max:4',
             ]);
 
             if ($validator->fails()) {
@@ -697,7 +828,7 @@ class BNSController extends Controller
             $reportIds = [];
 
             if ($generateAll || $demographic === 'all') {
-                $types = ['household', 'family', 'gender', 'age', 'pregnant', 'breastfeeding'];
+                $types = ['household', 'family', 'gender', 'age', 'pregnant', 'breastfeeding', 'child-nutrition'];
 
                 foreach ($types as $type) {
                     $data = $this->getConsolidatedData($type, $request);
@@ -712,7 +843,7 @@ class BNSController extends Controller
                     'record_type' => 'BNS Report',
                     'action' => 'Generated All Reports',
                     'data_status' => 'Completed',
-                    'details' => 'Generated all 6 demographic reports',
+                    'details' => 'Generated all ' . count($types) . ' demographic reports (' . ReportPeriod::fromRequest($request)->label . ')',
                 ]);
 
                 $this->notifyRoles(
@@ -745,7 +876,7 @@ class BNSController extends Controller
                     'record_type' => 'BNS Report',
                     'action' => 'Generated Report',
                     'data_status' => 'Completed',
-                    'details' => "Generated {$demographic} demographic report",
+                    'details' => "Generated {$demographic} demographic report (" . ReportPeriod::fromRequest($request)->label . ")",
                 ]);
 
                 $this->notifyRoles(
@@ -779,10 +910,10 @@ class BNSController extends Controller
     /**
      * Get a specific report by ID
      */
-    public function getReport($id)
+    public function getReport(Request $request, $id)
     {
         try {
-            $demographic = $this->getDemographicFromId($id);
+            $demographic = $this->getDemographicFromId($id, $request);
 
             if (!$demographic) {
                 return response()->json([
@@ -791,7 +922,7 @@ class BNSController extends Controller
                 ], 404);
             }
 
-            $data = $this->getConsolidatedData($demographic, new Request());
+            $data = $this->getConsolidatedData($demographic, $request);
             $report = $this->createReport($demographic, $data);
             $report['id'] = $id;
 
@@ -821,15 +952,16 @@ class BNSController extends Controller
     /**
      * Download report
      */
-    public function downloadReport($id)
+    public function downloadReport(Request $request, $id)
     {
         try {
-            $demographic = $this->getDemographicFromId($id);
-            $data = $this->getConsolidatedData($demographic ?? 'general', new Request());
+            $demographic = $this->getDemographicFromId($id, $request);
+            $data = $this->getConsolidatedData($demographic ?? 'general', $request);
 
             $content = "Barangay Bagocboc - Demographic Report\n";
             $content .= "============================\n\n";
             $content .= "Report ID: " . $id . "\n";
+            $content .= "Period: " . ($data['period']['label'] ?? '') . "\n";
             $content .= "Generated: " . now()->toDateTimeString() . "\n";
             $content .= "Demographic: " . ($demographic ?? 'General') . "\n\n";
             $content .= "Summary:\n--------\n";
@@ -856,10 +988,14 @@ class BNSController extends Controller
         }
     }
 
-    private function getDemographicFromId($id)
+    private function getDemographicFromId($id, $request = null)
     {
-        $demographics = ['household', 'family', 'gender', 'age', 'pregnant', 'breastfeeding'];
-        $index = is_numeric($id) ? (intval($id) % 6) : 0;
+        $demographics = ['household', 'family', 'gender', 'age', 'pregnant', 'breastfeeding', 'child-nutrition'];
+        // Reports are not stored: the page passes ?demographic=...&period=...&year=... to regenerate the same report
+        if ($request && in_array($request->query('demographic'), $demographics, true)) {
+            return $request->query('demographic');
+        }
+        $index = is_numeric($id) ? (intval($id) % count($demographics)) : 0;
         return $demographics[$index] ?? 'general';
     }
 
@@ -879,6 +1015,8 @@ class BNSController extends Controller
                     return $this->getPregnantConsolidation($request);
                 case 'breastfeeding':
                     return $this->getBreastfeedingConsolidation($request);
+                case 'child-nutrition':
+                    return $this->getChildNutritionConsolidation($request);
                 default:
                     return $this->getDefaultConsolidation($request);
             }
@@ -895,7 +1033,8 @@ class BNSController extends Controller
 
         return [
             'id' => $id,
-            'title' => $label . ' Report',
+            'title' => $label . ' Report' . (isset($data['period']['label']) ? ' - ' . $data['period']['label'] : ''),
+            'period' => $data['period'] ?? null,
             'demographic' => $type,
             'generated_at' => now()->toISOString(),
             'status' => 'generated',
@@ -913,6 +1052,7 @@ class BNSController extends Controller
             'age' => 'Age Group',
             'pregnant' => 'Pregnant',
             'breastfeeding' => 'Breastfeeding',
+            'child-nutrition' => 'Child Nutrition (0-23 months)',
         ];
         return $labels[$type] ?? ucfirst($type);
     }

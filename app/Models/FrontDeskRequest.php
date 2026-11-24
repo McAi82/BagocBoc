@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\Archivable;
 
 class FrontDeskRequest extends Model
 {
-    use HasFactory;
+    use HasFactory, Archivable;
 
     protected $table = 'front_desk_requests';
 

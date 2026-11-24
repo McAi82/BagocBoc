@@ -294,7 +294,7 @@ class CertificationController extends Controller
         if (!$certification->isZlCleared()) {
             return $this->respondError(
                 'This request has not been cleared by the Zone Leader yet. ' .
-                'Ask the Zone Leader to review it first.',
+                    'Ask the Zone Leader to review it first.',
                 null,
                 422
             );
@@ -344,11 +344,16 @@ class CertificationController extends Controller
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
+        $previousStatus = $certification->status;
+
         $certification->update([
             'status'               => 'Rejected',
             'processed_by_user_id' => Auth::id(),
             'remarks'              => $request->remarks ?? 'Rejected by barangay official',
         ]);
+
+        // Move to archive (kept 15 days; only the rejecting user can restore)
+        $certification->archiveRecord(Auth::id(), 'rejected', $previousStatus);
 
         $this->notifyResident(
             $certification,

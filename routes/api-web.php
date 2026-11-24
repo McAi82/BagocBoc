@@ -31,6 +31,7 @@ use App\Http\Controllers\Web\Captain\CaptainReportController;
 use App\Http\Controllers\Mobile\Certificates\CertificateDownloadController;
 use App\Http\Controllers\Web\Health\HealthReportsController;
 use App\Http\Controllers\Web\Reports\OverallReportController;
+use App\Http\Controllers\Web\Archive\ArchiveController;
 use App\Models\Household;
 
 Route::get(
@@ -368,6 +369,15 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
 
     // ============================================
     // 3.15b PROGRAM REQUESTS (BNS / NDP / Midwife request, Secretary / Captain / Super Admin review)
+    // ============================================
+    // ARCHIVE (rejected / cancelled / deleted requests, kept 15 days)
+    // ============================================
+    Route::prefix('/archive')->group(function () {
+        Route::get('/', [ArchiveController::class, 'index']);
+        Route::delete('/{type}/{id}', [ArchiveController::class, 'archive']);        // "delete" = move to archive
+        Route::post('/{type}/{id}/restore', [ArchiveController::class, 'restore']);  // only the user who archived it
+    });
+
     Route::prefix('/program-requests')->group(function () {
         Route::get('/',                 [ProgramRequestController::class, 'index']);
         Route::post('/',                [ProgramRequestController::class, 'store']);

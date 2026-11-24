@@ -22,7 +22,7 @@ trait GeneratesReferenceNumbers
         $random = str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
         $candidate = $this->buildReference($prefix, $random, $format);
 
-        while ($model::where($column, $candidate)->exists()) {
+        while ($model::withoutGlobalScopes()->where($column, $candidate)->exists()) {
             $random = str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
             $candidate = $this->buildReference($prefix, $random, $format);
         }

@@ -101,6 +101,7 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
         Route::get('/certificates/{id}/download', [MobileResidentController::class, 'downloadCertificate']);
         Route::get('/certificates/{id}', [MobileResidentController::class, 'getCertificateDetail']);
         Route::delete('/certificates/{id}', [MobileResidentController::class, 'cancelCertificateRequest']);
+        Route::post('/certificates/{id}/restore', [MobileResidentController::class, 'restoreCertificateRequest']);
 
         // Compliance
         Route::get('/compliance', [MobileResidentController::class, 'getComplianceChecklist']);
@@ -117,6 +118,7 @@ Route::middleware(['auth:sanctum', 'mobile.access'])->group(function () {
         // Clearance
         Route::get('/clearance/{id}', [MobileResidentController::class, 'getClearance']);
         Route::delete('/clearance/{id}', [MobileResidentController::class, 'cancelClearance']);
+        Route::post('/clearance/{id}/restore', [MobileResidentController::class, 'restoreClearance']);
 
         // Account Activation
         Route::post('/activation', [MobileResidentController::class, 'requestActivation']);
