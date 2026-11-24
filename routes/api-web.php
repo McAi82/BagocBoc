@@ -230,6 +230,7 @@ Route::middleware(['auth:sanctum', 'web.access'])->group(function () {
         Route::post('/{id}/approve', [ClearanceController::class, 'approve']);
         Route::post('/{id}/reject', [ClearanceController::class, 'reject']);
         Route::post('/{id}/generate-document', [ClearanceController::class, 'generateDocument']);
+        Route::post('/{id}/upload-pdf', [ClearanceController::class, 'uploadPdf']);
         Route::post('/{id}/release', [ClearanceController::class, 'release']);
         Route::post('/{id}/receive', [ClearanceController::class, 'receive']);
         Route::get('/{id}/download', [ClearanceController::class, 'download']);

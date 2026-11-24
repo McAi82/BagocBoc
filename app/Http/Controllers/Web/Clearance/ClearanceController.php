@@ -150,39 +150,85 @@ class ClearanceController extends Controller
             return $this->respondError('Validation error', $validator->errors(), 422);
         }
 
-        $documentPath = null;
+        // Same flow as Certifications: no file -> just record the name and let the
+        // preview modal build + upload the PDF (uploadPdf moves it to ready_for_release).
+        if (!$request->hasFile('file')) {
+            $clearance->update([
+                'document_name' => $request->document_name,
+                'processed_by_user_id' => Auth::id(),
+            ]);
 
-        if ($request->hasFile('file')) {
-            $documentPath = $request->file('file')->store('clearances/documents', 'public');
+            return $this->respondSuccess(
+                $clearance->fresh()->load('resident'),
+                'Ready to preview. Save the PDF to make it downloadable.'
+            );
         }
 
-        if ($request->filled('document_content')) {
-            $documentPath = $this->generateClearancePDF($clearance, $request->document_content);
-        }
-
-        if (!$documentPath) {
-            $documentPath = $this->generateClearancePDF($clearance);
-        }
+        // A manually uploaded PDF/DOC/DOCX is stored as-is
+        $documentPath = $request->file('file')->store('clearances/documents', 'public');
+        $ext = pathinfo($documentPath, PATHINFO_EXTENSION) ?: 'pdf';
 
         $clearance->update([
             'status' => 'ready_for_release',
             'document_path' => $documentPath,
-            'document_name' => $request->document_name ?? 'Barangay_Clearance_' . $clearance->reference_number . '.pdf',
+            'document_name' => pathinfo($request->document_name, PATHINFO_FILENAME) . '.' . $ext,
             'processed_by_user_id' => Auth::id(),
         ]);
 
-        $this->notifyResident(
-            $clearance,
-            'Barangay Clearance Ready',
-            "Your Barangay Clearance ({$clearance->reference_number}) is ready. Please visit the barangay hall to claim it.",
-            'normal',
-            '/resident/clearance/' . $clearance->id
-        );
+        $this->notifyReady($clearance);
 
         return $this->respondSuccess(
             $clearance->load('resident'),
             'Document generated successfully'
         );
+    }
+
+    public function uploadPdf(Request $request, $id)
+    {
+        $clearance = Clearance::find($id);
+
+        if (!$clearance) {
+            return $this->respondNotFound('Clearance not found');
+        }
+
+        $validator = Validator::make($request->all(), [
+            'pdf' => 'required|file|mimes:pdf|max:10240',
+            'document_name' => 'nullable|string|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->respondError('Validation error', $validator->errors(), 422);
+        }
+
+        try {
+            if ($clearance->document_path && Storage::disk('public')->exists($clearance->document_path)) {
+                Storage::disk('public')->delete($clearance->document_path);
+            }
+
+            $safeRef = preg_replace('/[^A-Za-z0-9\-_]/', '_', $clearance->reference_number);
+            $filename = 'clearances/' . $safeRef . '_' . time() . '.pdf';
+
+            Storage::disk('public')->put($filename, file_get_contents($request->file('pdf')->getRealPath()));
+
+            $wasApproved = $clearance->status === 'approved';
+            $status = $wasApproved ? 'ready_for_release' : $clearance->status;
+
+            $clearance->update([
+                'document_path' => $filename,
+                'document_name' => $request->document_name ?? ('Barangay_Clearance_' . $safeRef . '.pdf'),
+                'status' => $status,
+                'processed_by_user_id' => Auth::id(),
+            ]);
+
+            if ($wasApproved) {
+                $this->notifyReady($clearance);
+            }
+
+            return $this->respondSuccess($clearance->fresh()->load('resident'), 'PDF uploaded successfully');
+        } catch (\Throwable $e) {
+            Log::error('Clearance PDF upload failed: ' . $e->getMessage());
+            return $this->respondError('Failed to upload PDF: ' . $e->getMessage(), null, 500);
+        }
     }
 
     public function release($id)
@@ -338,30 +384,15 @@ class ClearanceController extends Controller
         return 1;
     }
 
-    private function generateClearancePDF($clearance, $content = null)
+    private function notifyReady(Clearance $clearance): void
     {
-        $resident = $clearance->resident;
-        $config = ClearanceConfiguration::first();
-
-        if (!$content) {
-            $content = "BARANGAY CLEARANCE\n==================\n\n";
-            $content .= "Clearance Number: " . $clearance->reference_number . "\n";
-            $content .= "Resident: " . ($resident ? $resident->first_name . ' ' . $resident->last_name : 'N/A') . "\n";
-            $content .= "Address: " . ($resident ? $resident->place_of_birth : 'N/A') . "\n";
-            $content .= "Purpose: " . ($clearance->purpose ?? 'N/A') . "\n";
-            $content .= "Amount Paid: ₱" . number_format($clearance->amount, 2) . "\n";
-            $content .= "Date Issued: " . now()->format('Y-m-d H:i:s') . "\n";
-            $content .= "Valid Until: " . ($clearance->valid_until ? $clearance->valid_until->format('Y-m-d') : 'N/A') . "\n";
-            $content .= "\n---\n";
-            $content .= "This clearance is issued by the Barangay of Bagocboc.\n";
-            $content .= "Punong Barangay: " . ($config->punong_barangay_name ?? 'N/A') . "\n";
-            $content .= "Barangay Secretary: " . ($config->barangay_secretary_name ?? 'N/A');
-        }
-
-        $fileName = 'clearances/' . $clearance->reference_number . '.txt';
-        Storage::disk('public')->put($fileName, $content);
-
-        return $fileName;
+        $this->notifyResident(
+            $clearance,
+            'Barangay Clearance Ready',
+            "Your Barangay Clearance ({$clearance->reference_number}) is ready. Please visit the barangay hall to claim it.",
+            'normal',
+            '/resident/clearance/' . $clearance->id
+        );
     }
 
     public function getConfiguration()
