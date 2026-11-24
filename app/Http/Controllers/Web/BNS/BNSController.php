@@ -458,49 +458,198 @@ class BNSController extends Controller
         return 'Unknown';
     }
 
+    // ============================================
+    // REPORT DETAIL HELPERS
+    // ============================================
+
+    /** resident_id => ['zone' => zone name|null, 'household' => household number|null] (active household only) */
+    private function residentPlaces(): array
+    {
+        $rows = DB::table('resident_households as rh')
+            ->join('households as h', 'rh.household_id', '=', 'h.id')
+            ->leftJoin('household_addresses as ha', 'h.address_id', '=', 'ha.id')
+            ->leftJoin('barangay_zones as z', 'ha.zone', '=', 'z.id')
+            ->where('rh.status', 'active')
+            ->orderByDesc('rh.is_primary')
+            ->get(['rh.resident_id', 'h.household_number', 'z.name as zone']);
+
+        $map = [];
+        foreach ($rows as $r) {
+            if (!isset($map[$r->resident_id])) {
+                $map[$r->resident_id] = ['zone' => $r->zone, 'household' => $r->household_number];
+            }
+        }
+        return $map;
+    }
+
+    private function nameOf($r): string
+    {
+        $mid = !empty($r->middle_name) ? ' ' . mb_substr($r->middle_name, 0, 1) . '.' : '';
+        return trim(($r->last_name ?? '') . ', ' . ($r->first_name ?? '') . $mid);
+    }
+
+    private function zoneOf(array $places, $residentId): string
+    {
+        return $places[$residentId]['zone'] ?? 'No Zone';
+    }
+
+    private function householdOf(array $places, $residentId): string
+    {
+        return $places[$residentId]['household'] ?? '—';
+    }
+
+    private function toRows(array $counts): array
+    {
+        $total = array_sum($counts);
+        $out = [];
+        foreach ($counts as $label => $count) {
+            $out[] = [
+                'category' => (string) $label,
+                'count' => $count,
+                'percentage' => $total > 0 ? round(($count / $total) * 100, 1) : 0,
+            ];
+        }
+        return $out;
+    }
+
+    private function countBy(iterable $items, callable $fn, array $order = []): array
+    {
+        $counts = array_fill_keys($order, 0);
+        foreach ($items as $item) {
+            $k = $fn($item);
+            $counts[$k] = ($counts[$k] ?? 0) + 1;
+        }
+        return $counts;
+    }
+
+    private function ageBracket(int $age): string
+    {
+        if ($age <= 12) return '0-12';
+        if ($age <= 18) return '13-18';
+        if ($age <= 35) return '19-35';
+        if ($age <= 60) return '36-60';
+        return '60+';
+    }
+
+    /** Sort by zone then name and prepend a running number: $list = [['zone'=>, 'name'=>, 'cells'=>[...]], ...] */
+    private function numberedRows(array $list): array
+    {
+        usort($list, fn($a, $b) => strcmp($a['zone'] . '|' . $a['name'], $b['zone'] . '|' . $b['name']));
+        $rows = [];
+        foreach ($list as $i => $item) {
+            $rows[] = array_merge([$i + 1], $item['cells']);
+        }
+        return $rows;
+    }
+
+    private function zoneNames(): array
+    {
+        return BarangayZone::orderBy('id')->pluck('name')->all();
+    }
+
+    private function buildReport(string $demographic, array $breakdown, array $sections, array $titles, array $detailsTitleCols, array $rows, $request, string $source, ?int $total = null): array
+    {
+        $p = ReportPeriod::fromRequest($request);
+        return [
+            'demographic' => $demographic,
+            'total' => $total ?? array_sum(array_column($breakdown, 'count')),
+            'breakdown' => $breakdown,
+            'sections' => $sections,
+            'section_titles' => $titles,
+            'details' => ['title' => $detailsTitleCols[0], 'columns' => $detailsTitleCols[1], 'rows' => $rows],
+            'date_range' => $p->dateRange(),
+            'period' => $p->toArray(),
+            'metadata' => ['generated_at' => now()->toISOString(), 'source' => $source],
+        ];
+    }
+
     private function getAgeConsolidation($request)
     {
         try {
             // Population as of the end of the period: registered by then, already born by then,
             // age counted on that date.
             $p = ReportPeriod::fromRequest($request);
+            $places = $this->residentPlaces();
             $residents = Resident::whereNotNull('birth_date')
                 ->where('created_at', '<=', $p->asOf)
                 ->where('birth_date', '<=', $p->asOf)
-                ->get(['id', 'birth_date']);
+                ->get(['id', 'first_name', 'middle_name', 'last_name', 'gender', 'birth_date']);
+
             $ageGroups = ['0-12' => 0, '13-18' => 0, '19-35' => 0, '36-60' => 0, '60+' => 0];
-
-            foreach ($residents as $resident) {
-                $age = (int) Carbon::parse($resident->birth_date)->diffInYears($p->asOf);
-                if ($age <= 12) $ageGroups['0-12']++;
-                elseif ($age <= 18) $ageGroups['13-18']++;
-                elseif ($age <= 35) $ageGroups['19-35']++;
-                elseif ($age <= 60) $ageGroups['36-60']++;
-                else $ageGroups['60+']++;
-            }
-
-            $total = array_sum($ageGroups);
-            $breakdown = [];
-            foreach ($ageGroups as $group => $count) {
-                $breakdown[] = [
-                    'category' => $group . ' years',
-                    'count' => $count,
-                    'percentage' => $total > 0 ? round(($count / $total) * 100, 1) : 0,
+            $list = [];
+            $ages = [];
+            foreach ($residents as $r) {
+                $age = (int) Carbon::parse($r->birth_date)->diffInYears($p->asOf);
+                $bracket = $this->ageBracket($age);
+                $ageGroups[$bracket]++;
+                $ages[$r->id] = $age;
+                $zone = $this->zoneOf($places, $r->id);
+                $list[] = [
+                    'zone' => $zone,
+                    'name' => $this->nameOf($r),
+                    'cells' => [$this->nameOf($r), $r->gender ?? '—', $age, $bracket . ' years', $zone, $this->householdOf($places, $r->id)],
                 ];
             }
 
-            return [
-                'demographic' => 'age',
-                'total' => $total,
-                'breakdown' => $breakdown,
-                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
-                'period' => ReportPeriod::fromRequest($request)->toArray(),
-                'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Resident Records'],
+            $breakdown = [];
+            foreach ($this->toRows($ageGroups) as $row) {
+                $row['category'] .= ' years';
+                $breakdown[] = $row;
+            }
+
+            $sections = [
+                'by_sex' => $this->toRows($this->countBy($residents, fn($r) => in_array($r->gender, ['Male', 'Female'], true) ? $r->gender : 'Not specified', ['Male', 'Female'])),
+                'by_zone' => $this->toRows($this->countBy($residents, fn($r) => $this->zoneOf($places, $r->id), array_merge($this->zoneNames(), ['No Zone']))),
             ];
+            // hide empty "No Zone" row
+            $sections['by_zone'] = array_values(array_filter($sections['by_zone'], fn($x) => !($x['category'] === 'No Zone' && $x['count'] === 0)));
+
+            return $this->buildReport(
+                'age',
+                $breakdown,
+                $sections,
+                ['by_sex' => 'By Sex', 'by_zone' => 'By Zone'],
+                ['Residents counted', ['No.', 'Name', 'Sex', 'Age', 'Age Group', 'Zone', 'Household No.']],
+                $this->numberedRows($list),
+                $request,
+                'Resident Records'
+            );
         } catch (\Exception $e) {
             Log::error('BNS Age Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);
         }
+    }
+
+    /** Households as of the end of the period, with head, zone, address and member count. */
+    private function householdList($p): array
+    {
+        $zoneNames = BarangayZone::pluck('name', 'id')->all();
+        $heads = DB::table('resident_households as rh')
+            ->join('residents as r', 'rh.resident_id', '=', 'r.id')
+            ->where('rh.status', 'active')
+            ->where('rh.is_primary', 1)
+            ->get(['rh.household_id', 'r.first_name', 'r.middle_name', 'r.last_name'])
+            ->keyBy('household_id')
+            ->map(fn($r) => $this->nameOf($r))
+            ->all();
+
+        $households = Household::where('created_at', '<=', $p->asOf)->withCount('residents')->with('address')->get();
+
+        $out = [];
+        foreach ($households as $h) {
+            $zone = $h->address ? ($zoneNames[$h->address->zone] ?? 'No Zone') : 'No Zone';
+            $members = (int) $h->residents_count;
+            $out[] = [
+                'id' => $h->id,
+                'number' => $h->household_number ?? '—',
+                'head' => $heads[$h->id] ?? '—',
+                'zone' => $zone,
+                'address' => $h->address->street ?? '—',
+                'members' => $members,
+                'size' => $members <= 1 ? '1 member' : ($members <= 3 ? '2-3 members' : ($members <= 5 ? '4-5 members' : '6+ members')),
+            ];
+        }
+        return $out;
     }
 
     private function getHouseholdConsolidation($request)
@@ -508,27 +657,30 @@ class BNSController extends Controller
         try {
             $p = ReportPeriod::fromRequest($request);
             $zones = BarangayZone::all();
-            $breakdown = [];
-            $total = 0;
-
+            $counts = [];
             foreach ($zones as $zone) {
-                $count = HouseholdAddress::where('zone', $zone->id)->where('created_at', '<=', $p->asOf)->count();
-                $breakdown[] = ['category' => $zone->name, 'count' => $count, 'percentage' => 0];
-                $total += $count;
+                $counts[$zone->name] = HouseholdAddress::where('zone', $zone->id)->where('created_at', '<=', $p->asOf)->count();
             }
 
-            foreach ($breakdown as &$item) {
-                $item['percentage'] = $total > 0 ? round(($item['count'] / $total) * 100, 1) : 0;
-            }
+            $hh = $this->householdList($p);
+            $list = array_map(fn($h) => [
+                'zone' => $h['zone'],
+                'name' => $h['number'],
+                'cells' => [$h['number'], $h['head'], $h['zone'], $h['address'], $h['members']],
+            ], $hh);
 
-            return [
-                'demographic' => 'household',
-                'total' => $total,
-                'breakdown' => $breakdown,
-                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
-                'period' => ReportPeriod::fromRequest($request)->toArray(),
-                'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Household Records'],
-            ];
+            $sizes = $this->countBy($hh, fn($h) => $h['size'], ['1 member', '2-3 members', '4-5 members', '6+ members']);
+
+            return $this->buildReport(
+                'household',
+                $this->toRows($counts),
+                ['household_size' => $this->toRows($sizes)],
+                ['household_size' => 'By Household Size'],
+                ['Households counted', ['No.', 'Household No.', 'Head of Household', 'Zone', 'Address', 'Members']],
+                $this->numberedRows($list),
+                $request,
+                'Household Records'
+            );
         } catch (\Exception $e) {
             Log::error('BNS Household Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);
@@ -539,35 +691,28 @@ class BNSController extends Controller
     {
         try {
             $p = ReportPeriod::fromRequest($request);
-            $households = Household::where('created_at', '<=', $p->asOf)->get();
-            $sizes = ['1 member' => 0, '2-3 members' => 0, '4-5 members' => 0, '6+ members' => 0];
+            $hh = $this->householdList($p);
 
-            foreach ($households as $household) {
-                $count = $household->residents()->count();
-                if ($count <= 1) $sizes['1 member']++;
-                elseif ($count <= 3) $sizes['2-3 members']++;
-                elseif ($count <= 5) $sizes['4-5 members']++;
-                else $sizes['6+ members']++;
-            }
+            $sizes = $this->countBy($hh, fn($h) => $h['size'], ['1 member', '2-3 members', '4-5 members', '6+ members']);
+            $byZone = $this->countBy($hh, fn($h) => $h['zone'], array_merge($this->zoneNames(), ['No Zone']));
+            $byZone = array_filter($byZone, fn($c, $k) => !($k === 'No Zone' && $c === 0), ARRAY_FILTER_USE_BOTH);
 
-            $total = array_sum($sizes);
-            $breakdown = [];
-            foreach ($sizes as $category => $count) {
-                $breakdown[] = [
-                    'category' => $category,
-                    'count' => $count,
-                    'percentage' => $total > 0 ? round(($count / $total) * 100, 1) : 0,
-                ];
-            }
+            $list = array_map(fn($h) => [
+                'zone' => $h['zone'],
+                'name' => $h['number'],
+                'cells' => [$h['number'], $h['head'], $h['zone'], $h['members'], $h['size']],
+            ], $hh);
 
-            return [
-                'demographic' => 'family',
-                'total' => $total,
-                'breakdown' => $breakdown,
-                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
-                'period' => ReportPeriod::fromRequest($request)->toArray(),
-                'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Household Records'],
-            ];
+            return $this->buildReport(
+                'family',
+                $this->toRows($sizes),
+                ['by_zone' => $this->toRows($byZone)],
+                ['by_zone' => 'Households By Zone'],
+                ['Families (households) counted', ['No.', 'Household No.', 'Head of Household', 'Zone', 'Members', 'Family Size']],
+                $this->numberedRows($list),
+                $request,
+                'Household Records'
+            );
         } catch (\Exception $e) {
             Log::error('BNS Family Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);
@@ -578,23 +723,52 @@ class BNSController extends Controller
     {
         try {
             $p = ReportPeriod::fromRequest($request);
-            $maleCount = Resident::where('gender', 'Male')->where('created_at', '<=', $p->asOf)->count();
-            $femaleCount = Resident::where('gender', 'Female')->where('created_at', '<=', $p->asOf)->count();
-            $total = $maleCount + $femaleCount;
+            $places = $this->residentPlaces();
+            $residents = Resident::whereIn('gender', ['Male', 'Female'])
+                ->where('created_at', '<=', $p->asOf)
+                ->get(['id', 'first_name', 'middle_name', 'last_name', 'gender', 'birth_date']);
 
-            $breakdown = [
-                ['category' => 'Male', 'count' => $maleCount, 'percentage' => $total > 0 ? round(($maleCount / $total) * 100, 1) : 0],
-                ['category' => 'Female', 'count' => $femaleCount, 'percentage' => $total > 0 ? round(($femaleCount / $total) * 100, 1) : 0],
-            ];
+            $list = [];
+            foreach ($residents as $r) {
+                $age = $r->birth_date ? (int) Carbon::parse($r->birth_date)->diffInYears($p->asOf) : null;
+                $zone = $this->zoneOf($places, $r->id);
+                $list[] = [
+                    'zone' => $zone,
+                    'name' => $this->nameOf($r),
+                    'cells' => [$this->nameOf($r), $r->gender, $age ?? '—', $zone, $this->householdOf($places, $r->id)],
+                ];
+            }
 
-            return [
-                'demographic' => 'gender',
-                'total' => $total,
-                'breakdown' => $breakdown,
-                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
-                'period' => ReportPeriod::fromRequest($request)->toArray(),
-                'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Resident Records'],
-            ];
+            $sexCounts = $this->countBy($residents, fn($r) => $r->gender, ['Male', 'Female']);
+
+            // Sex by zone, e.g. "Zone 1 - Male"
+            $byZoneSex = [];
+            foreach (array_merge($this->zoneNames(), ['No Zone']) as $zn) {
+                foreach (['Male', 'Female'] as $sx) {
+                    $byZoneSex[$zn . ' - ' . $sx] = 0;
+                }
+            }
+            foreach ($residents as $r) {
+                $k = $this->zoneOf($places, $r->id) . ' - ' . $r->gender;
+                $byZoneSex[$k] = ($byZoneSex[$k] ?? 0) + 1;
+            }
+            $byZoneSex = array_filter($byZoneSex, fn($c, $k) => !(str_starts_with($k, 'No Zone') && $c === 0), ARRAY_FILTER_USE_BOTH);
+
+            $byAge = $this->countBy($residents, fn($r) => $r->birth_date
+                ? $this->ageBracket((int) Carbon::parse($r->birth_date)->diffInYears($p->asOf)) . ' years'
+                : 'Unknown', ['0-12 years', '13-18 years', '19-35 years', '36-60 years', '60+ years']);
+            $byAge = array_filter($byAge, fn($c, $k) => !($k === 'Unknown' && $c === 0), ARRAY_FILTER_USE_BOTH);
+
+            return $this->buildReport(
+                'gender',
+                $this->toRows($sexCounts),
+                ['by_zone_sex' => $this->toRows($byZoneSex), 'by_age' => $this->toRows($byAge)],
+                ['by_zone_sex' => 'By Zone and Sex', 'by_age' => 'By Age Group'],
+                ['Residents counted', ['No.', 'Name', 'Sex', 'Age', 'Zone', 'Household No.']],
+                $this->numberedRows($list),
+                $request,
+                'Resident Records'
+            );
         } catch (\Exception $e) {
             Log::error('BNS Gender Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);
@@ -605,38 +779,64 @@ class BNSController extends Controller
     {
         try {
             $p = ReportPeriod::fromRequest($request);
-            $zones = BarangayZone::all();
-            $breakdown = [];
-            $total = 0;
+            $places = $this->residentPlaces();
+            $zoneNames = $this->zoneNames();
 
-            foreach ($zones as $zone) {
-                $zoneResidentIds = DB::table('resident_households')
-                    ->join('households', 'resident_households.household_id', '=', 'households.id')
-                    ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
-                    ->where('household_addresses.zone', $zone->id)
-                    ->where('resident_households.status', 'active')
-                    ->pluck('resident_households.resident_id');
+            $profiles = MaternalProfile::with('resident')
+                ->where('pregnancy_status', 'pregnant')
+                ->whereBetween('created_at', [$p->from, $p->to])
+                ->get()
+                ->filter(fn($m) => $m->resident && !empty($places[$m->resident_id]['zone']));
 
-                $count = MaternalProfile::whereIn('resident_id', $zoneResidentIds)
-                    ->where('pregnancy_status', 'pregnant')
-                    ->whereBetween('created_at', [$p->from, $p->to])->count();
+            $list = [];
+            $trimesters = [];
+            $motherAges = [];
+            foreach ($profiles as $m) {
+                $r = $m->resident;
+                $age = $r->birth_date ? (int) Carbon::parse($r->birth_date)->diffInYears($p->asOf) : null;
 
-                $breakdown[] = ['category' => $zone->name, 'count' => $count, 'percentage' => 0];
-                $total += $count;
+                $trimester = 'Unknown';
+                if ($m->expected_delivery_date) {
+                    $daysLeft = ($m->expected_delivery_date->timestamp - $p->asOf->timestamp) / 86400;
+                    $weeks = 40 - (int) floor($daysLeft / 7);
+                    $trimester = $weeks < 14 ? '1st trimester' : ($weeks < 28 ? '2nd trimester' : '3rd trimester');
+                }
+                $trimesters[] = $trimester;
+                $motherAges[] = $age === null ? 'Unknown' : ($age < 20 ? 'Under 20' : ($age < 35 ? '20-34' : '35 and above'));
+
+                $zone = $this->zoneOf($places, $r->id);
+                $list[] = [
+                    'zone' => $zone,
+                    'name' => $this->nameOf($r),
+                    'cells' => [
+                        $this->nameOf($r),
+                        $age ?? '—',
+                        $zone,
+                        $this->householdOf($places, $r->id),
+                        $m->expected_delivery_date ? $m->expected_delivery_date->toDateString() : '—',
+                        $trimester,
+                        $m->last_checkup_date ? $m->last_checkup_date->toDateString() : '—',
+                        $m->family_planning ? 'Yes' : 'No',
+                    ],
+                ];
             }
 
-            foreach ($breakdown as &$item) {
-                $item['percentage'] = $total > 0 ? round(($item['count'] / $total) * 100, 1) : 0;
-            }
+            $byZone = $this->countBy($profiles, fn($m) => $this->zoneOf($places, $m->resident_id), $zoneNames);
+            $tri = $this->countBy($trimesters, fn($t) => $t, ['1st trimester', '2nd trimester', '3rd trimester', 'Unknown']);
+            $ageSec = $this->countBy($motherAges, fn($t) => $t, ['Under 20', '20-34', '35 and above', 'Unknown']);
+            $tri = array_filter($tri, fn($c, $k) => !($k === 'Unknown' && $c === 0), ARRAY_FILTER_USE_BOTH);
+            $ageSec = array_filter($ageSec, fn($c, $k) => !($k === 'Unknown' && $c === 0), ARRAY_FILTER_USE_BOTH);
 
-            return [
-                'demographic' => 'pregnant',
-                'total' => $total,
-                'breakdown' => $breakdown,
-                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
-                'period' => ReportPeriod::fromRequest($request)->toArray(),
-                'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Maternal Records'],
-            ];
+            return $this->buildReport(
+                'pregnant',
+                $this->toRows($byZone),
+                ['by_trimester' => $this->toRows($tri), 'mother_age' => $this->toRows($ageSec)],
+                ['by_trimester' => 'By Trimester (from expected delivery date)', 'mother_age' => "By Mother's Age"],
+                ['Pregnant mothers recorded', ['No.', 'Name', 'Age', 'Zone', 'Household No.', 'Expected Delivery', 'Trimester', 'Last Check-up', 'Family Planning']],
+                $this->numberedRows($list),
+                $request,
+                'Maternal Records'
+            );
         } catch (\Exception $e) {
             Log::error('BNS Pregnant Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);
@@ -647,36 +847,55 @@ class BNSController extends Controller
     {
         try {
             $p = ReportPeriod::fromRequest($request);
-            $zones = BarangayZone::all();
-            $breakdown = [];
-            $total = 0;
+            $places = $this->residentPlaces();
+            $zoneNames = $this->zoneNames();
 
-            foreach ($zones as $zone) {
-                $zoneResidentIds = DB::table('resident_households')
-                    ->join('households', 'resident_households.household_id', '=', 'households.id')
-                    ->join('household_addresses', 'households.address_id', '=', 'household_addresses.id')
-                    ->where('household_addresses.zone', $zone->id)
-                    ->where('resident_households.status', 'active')
-                    ->pluck('resident_households.resident_id');
+            $records = LactatingRecord::with('resident')
+                ->whereBetween('created_at', [$p->from, $p->to])
+                ->get()
+                ->filter(fn($m) => $m->resident && !empty($places[$m->resident_id]['zone']));
 
-                $count = LactatingRecord::whereIn('resident_id', $zoneResidentIds)
-                    ->whereBetween('created_at', [$p->from, $p->to])->count();
-                $breakdown[] = ['category' => $zone->name, 'count' => $count, 'percentage' => 0];
-                $total += $count;
+            $list = [];
+            foreach ($records as $m) {
+                $r = $m->resident;
+                $age = $r->birth_date ? (int) Carbon::parse($r->birth_date)->diffInYears($p->asOf) : null;
+                $zone = $this->zoneOf($places, $r->id);
+                $list[] = [
+                    'zone' => $zone,
+                    'name' => $this->nameOf($r),
+                    'cells' => [
+                        $this->nameOf($r),
+                        $age ?? '—',
+                        $zone,
+                        $this->householdOf($places, $r->id),
+                        $m->infant_age ?? '—',
+                        $m->feeding_method ?: '—',
+                        $m->infant_weight !== null ? $m->infant_weight : '—',
+                        $m->infant_health_status ?: '—',
+                        $m->maternal_health_status ?: '—',
+                    ],
+                ];
             }
 
-            foreach ($breakdown as &$item) {
-                $item['percentage'] = $total > 0 ? round(($item['count'] / $total) * 100, 1) : 0;
-            }
+            $byZone = $this->countBy($records, fn($m) => $this->zoneOf($places, $m->resident_id), $zoneNames);
+            $feeding = $this->countBy($records, fn($m) => $m->feeding_method ? ucfirst(strtolower($m->feeding_method)) : 'Not specified');
+            $infant = $this->countBy($records, function ($m) {
+                if ($m->infant_age === null) return 'Unknown';
+                $a = (int) $m->infant_age;
+                return $a <= 5 ? '0-5 months' : ($a <= 11 ? '6-11 months' : ($a <= 23 ? '12-23 months' : '24+ months'));
+            }, ['0-5 months', '6-11 months', '12-23 months', '24+ months', 'Unknown']);
+            $infant = array_filter($infant, fn($c, $k) => !($k === 'Unknown' && $c === 0), ARRAY_FILTER_USE_BOTH);
 
-            return [
-                'demographic' => 'breastfeeding',
-                'total' => $total,
-                'breakdown' => $breakdown,
-                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
-                'period' => ReportPeriod::fromRequest($request)->toArray(),
-                'metadata' => ['generated_at' => now()->toISOString(), 'source' => 'Lactating Records'],
-            ];
+            return $this->buildReport(
+                'breastfeeding',
+                $this->toRows($byZone),
+                ['feeding_method' => $this->toRows($feeding), 'infant_age' => $this->toRows($infant)],
+                ['feeding_method' => 'By Feeding Method', 'infant_age' => 'By Infant Age'],
+                ['Breastfeeding mothers recorded', ['No.', 'Mother', 'Age', 'Zone', 'Household No.', 'Infant Age (mos)', 'Feeding Method', 'Infant Weight (kg)', 'Infant Health', 'Maternal Health']],
+                $this->numberedRows($list),
+                $request,
+                'Lactating Records'
+            );
         } catch (\Exception $e) {
             Log::error('BNS Breastfeeding Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);
@@ -691,6 +910,7 @@ class BNSController extends Controller
     {
         try {
             $p = ReportPeriod::fromRequest($request);
+            $places = $this->residentPlaces();
 
             // 0-23 months as of the end of the period (born by then, still under 2 years old)
             $children = Resident::whereNotNull('birth_date')
@@ -702,7 +922,7 @@ class BNSController extends Controller
                 ->where(function ($q) {
                     $q->whereNull('status')->orWhere('status', '!=', 'deceased');
                 })
-                ->get(['id', 'gender', 'birth_date']);
+                ->get(['id', 'first_name', 'middle_name', 'last_name', 'gender', 'birth_date']);
 
             // Latest OPT Plus assessment per child INSIDE the period, by assessment_date then id
             $latest = OptPlusAssessment::whereIn('resident_id', $children->pluck('id'))
@@ -725,6 +945,8 @@ class BNSController extends Controller
             ];
             $brackets = ['0-5 months' => 0, '6-11 months' => 0, '12-17 months' => 0, '18-23 months' => 0];
             $sex      = ['Male' => 0, 'Female' => 0];
+            $zoneCounts = array_fill_keys(array_merge($this->zoneNames(), ['No Zone']), 0);
+            $list = [];
 
             foreach ($children as $child) {
                 $birth = Carbon::parse($child->birth_date);
@@ -738,23 +960,43 @@ class BNSController extends Controller
 
                 if (isset($sex[$child->gender])) $sex[$child->gender]++;
 
+                $zone = $this->zoneOf($places, $child->id);
+                $zoneCounts[$zone] = ($zoneCounts[$zone] ?? 0) + 1;
+
                 // Nutrition status from the latest OPT Plus record
                 $a = $latest->get($child->id);
-                if (!$a) {
-                    $status['Not Assessed']++;
-                    continue;
+                $statusLabel = 'Not Assessed';
+                $weighedOn = '—';
+                $weight = '—';
+
+                if ($a) {
+                    $assessedOn = Carbon::parse($a->assessment_date);
+                    $result = null;
+                    if ($assessedOn->gte($birth)) {
+                        // Age in completed months at the time of weighing
+                        $ageAtAssessment = (int) $birth->diffInMonths($assessedOn);
+                        $result = WhoWeightForAge::classify((float) $a->weight_kg, $ageAtAssessment, $child->gender);
+                    }
+                    $statusLabel = $result ?? 'Cannot Classify';
+                    $weighedOn = $assessedOn->toDateString();
+                    $weight = $a->weight_kg;
                 }
+                $status[$statusLabel]++;
 
-                $assessedOn = Carbon::parse($a->assessment_date);
-                $result = null;
-
-                if ($assessedOn->gte($birth)) {
-                    // Age in completed months at the time of weighing
-                    $ageAtAssessment = (int) $birth->diffInMonths($assessedOn);
-                    $result = WhoWeightForAge::classify((float) $a->weight_kg, $ageAtAssessment, $child->gender);
-                }
-
-                $status[$result ?? 'Cannot Classify']++;
+                $list[] = [
+                    'zone' => $zone,
+                    'name' => $this->nameOf($child),
+                    'cells' => [
+                        $this->nameOf($child),
+                        $child->gender ?? '—',
+                        $months,
+                        $zone,
+                        $this->householdOf($places, $child->id),
+                        $weighedOn,
+                        $weight,
+                        $statusLabel,
+                    ],
+                ];
             }
 
             $breakdown = [];
@@ -764,23 +1006,23 @@ class BNSController extends Controller
                 $breakdown[] = ['category' => $label, 'count' => $count, 'percentage' => $pct($count)];
             }
 
-            $toRows = fn(array $counts) => collect($counts)
-                ->map(fn($c, $k) => ['category' => $k, 'count' => $c, 'percentage' => $pct($c)])
-                ->values()
-                ->all();
+            $zoneCounts = array_filter($zoneCounts, fn($c, $k) => !($k === 'No Zone' && $c === 0), ARRAY_FILTER_USE_BOTH);
 
-            return [
-                'demographic' => 'child-nutrition',
-                'total'       => $total,
-                'breakdown'   => $breakdown,
-                'sections'    => [
-                    'age_brackets' => $toRows($brackets),
-                    'sex'          => $toRows($sex),
+            return $this->buildReport(
+                'child-nutrition',
+                $breakdown,
+                [
+                    'age_brackets' => $this->toRows($brackets),
+                    'sex'          => $this->toRows($sex),
+                    'by_zone'      => $this->toRows($zoneCounts),
                 ],
-                'date_range' => ReportPeriod::fromRequest($request)->dateRange(),
-                'period' => ReportPeriod::fromRequest($request)->toArray(),
-                'metadata'   => ['generated_at' => now()->toISOString(), 'source' => 'OPT Plus Assessments (children 0-23 months, WHO weight-for-age)'],
-            ];
+                ['age_brackets' => 'By Age Bracket', 'sex' => 'By Sex', 'by_zone' => 'By Zone'],
+                ['Children 0-23 months', ['No.', 'Child', 'Sex', 'Age (mos)', 'Zone', 'Household No.', 'Last Weighed', 'Weight (kg)', 'Status']],
+                $this->numberedRows($list),
+                $request,
+                'OPT Plus Assessments (children 0-23 months, WHO weight-for-age)',
+                $total
+            );
         } catch (\Exception $e) {
             Log::error('BNS Child Nutrition Consolidation Error: ' . $e->getMessage());
             return $this->getDefaultConsolidation($request);

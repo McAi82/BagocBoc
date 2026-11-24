@@ -35,6 +35,7 @@ import { api } from "../../../api/apiClient";
 import { useAuthStore } from "../../../stores/authStore";
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
+import { drawReport, finalizePdf } from "./reportPdf";
 import PeriodPicker, {
     defaultPeriod,
     periodParams,
@@ -73,11 +74,6 @@ const DEMOGRAPHIC_TYPES = [
         color: "red",
     },
 ];
-
-const SECTION_TITLES: Record<string, string> = {
-    age_brackets: "By Age Bracket",
-    sex: "By Sex",
-};
 
 const ITEMS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
@@ -237,120 +233,14 @@ export default function CollectedRecords() {
         }
     };
 
-    // ✅ Generate PDF from consolidation data
+    // ✅ Generate PDF from consolidation data (full detail)
     const generateConsolidationPDF = (demographicType: string, data: any) => {
         const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-
         const label =
             DEMOGRAPHIC_TYPES.find((t) => t.value === demographicType)?.label ||
             demographicType;
-
-        doc.setFontSize(18);
-        doc.setTextColor(26, 86, 219);
-        doc.text("Barangay Bagocboc", pageWidth / 2, 20, { align: "center" });
-
-        doc.setFontSize(14);
-        doc.setTextColor(51, 51, 51);
-        doc.text(
-            `${label} Consolidation Report - ${data?.period?.label || periodLabel(periodValue)}`,
-            pageWidth / 2,
-            30,
-            { align: "center" },
-        );
-
-        doc.setFontSize(10);
-        doc.setTextColor(102, 102, 102);
-        doc.text(
-            `Generated on: ${new Date().toLocaleString()}`,
-            pageWidth / 2,
-            38,
-            { align: "center" },
-        );
-
-        doc.setDrawColor(200, 200, 200);
-        doc.line(20, 45, pageWidth - 20, 45);
-
-        let y = 55;
-        doc.setFontSize(12);
-        doc.setTextColor(51, 51, 51);
-
-        if (data) {
-            doc.setFontSize(14);
-            doc.setTextColor(26, 86, 219);
-            doc.text("Summary", 20, y);
-            y += 10;
-
-            doc.setFontSize(11);
-            doc.setTextColor(51, 51, 51);
-            doc.text(`Total Records: ${data.total || 0}`, 20, y);
-            y += 8;
-
-            if (data.breakdown && data.breakdown.length > 0) {
-                y += 5;
-                doc.setFontSize(14);
-                doc.setTextColor(26, 86, 219);
-                doc.text("Breakdown", 20, y);
-                y += 10;
-
-                doc.setFontSize(11);
-                doc.setTextColor(51, 51, 51);
-
-                data.breakdown.forEach((item: any) => {
-                    const text = `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`;
-                    doc.text(text, 20, y);
-                    y += 8;
-
-                    if (y > pageHeight - 30) {
-                        doc.addPage();
-                        y = 20;
-                    }
-                });
-            }
-
-            Object.entries(data.sections || {}).forEach(([key, rows]: any) => {
-                y += 5;
-                if (y > pageHeight - 40) {
-                    doc.addPage();
-                    y = 20;
-                }
-                doc.setFontSize(14);
-                doc.setTextColor(26, 86, 219);
-                doc.text(SECTION_TITLES[key] || key, 20, y);
-                y += 10;
-                doc.setFontSize(11);
-                doc.setTextColor(51, 51, 51);
-                rows.forEach((item: any) => {
-                    doc.text(
-                        `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`,
-                        20,
-                        y,
-                    );
-                    y += 8;
-                    if (y > pageHeight - 30) {
-                        doc.addPage();
-                        y = 20;
-                    }
-                });
-            });
-        }
-
-        doc.setFontSize(9);
-        doc.setTextColor(153, 153, 153);
-        doc.text(
-            "This is a system-generated report.",
-            pageWidth / 2,
-            pageHeight - 15,
-            { align: "center" },
-        );
-        doc.text(
-            "Barangay Bagocboc Management System",
-            pageWidth / 2,
-            pageHeight - 8,
-            { align: "center" },
-        );
-
+        drawReport(doc, label, data || {}, true);
+        finalizePdf(doc);
         return doc;
     };
 
@@ -422,132 +312,14 @@ export default function CollectedRecords() {
                 }
 
                 const doc = new jsPDF();
-                const pageWidth = doc.internal.pageSize.getWidth();
-                const pageHeight = doc.internal.pageSize.getHeight();
-
                 reports.forEach((report: any, index: number) => {
-                    if (index > 0) doc.addPage();
-
                     const label =
                         DEMOGRAPHIC_TYPES.find(
                             (t) => t.value === report.demographic,
                         )?.label || report.demographic;
-
-                    doc.setFontSize(18);
-                    doc.setTextColor(26, 86, 219);
-                    doc.text("Barangay Bagocboc", pageWidth / 2, 20, {
-                        align: "center",
-                    });
-
-                    doc.setFontSize(14);
-                    doc.setTextColor(51, 51, 51);
-                    doc.text(
-                        `${label} Consolidation Report - ${report.data?.period?.label || periodLabel(periodValue)}`,
-                        pageWidth / 2,
-                        30,
-                        { align: "center" },
-                    );
-
-                    doc.setFontSize(10);
-                    doc.setTextColor(102, 102, 102);
-                    doc.text(
-                        `Generated on: ${new Date().toLocaleString()}`,
-                        pageWidth / 2,
-                        38,
-                        { align: "center" },
-                    );
-
-                    doc.setDrawColor(200, 200, 200);
-                    doc.line(20, 45, pageWidth - 20, 45);
-
-                    let y = 55;
-                    doc.setFontSize(12);
-                    doc.setTextColor(51, 51, 51);
-
-                    if (report.data) {
-                        doc.setFontSize(14);
-                        doc.setTextColor(26, 86, 219);
-                        doc.text("Summary", 20, y);
-                        y += 10;
-
-                        doc.setFontSize(11);
-                        doc.setTextColor(51, 51, 51);
-                        doc.text(
-                            `Total Records: ${report.data.total || 0}`,
-                            20,
-                            y,
-                        );
-                        y += 8;
-
-                        if (
-                            report.data.breakdown &&
-                            report.data.breakdown.length > 0
-                        ) {
-                            y += 5;
-                            doc.setFontSize(14);
-                            doc.setTextColor(26, 86, 219);
-                            doc.text("Breakdown", 20, y);
-                            y += 10;
-
-                            doc.setFontSize(11);
-                            doc.setTextColor(51, 51, 51);
-
-                            report.data.breakdown.forEach((item: any) => {
-                                const text = `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`;
-                                doc.text(text, 20, y);
-                                y += 8;
-
-                                if (y > pageHeight - 30) {
-                                    doc.addPage();
-                                    y = 20;
-                                }
-                            });
-                        }
-
-                        Object.entries(report.data.sections || {}).forEach(
-                            ([key, rows]: any) => {
-                                y += 5;
-                                if (y > pageHeight - 40) {
-                                    doc.addPage();
-                                    y = 20;
-                                }
-                                doc.setFontSize(14);
-                                doc.setTextColor(26, 86, 219);
-                                doc.text(SECTION_TITLES[key] || key, 20, y);
-                                y += 10;
-                                doc.setFontSize(11);
-                                doc.setTextColor(51, 51, 51);
-                                rows.forEach((item: any) => {
-                                    doc.text(
-                                        `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`,
-                                        20,
-                                        y,
-                                    );
-                                    y += 8;
-                                    if (y > pageHeight - 30) {
-                                        doc.addPage();
-                                        y = 20;
-                                    }
-                                });
-                            },
-                        );
-                    }
-
-                    doc.setFontSize(9);
-                    doc.setTextColor(153, 153, 153);
-                    doc.text(
-                        `Report ${index + 1} of ${reports.length}`,
-                        pageWidth / 2,
-                        pageHeight - 15,
-                        { align: "center" },
-                    );
-                    doc.text(
-                        "Barangay Bagocboc Management System",
-                        pageWidth / 2,
-                        pageHeight - 8,
-                        { align: "center" },
-                    );
+                    drawReport(doc, label, report.data || {}, index === 0);
                 });
+                finalizePdf(doc);
 
                 const filename = `All_BNS_Reports_${periodLabel(periodValue).replace(/\s+/g, "_")}.pdf`;
                 doc.save(filename);

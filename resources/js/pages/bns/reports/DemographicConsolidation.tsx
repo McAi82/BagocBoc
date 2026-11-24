@@ -29,11 +29,8 @@ import PeriodPicker, {
 import { api } from "../../../api/apiClient";
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
-import {
-    getZoneBoundary,
-    getZoneColor,
-    getZoneNames,
-} from "../../../utils/boundaryData";
+import { drawReport, finalizePdf } from "./reportPdf";
+import DetailTable from "./DetailTable";
 
 const DEMOGRAPHIC_LABELS: Record<string, string> = {
     household: "Household",
@@ -71,31 +68,6 @@ const statusColor = (category: string) => {
     return "bg-blue-500";
 };
 
-// Resolve the same zone color used on the GIS / Map pages.
-// Backend zone names may look like "Zone 1 - Poblacion", while the map
-// uses its own zone keys (e.g. "Zone 1"), so match by exact name first,
-// then by zone number.
-const zoneColorFor = (category: string): string | null => {
-    try {
-        const names = getZoneNames();
-        const wanted = category.trim().toLowerCase();
-        const short = (category.split(" - ")[0] || category)
-            .trim()
-            .toLowerCase();
-        const num = category.match(/\d+/)?.[0];
-
-        const key =
-            names.find((n) => n.toLowerCase() === wanted) ||
-            names.find((n) => n.toLowerCase() === short) ||
-            (num ? names.find((n) => n.match(/\d+/)?.[0] === num) : undefined);
-
-        if (!key) return null;
-        return getZoneBoundary(key)?.color || getZoneColor(key) || null;
-    } catch {
-        return null;
-    }
-};
-
 interface BreakdownRow {
     category: string;
     count: number;
@@ -107,6 +79,12 @@ interface ConsolidatedData {
     total: number;
     breakdown: BreakdownRow[];
     sections?: Record<string, BreakdownRow[]>;
+    section_titles?: Record<string, string>;
+    details?: {
+        title: string;
+        columns: string[];
+        rows: (string | number | null)[][];
+    };
     period?: { type: string; label: string };
     date_range: {
         from: string;
@@ -153,142 +131,17 @@ export default function DemographicConsolidation() {
         }
     };
 
-    // ✅ Generate PDF for consolidated data
+    // ✅ Generate PDF for consolidated data (full detail: breakdown, sections, list)
     const generatePDF = (dataToExport: ConsolidatedData) => {
         const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-
-        // Header
-        doc.setFontSize(18);
-        doc.setTextColor(26, 86, 219);
-        doc.text("Barangay Bagocboc", pageWidth / 2, 20, { align: "center" });
-
-        const label =
+        drawReport(
+            doc,
             DEMOGRAPHIC_LABELS[dataToExport.demographic] ||
-            dataToExport.demographic;
-        doc.setFontSize(14);
-        doc.setTextColor(51, 51, 51);
-        doc.text(`${label} Consolidation Report`, pageWidth / 2, 30, {
-            align: "center",
-        });
-
-        doc.setFontSize(10);
-        doc.setTextColor(102, 102, 102);
-        doc.text(
-            `${dataToExport.period?.label ? dataToExport.period.label + " • " : ""}Generated on: ${new Date(dataToExport.metadata.generated_at).toLocaleString()}`,
-            pageWidth / 2,
-            38,
-            { align: "center" },
+                dataToExport.demographic,
+            dataToExport,
+            true,
         );
-
-        doc.setDrawColor(200, 200, 200);
-        doc.line(20, 45, pageWidth - 20, 45);
-
-        // Content
-        let y = 55;
-        doc.setFontSize(12);
-        doc.setTextColor(51, 51, 51);
-
-        // Summary
-        doc.setFontSize(14);
-        doc.setTextColor(26, 86, 219);
-        doc.text("Summary", 20, y);
-        y += 10;
-
-        doc.setFontSize(11);
-        doc.setTextColor(51, 51, 51);
-        doc.text(`Total Records: ${dataToExport.total}`, 20, y);
-        y += 8;
-        doc.text(`Categories: ${dataToExport.breakdown.length}`, 20, y);
-        y += 8;
-
-        if (dataToExport.date_range) {
-            doc.text(
-                `Date Range: ${dataToExport.date_range.from} - ${dataToExport.date_range.to}`,
-                20,
-                y,
-            );
-            y += 8;
-        }
-
-        y += 5;
-
-        // Breakdown
-        if (dataToExport.breakdown && dataToExport.breakdown.length > 0) {
-            doc.setFontSize(14);
-            doc.setTextColor(26, 86, 219);
-            doc.text("Breakdown", 20, y);
-            y += 10;
-
-            doc.setFontSize(11);
-            doc.setTextColor(51, 51, 51);
-
-            dataToExport.breakdown.forEach((item: any) => {
-                const text = `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`;
-                doc.text(text, 20, y);
-                y += 8;
-
-                if (y > pageHeight - 30) {
-                    doc.addPage();
-                    y = 20;
-                }
-            });
-        }
-
-        // Extra sections (e.g. child nutrition age brackets and sex)
-        if (dataToExport.sections) {
-            Object.entries(dataToExport.sections).forEach(([key, rows]) => {
-                if (y > pageHeight - 50) {
-                    doc.addPage();
-                    y = 20;
-                }
-
-                y += 5;
-                doc.setFontSize(14);
-                doc.setTextColor(26, 86, 219);
-                doc.text(SECTION_TITLES[key] || key, 20, y);
-                y += 10;
-
-                doc.setFontSize(11);
-                doc.setTextColor(51, 51, 51);
-
-                rows.forEach((item) => {
-                    doc.text(
-                        `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`,
-                        20,
-                        y,
-                    );
-                    y += 8;
-
-                    if (y > pageHeight - 30) {
-                        doc.addPage();
-                        y = 20;
-                    }
-                });
-            });
-        }
-
-        // Footer
-        doc.setFontSize(9);
-        doc.setTextColor(153, 153, 153);
-        doc.text(
-            "This is a system-generated report.",
-            pageWidth / 2,
-            pageHeight - 15,
-            {
-                align: "center",
-            },
-        );
-        doc.text(
-            "Barangay Bagocboc Management System",
-            pageWidth / 2,
-            pageHeight - 8,
-            {
-                align: "center",
-            },
-        );
-
+        finalizePdf(doc);
         return doc;
     };
 
@@ -363,102 +216,16 @@ export default function DemographicConsolidation() {
                     }
 
                     const doc = new jsPDF();
-                    const pageWidth = doc.internal.pageSize.getWidth();
-                    const pageHeight = doc.internal.pageSize.getHeight();
-
                     reports.forEach((report: any, index: number) => {
-                        if (index > 0) doc.addPage();
-
-                        const label =
+                        drawReport(
+                            doc,
                             DEMOGRAPHIC_LABELS[report.demographic] ||
-                            report.demographic;
-
-                        doc.setFontSize(18);
-                        doc.setTextColor(26, 86, 219);
-                        doc.text("Barangay Bagocboc", pageWidth / 2, 20, {
-                            align: "center",
-                        });
-
-                        doc.setFontSize(14);
-                        doc.setTextColor(51, 51, 51);
-                        doc.text(
-                            `${label} Consolidation Report`,
-                            pageWidth / 2,
-                            30,
-                            {
-                                align: "center",
-                            },
-                        );
-
-                        doc.setFontSize(10);
-                        doc.setTextColor(102, 102, 102);
-                        doc.text(
-                            `${report.data?.period?.label ? report.data.period.label + " • " : ""}Generated on: ${new Date().toLocaleString()}`,
-                            pageWidth / 2,
-                            38,
-                            { align: "center" },
-                        );
-
-                        doc.setDrawColor(200, 200, 200);
-                        doc.line(20, 45, pageWidth - 20, 45);
-
-                        let y = 55;
-                        doc.setFontSize(12);
-                        doc.setTextColor(51, 51, 51);
-
-                        if (report.data) {
-                            doc.setFontSize(14);
-                            doc.setTextColor(26, 86, 219);
-                            doc.text("Summary", 20, y);
-                            y += 10;
-
-                            doc.setFontSize(11);
-                            doc.setTextColor(51, 51, 51);
-                            doc.text(
-                                `Total Records: ${report.data.total || 0}`,
-                                20,
-                                y,
-                            );
-                            y += 8;
-
-                            if (
-                                report.data.breakdown &&
-                                report.data.breakdown.length > 0
-                            ) {
-                                y += 5;
-                                doc.setFontSize(14);
-                                doc.setTextColor(26, 86, 219);
-                                doc.text("Breakdown", 20, y);
-                                y += 10;
-
-                                doc.setFontSize(11);
-                                doc.setTextColor(51, 51, 51);
-
-                                report.data.breakdown.forEach((item: any) => {
-                                    const text = `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`;
-                                    doc.text(text, 20, y);
-                                    y += 8;
-                                });
-                            }
-                        }
-
-                        doc.setFontSize(9);
-                        doc.setTextColor(153, 153, 153);
-                        doc.text(
-                            `Report ${index + 1} of ${reports.length}`,
-                            pageWidth / 2,
-                            pageHeight - 15,
-                            { align: "center" },
-                        );
-                        doc.text(
-                            "Barangay Bagocboc Management System",
-                            pageWidth / 2,
-                            pageHeight - 8,
-                            {
-                                align: "center",
-                            },
+                                report.demographic,
+                            report.data,
+                            index === 0,
                         );
                     });
+                    finalizePdf(doc);
 
                     const filename = `All_BNS_Reports_${periodLabel(periodValue).replace(/\s+/g, "_")}.pdf`;
                     doc.save(filename);
@@ -699,25 +466,10 @@ export default function DemographicConsolidation() {
                                           ? "bg-amber-500"
                                           : "bg-purple-500";
 
-                            // Household breakdown is per zone -> use the map's zone colors
-                            const zoneColor =
-                                type === "household"
-                                    ? zoneColorFor(item.category)
-                                    : null;
-
                             return (
                                 <div key={index} className="space-y-1">
                                     <div className="flex items-center justify-between text-sm">
-                                        <span className="flex items-center gap-2 text-theme-text">
-                                            {zoneColor && (
-                                                <span
-                                                    className="w-3 h-3 rounded-full flex-shrink-0"
-                                                    style={{
-                                                        backgroundColor:
-                                                            zoneColor,
-                                                    }}
-                                                />
-                                            )}
+                                        <span className="text-theme-text">
                                             {item.category}
                                         </span>
                                         <span className="text-theme-textSecondary">
@@ -726,16 +478,8 @@ export default function DemographicConsolidation() {
                                     </div>
                                     <div className="w-full h-2 bg-theme-background rounded-full overflow-hidden">
                                         <div
-                                            className={`h-full ${zoneColor ? "" : color} rounded-full transition-all duration-500`}
-                                            style={{
-                                                width: `${percentage}%`,
-                                                ...(zoneColor
-                                                    ? {
-                                                          backgroundColor:
-                                                              zoneColor,
-                                                      }
-                                                    : {}),
-                                            }}
+                                            className={`h-full ${color} rounded-full transition-all duration-500`}
+                                            style={{ width: `${percentage}%` }}
                                         />
                                     </div>
                                 </div>
@@ -763,7 +507,9 @@ export default function DemographicConsolidation() {
                             className="bg-theme-surface border border-theme rounded-xl p-6"
                         >
                             <h3 className="font-semibold text-theme-text mb-4">
-                                {SECTION_TITLES[key] || key}
+                                {data.section_titles?.[key] ||
+                                    SECTION_TITLES[key] ||
+                                    key}
                             </h3>
                             <div className="space-y-4">
                                 {rows.map((r) => (
@@ -792,6 +538,9 @@ export default function DemographicConsolidation() {
                     ))}
                 </div>
             )}
+
+            {/* Detailed list of records counted */}
+            <DetailTable details={data.details} />
 
             {/* Actions */}
             <div className="flex items-center justify-between flex-wrap gap-4 pt-4 border-t border-theme">

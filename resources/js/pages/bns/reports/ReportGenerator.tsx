@@ -16,11 +16,8 @@ import {
 import { api } from "../../../api/apiClient";
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
-
-const SECTION_TITLES: Record<string, string> = {
-    age_brackets: "By Age Bracket",
-    sex: "By Sex",
-};
+import { drawReport, finalizePdf, sectionTitle } from "./reportPdf";
+import DetailTable from "./DetailTable";
 
 interface Report {
     id: string;
@@ -86,137 +83,16 @@ export default function ReportGenerator() {
         }
     };
 
-    // ✅ Generate PDF content
+    // ✅ Generate PDF content (full detail)
     const generatePDFContent = (reportData: Report) => {
         const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-
-        // Header
-        doc.setFontSize(18);
-        doc.setTextColor(26, 86, 219);
-        doc.text("Barangay Bagocboc", pageWidth / 2, 20, { align: "center" });
-
-        doc.setFontSize(14);
-        doc.setTextColor(51, 51, 51);
-        doc.text(reportData.title, pageWidth / 2, 30, { align: "center" });
-
-        doc.setFontSize(10);
-        doc.setTextColor(102, 102, 102);
-        doc.text(
-            `Generated on: ${new Date(reportData.generated_at).toLocaleString()}`,
-            pageWidth / 2,
-            38,
-            { align: "center" },
+        drawReport(
+            doc,
+            getDemographicLabel(reportData.demographic),
+            { ...(reportData.data || {}), period: reportData.data?.period },
+            true,
         );
-
-        doc.setDrawColor(200, 200, 200);
-        doc.line(20, 45, pageWidth - 20, 45);
-
-        // Content
-        let y = 55;
-        doc.setFontSize(12);
-        doc.setTextColor(51, 51, 51);
-
-        if (reportData.data) {
-            // Summary
-            doc.setFontSize(14);
-            doc.setTextColor(26, 86, 219);
-            doc.text("Summary Statistics", 20, y);
-            y += 10;
-
-            doc.setFontSize(11);
-            doc.setTextColor(51, 51, 51);
-            doc.text(`Total Records: ${reportData.data.total || 0}`, 20, y);
-            y += 8;
-
-            if (
-                reportData.data.breakdown &&
-                reportData.data.breakdown.length > 0
-            ) {
-                y += 5;
-                doc.setFontSize(14);
-                doc.setTextColor(26, 86, 219);
-                doc.text("Breakdown", 20, y);
-                y += 10;
-
-                doc.setFontSize(11);
-                doc.setTextColor(51, 51, 51);
-
-                reportData.data.breakdown.forEach((item: any) => {
-                    const text = `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`;
-                    doc.text(text, 20, y);
-                    y += 8;
-
-                    // Check if we need a new page
-                    if (y > pageHeight - 30) {
-                        doc.addPage();
-                        y = 20;
-                    }
-                });
-            }
-
-            Object.entries(reportData.data.sections || {}).forEach(
-                ([key, rows]: any) => {
-                    y += 5;
-                    if (y > pageHeight - 40) {
-                        doc.addPage();
-                        y = 20;
-                    }
-                    doc.setFontSize(14);
-                    doc.setTextColor(26, 86, 219);
-                    doc.text(SECTION_TITLES[key] || key, 20, y);
-                    y += 10;
-                    doc.setFontSize(11);
-                    doc.setTextColor(51, 51, 51);
-                    rows.forEach((item: any) => {
-                        doc.text(
-                            `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`,
-                            20,
-                            y,
-                        );
-                        y += 8;
-                        if (y > pageHeight - 30) {
-                            doc.addPage();
-                            y = 20;
-                        }
-                    });
-                },
-            );
-
-            if (reportData.data.date_range) {
-                y += 5;
-                doc.setFontSize(11);
-                doc.setTextColor(102, 102, 102);
-                doc.text(
-                    `Date Range: ${reportData.data.date_range.from} - ${reportData.data.date_range.to}`,
-                    20,
-                    y,
-                );
-                y += 8;
-            }
-        }
-
-        // Footer
-        doc.setFontSize(9);
-        doc.setTextColor(153, 153, 153);
-        doc.text(
-            "This is a system-generated report.",
-            pageWidth / 2,
-            pageHeight - 15,
-            {
-                align: "center",
-            },
-        );
-        doc.text(
-            "Barangay Bagocboc Management System",
-            pageWidth / 2,
-            pageHeight - 8,
-            {
-                align: "center",
-            },
-        );
-
+        finalizePdf(doc);
         return doc;
     };
 
@@ -252,118 +128,15 @@ export default function ReportGenerator() {
         try {
             // Create a single PDF with all reports
             const doc = new jsPDF();
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const pageHeight = doc.internal.pageSize.getHeight();
-
             allReports.forEach((reportData, index) => {
-                if (index > 0) {
-                    doc.addPage();
-                }
-
-                // Header
-                doc.setFontSize(18);
-                doc.setTextColor(26, 86, 219);
-                doc.text("Barangay Bagocboc", pageWidth / 2, 20, {
-                    align: "center",
-                });
-
-                doc.setFontSize(14);
-                doc.setTextColor(51, 51, 51);
-                doc.text(reportData.title, pageWidth / 2, 30, {
-                    align: "center",
-                });
-
-                doc.setFontSize(10);
-                doc.setTextColor(102, 102, 102);
-                doc.text(
-                    `Generated on: ${new Date(reportData.generated_at).toLocaleString()}`,
-                    pageWidth / 2,
-                    38,
-                    { align: "center" },
-                );
-
-                doc.setDrawColor(200, 200, 200);
-                doc.line(20, 45, pageWidth - 20, 45);
-
-                // Content
-                let y = 55;
-                doc.setFontSize(12);
-                doc.setTextColor(51, 51, 51);
-
-                if (reportData.data) {
-                    doc.setFontSize(14);
-                    doc.setTextColor(26, 86, 219);
-                    doc.text("Summary Statistics", 20, y);
-                    y += 10;
-
-                    doc.setFontSize(11);
-                    doc.setTextColor(51, 51, 51);
-                    doc.text(
-                        `Total Records: ${reportData.data.total || 0}`,
-                        20,
-                        y,
-                    );
-                    y += 8;
-
-                    if (
-                        reportData.data.breakdown &&
-                        reportData.data.breakdown.length > 0
-                    ) {
-                        y += 5;
-                        doc.setFontSize(14);
-                        doc.setTextColor(26, 86, 219);
-                        doc.text("Breakdown", 20, y);
-                        y += 10;
-
-                        doc.setFontSize(11);
-                        doc.setTextColor(51, 51, 51);
-
-                        reportData.data.breakdown.forEach((item: any) => {
-                            const text = `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`;
-                            doc.text(text, 20, y);
-                            y += 8;
-                        });
-                    }
-
-                    Object.entries(reportData.data.sections || {}).forEach(
-                        ([key, rows]: any) => {
-                            y += 5;
-                            doc.setFontSize(14);
-                            doc.setTextColor(26, 86, 219);
-                            doc.text(SECTION_TITLES[key] || key, 20, y);
-                            y += 10;
-                            doc.setFontSize(11);
-                            doc.setTextColor(51, 51, 51);
-                            rows.forEach((item: any) => {
-                                doc.text(
-                                    `${item.category}: ${item.count} (${item.percentage.toFixed(1)}%)`,
-                                    20,
-                                    y,
-                                );
-                                y += 8;
-                            });
-                        },
-                    );
-                }
-
-                // Footer
-                doc.setFontSize(9);
-                doc.setTextColor(153, 153, 153);
-                doc.text(
-                    `Report ${index + 1} of ${allReports.length}`,
-                    pageWidth / 2,
-                    pageHeight - 15,
-                    { align: "center" },
-                );
-                doc.text(
-                    "Barangay Bagocboc Management System",
-                    pageWidth / 2,
-                    pageHeight - 8,
-                    {
-                        align: "center",
-                    },
+                drawReport(
+                    doc,
+                    getDemographicLabel(reportData.demographic),
+                    reportData.data || {},
+                    index === 0,
                 );
             });
+            finalizePdf(doc);
 
             const filename = `All_BNS_Reports_${new Date().toISOString().split("T")[0]}.pdf`;
             doc.save(filename);
@@ -713,7 +486,7 @@ export default function ReportGenerator() {
                                     className="p-4 bg-theme-surface border border-theme rounded-lg"
                                 >
                                     <h4 className="font-medium text-theme-text mb-3">
-                                        {SECTION_TITLES[key] || key}
+                                        {sectionTitle(report.data, key)}
                                     </h4>
                                     <div className="space-y-2">
                                         {rows.map(
@@ -739,6 +512,9 @@ export default function ReportGenerator() {
                                 </div>
                             ),
                         )}
+
+                        {/* Detailed list */}
+                        <DetailTable details={report.data?.details} />
 
                         {/* Footer */}
                         <div className="border-t border-theme pt-4 text-center text-xs text-theme-textSecondary">
