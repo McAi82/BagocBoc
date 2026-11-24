@@ -24,9 +24,9 @@ class ArchiveController extends Controller
     ];
 
     private const RELATIONS = [
-        'certification' => ['requester.resident', 'certificationType', 'archivedBy'],
-        'clearance'     => ['resident', 'archivedBy'],
-        'front_desk'    => ['resident', 'archivedBy'],
+        'certification' => ['requester.resident', 'certificationType', 'archivedBy.resident'],
+        'clearance'     => ['resident', 'archivedBy.resident'],
+        'front_desk'    => ['resident', 'archivedBy.resident'],
     ];
 
     /** Statuses that can no longer be deleted (already issued / finished). */
@@ -166,10 +166,21 @@ class ArchiveController extends Controller
             'days_left'             => max(0, (int) ceil(($purgeAt->getTimestamp() - now()->getTimestamp()) / 86400)),
             'archived_by'           => $m->archivedBy ? [
                 'id'   => $m->archivedBy->id,
-                'name' => $m->archivedBy->name ?? trim(($m->archivedBy->first_name ?? '') . ' ' . ($m->archivedBy->last_name ?? '')),
+                'name' => $this->userDisplayName($m->archivedBy),
             ] : null,
             'can_restore'           => (int) $m->archived_by_user_id === (int) Auth::id(),
         ];
+    }
+
+    /** Same name source the frontend uses: user.resident first/last name, then the user's own fields. */
+    private function userDisplayName($user): string
+    {
+        $resident = $user->resident ?? null;
+        $first = $resident->first_name ?? $user->first_name ?? '';
+        $last  = $resident->last_name ?? $user->last_name ?? '';
+        $full  = trim($first . ' ' . $last);
+
+        return $full !== '' ? $full : ($user->name ?? $user->username ?? $user->email ?? 'Unknown');
     }
 
     private function dropFromQueue(int $requestId): void
