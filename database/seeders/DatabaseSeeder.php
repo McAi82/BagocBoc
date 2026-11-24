@@ -494,7 +494,6 @@ class DatabaseSeeder extends Seeder
 
         $roles = [
             ['Super Admin', 'Full system access'],
-            ['Barangay Captain', 'Barangay Captain'],
             ['Barangay Secretary', 'Barangay Secretary'],
             ['Barangay Treasurer', 'Barangay Treasurer'],
             ['Front Desk Clerk', 'Front Desk Clerk'],
@@ -942,8 +941,7 @@ class DatabaseSeeder extends Seeder
     private function seedStaffUsers(): void
     {
         $staff = [
-            ['superadmin', 'superadmin@gmail.com', 'Super Admin', null],
-            ['captain', 'captain@gmail.com', 'Barangay Captain', '9:Head'],
+            ['captain', 'captain@gmail.com', 'Super Admin', '9:Head'],
             ['secretary', 'secretary@gmail.com', 'Barangay Secretary', '10:Head'],
             ['treasurer', 'treasurer@gmail.com', 'Barangay Treasurer', '11:Head'],
             ['frontdesk', 'frontdesk@gmail.com', 'Front Desk Clerk', '4:Spouse'],
@@ -3039,7 +3037,6 @@ class DatabaseSeeder extends Seeder
         foreach (
             [
                 'superadmin' => 'Super Admin',
-                'captain' => 'Captain',
                 'secretary' => 'Secretary',
                 'treasurer' => 'Treasurer',
                 'frontdesk' => 'Front Desk',
