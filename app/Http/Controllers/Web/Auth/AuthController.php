@@ -41,7 +41,6 @@ class AuthController extends Controller
 
         $webAccessibleRoles = [
             'Super Admin',
-            'Barangay Captain',
             'Barangay Secretary',
             'Front Desk Clerk',
             'Barangay Treasurer',
