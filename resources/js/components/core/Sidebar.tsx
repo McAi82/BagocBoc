@@ -40,6 +40,7 @@ import {
     Settings2,
     ShieldCheck,
     Wallet,
+    Archive,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { useThemeStore } from "../../stores/themeStore";
@@ -284,6 +285,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                         name: "Barangay Clearance",
                         path: "/barangay-bagocboc/clearance",
                         icon: FileSignature,
+                    },
+                    {
+                        name: "Archive",
+                        path: "/barangay-bagocboc/archive",
+                        icon: Archive,
                     },
                 ],
             });
@@ -547,6 +553,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                         path: "/barangay-bagocboc/clearance",
                         icon: FileSignature,
                     },
+                    {
+                        name: "Archive",
+                        path: "/barangay-bagocboc/archive",
+                        icon: Archive,
+                    },
                 ],
             });
 
@@ -732,6 +743,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                         name: "Claim Slips",
                         path: "/barangay-bagocboc/frontdesk/claims",
                         icon: QrCode,
+                    },
+                    {
+                        name: "Archive",
+                        path: "/barangay-bagocboc/archive",
+                        icon: Archive,
                     },
                     {
                         name: "Tax Records",

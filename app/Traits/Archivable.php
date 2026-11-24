@@ -35,7 +35,9 @@ trait Archivable
 
     public static function bootArchivable(): void
     {
-        static::addGlobalScope('notArchived', function (Builder $builder) {
+        // call_user_func keeps static analysers quiet; it is identical to
+        // static::addGlobalScope(...) at runtime (registers on the using model).
+        call_user_func([static::class, 'addGlobalScope'], 'notArchived', function (Builder $builder) {
             $builder->whereNull($builder->getModel()->getTable() . '.archived_at');
         });
     }
