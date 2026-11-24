@@ -29,6 +29,11 @@ import PeriodPicker, {
 import { api } from "../../../api/apiClient";
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
+import {
+    getZoneBoundary,
+    getZoneColor,
+    getZoneNames,
+} from "../../../utils/boundaryData";
 
 const DEMOGRAPHIC_LABELS: Record<string, string> = {
     household: "Household",
@@ -64,6 +69,31 @@ const statusColor = (category: string) => {
     if (c.includes("over")) return "bg-amber-500";
     if (c.includes("normal")) return "bg-green-500";
     return "bg-blue-500";
+};
+
+// Resolve the same zone color used on the GIS / Map pages.
+// Backend zone names may look like "Zone 1 - Poblacion", while the map
+// uses its own zone keys (e.g. "Zone 1"), so match by exact name first,
+// then by zone number.
+const zoneColorFor = (category: string): string | null => {
+    try {
+        const names = getZoneNames();
+        const wanted = category.trim().toLowerCase();
+        const short = (category.split(" - ")[0] || category)
+            .trim()
+            .toLowerCase();
+        const num = category.match(/\d+/)?.[0];
+
+        const key =
+            names.find((n) => n.toLowerCase() === wanted) ||
+            names.find((n) => n.toLowerCase() === short) ||
+            (num ? names.find((n) => n.match(/\d+/)?.[0] === num) : undefined);
+
+        if (!key) return null;
+        return getZoneBoundary(key)?.color || getZoneColor(key) || null;
+    } catch {
+        return null;
+    }
 };
 
 interface BreakdownRow {
@@ -669,10 +699,25 @@ export default function DemographicConsolidation() {
                                           ? "bg-amber-500"
                                           : "bg-purple-500";
 
+                            // Household breakdown is per zone -> use the map's zone colors
+                            const zoneColor =
+                                type === "household"
+                                    ? zoneColorFor(item.category)
+                                    : null;
+
                             return (
                                 <div key={index} className="space-y-1">
                                     <div className="flex items-center justify-between text-sm">
-                                        <span className="text-theme-text">
+                                        <span className="flex items-center gap-2 text-theme-text">
+                                            {zoneColor && (
+                                                <span
+                                                    className="w-3 h-3 rounded-full flex-shrink-0"
+                                                    style={{
+                                                        backgroundColor:
+                                                            zoneColor,
+                                                    }}
+                                                />
+                                            )}
                                             {item.category}
                                         </span>
                                         <span className="text-theme-textSecondary">
@@ -681,8 +726,16 @@ export default function DemographicConsolidation() {
                                     </div>
                                     <div className="w-full h-2 bg-theme-background rounded-full overflow-hidden">
                                         <div
-                                            className={`h-full ${color} rounded-full transition-all duration-500`}
-                                            style={{ width: `${percentage}%` }}
+                                            className={`h-full ${zoneColor ? "" : color} rounded-full transition-all duration-500`}
+                                            style={{
+                                                width: `${percentage}%`,
+                                                ...(zoneColor
+                                                    ? {
+                                                          backgroundColor:
+                                                              zoneColor,
+                                                      }
+                                                    : {}),
+                                            }}
                                         />
                                     </div>
                                 </div>
