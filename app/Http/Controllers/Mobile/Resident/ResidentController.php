@@ -425,6 +425,7 @@ class ResidentController extends Controller
             }
 
             $certification->update(['status' => 'Cancelled']);
+            $certification->archiveRecord(Auth::id(), 'cancelled', 'Pending');
 
             return $this->respondSuccess(null, 'Certificate request cancelled successfully');
         } catch (\Exception $e) {
@@ -748,7 +749,7 @@ class ResidentController extends Controller
         try {
             $residentId = Auth::user()->resident_id;
 
-            $clearance = Clearance::where('id', $id)
+            $clearance = Clearance::withOwnerArchive()->where('id', $id)
                 ->where('resident_id', $residentId)->first();
 
             if (!$clearance) {
@@ -801,6 +802,7 @@ class ResidentController extends Controller
             }
 
             $clearance->update(['status' => 'cancelled']);
+            $clearance->archiveRecord(Auth::id(), 'cancelled', 'pending');
 
             return $this->respondSuccess(null, 'Clearance cancelled successfully');
         } catch (\Exception $e) {
@@ -882,12 +884,15 @@ class ResidentController extends Controller
             return $this->respondForbidden('Resident profile not found');
         }
 
-        $certifications = Certification::with(['certificationType'])
+        $certifications = Certification::withOwnerArchive()
+            ->with(['certificationType'])
             ->whereHas('requester', function ($q) use ($user) {
                 $q->where('resident_id', $user->resident->id);
             })
             ->latest()
             ->get();
+
+        $certifications->each(fn ($cert) => $cert->append('purge_at'));
 
         return $this->respondSuccess($certifications);
     }
@@ -899,7 +904,7 @@ class ResidentController extends Controller
             return $this->respondForbidden('Resident profile not found');
         }
 
-        $certification = Certification::with(['certificationType'])
+        $certification = Certification::withOwnerArchive()->with(['certificationType'])
             ->whereHas('requester', function ($q) use ($user) {
                 $q->where('resident_id', $user->resident->id);
             })
@@ -908,6 +913,8 @@ class ResidentController extends Controller
         if (!$certification) {
             return $this->respondNotFound('Certificate not found');
         }
+
+        $certification->append('purge_at');
 
         return $this->respondSuccess($certification);
     }
@@ -946,6 +953,52 @@ class ResidentController extends Controller
             $downloadName,
             ['Content-Type' => 'application/pdf']
         );
+    }
+
+    /**
+     * Resident restores a certificate request they cancelled themselves.
+     * (Requests rejected by staff can only be restored by that staff member.)
+     */
+    public function restoreCertificateRequest($id)
+    {
+        $cert = Certification::onlyArchived()
+            ->whereHas('requester', fn ($q) => $q->where('resident_id', Auth::user()->resident_id))
+            ->find($id);
+
+        if (!$cert) {
+            return $this->respondNotFound('Archived request not found');
+        }
+        if ($cert->archive_reason !== 'cancelled' || (int) $cert->archived_by_user_id !== (int) Auth::id()) {
+            return $this->respondForbidden('Only the person who cancelled this request can restore it');
+        }
+        if ($cert->purge_at->isPast()) {
+            return $this->respondError('Retention period has ended', null, 410);
+        }
+
+        $cert->restoreFromArchive();
+
+        return $this->respondSuccess($cert->fresh(), 'Request restored');
+    }
+
+    public function restoreClearance($id)
+    {
+        $clearance = Clearance::onlyArchived()
+            ->where('resident_id', Auth::user()->resident_id)
+            ->find($id);
+
+        if (!$clearance) {
+            return $this->respondNotFound('Archived clearance not found');
+        }
+        if ($clearance->archive_reason !== 'cancelled' || (int) $clearance->archived_by_user_id !== (int) Auth::id()) {
+            return $this->respondForbidden('Only the person who cancelled this clearance can restore it');
+        }
+        if ($clearance->purge_at->isPast()) {
+            return $this->respondError('Retention period has ended', null, 410);
+        }
+
+        $clearance->restoreFromArchive();
+
+        return $this->respondSuccess($clearance->fresh(), 'Clearance restored');
     }
 
     // ============================================================
@@ -1032,7 +1085,7 @@ class ResidentController extends Controller
         $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
         $reference = "{$prefix}-{$year}-{$random}";
 
-        while (Certification::where('reference_number', $reference)->exists()) {
+        while (Certification::withoutGlobalScopes()->where('reference_number', $reference)->exists()) {
             $random = str_pad(random_int(1, 9999), 4, '0', STR_PAD_LEFT);
             $reference = "{$prefix}-{$year}-{$random}";
         }
