@@ -35,6 +35,7 @@ import { api } from "../../api/apiClient";
 import Spinner from "../../components/ui/Spinner";
 import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
+import ZoneIndicator from "../../components/ui/ZoneIndicator";
 import toast from "react-hot-toast";
 
 export default function SecretaryDashboard() {
@@ -1331,6 +1332,9 @@ export default function SecretaryDashboard() {
                       Name
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase">
+                      Zone
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase">
                       Address
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase">
@@ -1348,7 +1352,7 @@ export default function SecretaryDashboard() {
                   {residentsPage.slice.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-4 py-8 text-center text-theme-textSecondary"
                       >
                         No residents found
@@ -1362,6 +1366,9 @@ export default function SecretaryDashboard() {
                       >
                         <td className="px-4 py-3 font-medium text-theme-text">
                           {resident.first_name} {resident.last_name}
+                        </td>
+                        <td className="px-4 py-3">
+                          <ZoneIndicator resident={resident} />
                         </td>
                         <td className="px-4 py-3 text-theme-textSecondary">
                           {resident.place_of_birth || "N/A"}

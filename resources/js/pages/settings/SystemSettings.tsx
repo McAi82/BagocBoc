@@ -30,6 +30,7 @@ import { useAuthStore } from "../../stores/authStore";
 import Spinner from "../../components/ui/Spinner";
 import Modal from "../../components/ui/Modal";
 import Pagination from "../../components/ui/Pagination";
+import ZoneIndicator from "../../components/ui/ZoneIndicator";
 import toast from "react-hot-toast";
 
 type SettingsTab = "barangay" | "users" | "personnel" | "roles";
@@ -878,6 +879,9 @@ export default function SystemSettings() {
                       User
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                      Zone
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
                       Email
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
@@ -895,7 +899,7 @@ export default function SystemSettings() {
                   {paginatedUsers.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-4 py-8 text-center text-theme-textSecondary"
                       >
                         No users found
@@ -929,6 +933,9 @@ export default function SystemSettings() {
                               </p>
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <ZoneIndicator resident={u?.resident} />
                         </td>
                         <td className="px-4 py-3 text-sm text-theme-text">
                           <div className="flex items-center gap-1">
@@ -1094,6 +1101,9 @@ export default function SystemSettings() {
                           <p className="text-sm text-theme-textSecondary truncate">
                             {p?.email}
                           </p>
+                          <div className="mt-1">
+                            <ZoneIndicator resident={p?.resident} />
+                          </div>
                           <div className="flex flex-wrap gap-1 mt-2">
                             {userRoles.map((r: any) => (
                               <span

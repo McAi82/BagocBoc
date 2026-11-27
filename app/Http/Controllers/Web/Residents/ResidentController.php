@@ -112,6 +112,7 @@ class ResidentController extends Controller
                         'id'           => $m->id,
                         'full_name'    => $m->full_name,
                         'age'          => $m->age,
+                        'birth_date'   => $m->birth_date,
                         'gender'       => $m->gender,
                         'relationship' => $m->pivot?->relationship_to_household,
                         'is_primary'   => (bool) ($m->pivot?->is_primary ?? false),

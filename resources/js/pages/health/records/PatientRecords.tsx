@@ -142,6 +142,46 @@ export default function PatientRecords() {
     });
   };
 
+  /**
+   * Human-friendly age. Babies under 1 year show months (or days under
+   * 1 month); everyone else shows years. Uses birth_date when available and
+   * falls back to the numeric `age` field (0 is a valid age, not "missing").
+   */
+  const formatAge = (resident: any): string => {
+    const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+
+    const raw = resident?.birth_date;
+    if (raw) {
+      const [by, bm, bd] = String(raw).slice(0, 10).split("-").map(Number);
+      if (by && bm && bd) {
+        const now = new Date();
+        const ny = now.getFullYear();
+        const nm = now.getMonth() + 1;
+        const nd = now.getDate();
+
+        let months = (ny - by) * 12 + (nm - bm);
+        if (nd < bd) months -= 1;
+
+        if (months >= 12) return plural(Math.floor(months / 12), "yr");
+        if (months >= 1) return plural(months, "mo");
+
+        const days = Math.max(
+          0,
+          Math.floor(
+            (Date.UTC(ny, nm - 1, nd) - Date.UTC(by, bm - 1, bd)) / 86400000,
+          ),
+        );
+        return plural(days, "day");
+      }
+    }
+
+    const age = resident?.age;
+    if (age === null || age === undefined || age === "") return "N/A";
+    const n = Number(age);
+    if (Number.isNaN(n)) return "N/A";
+    return n < 1 ? "< 1 yr" : plural(n, "yr");
+  };
+
   if (isLoading && records.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -297,7 +337,7 @@ export default function PatientRecords() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-sm text-theme-text">
-                          {resident.age || "N/A"} yrs
+                          {formatAge(resident)}
                         </span>
                         <span className="text-xs text-theme-textSecondary block">
                           {resident.gender || "N/A"}

@@ -67,6 +67,49 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 ];
 
 /* ============================================================
+   HELPERS (age + phone)
+   ============================================================ */
+
+/**
+ * Age label computed from birth_date, so it does not depend on the backend
+ * sending an `age` field. Babies show months (days under 1 month).
+ * Falls back to `resident.age` if there is no birth date.
+ */
+const getAgeLabel = (r: any): string => {
+    const plural = (n: number, unit: string) =>
+        `${n} ${unit}${n === 1 ? "" : "s"}`;
+    const [by, bm, bd] = String(r?.birth_date || "")
+        .slice(0, 10)
+        .split("-")
+        .map(Number);
+    if (by && bm && bd) {
+        const now = new Date();
+        const ny = now.getFullYear();
+        const nm = now.getMonth() + 1;
+        const nd = now.getDate();
+        let months = (ny - by) * 12 + (nm - bm);
+        if (nd < bd) months -= 1;
+        if (months >= 12) return plural(Math.floor(months / 12), "yr");
+        if (months >= 1) return plural(months, "mo");
+        const days = Math.max(
+            0,
+            Math.floor(
+                (Date.UTC(ny, nm - 1, nd) - Date.UTC(by, bm - 1, bd)) /
+                    86400000,
+            ),
+        );
+        return plural(days, "day");
+    }
+    const n = Number(r?.age);
+    if (r?.age == null || r?.age === "" || Number.isNaN(n)) return "—";
+    return plural(n, "yr");
+};
+
+/** Phone from the resident record, or from the linked user account. */
+const getPhone = (r: any): string =>
+    r?.phone_number || r?.user?.phone_number || "";
+
+/* ============================================================
    MAIN COMPONENT
    ============================================================ */
 
@@ -136,7 +179,7 @@ export default function ResidentProfile() {
         rows.push({ field: "Gender", value: esc(resident.gender) });
         rows.push({
             field: "Age",
-            value: resident.age != null ? `${resident.age} yrs` : "—",
+            value: getAgeLabel(resident),
         });
         rows.push({
             field: "Birth Date",
@@ -178,7 +221,7 @@ export default function ResidentProfile() {
                 ? `₱${Number(resident.monthly_income).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
                 : "—",
         });
-        rows.push({ field: "Phone", value: esc(resident.phone_number) });
+        rows.push({ field: "Phone", value: esc(getPhone(resident)) });
         rows.push({ field: "Email", value: esc(resident.email) });
         rows.push({
             field: "Account Status",
@@ -220,7 +263,7 @@ export default function ResidentProfile() {
                     const role = m.is_primary ? " (Head)" : "";
                     rows.push({
                         field: m.full_name + role,
-                        value: `${esc(m.relationship || "Member")} • ${esc(m.gender)} • ${m.age ?? "—"} yrs`,
+                        value: `${esc(m.relationship || "Member")} • ${esc(m.gender)} • ${getAgeLabel(m)}`,
                     });
                 });
             }
@@ -420,7 +463,7 @@ export default function ResidentProfile() {
                 middle_name: data.middle_name || "",
                 last_name: data.last_name || "",
                 suffix: data.suffix || "",
-                phone_number: data.phone_number || "",
+                phone_number: getPhone(data),
                 email: data.email || "",
                 gender: data.gender || "Male",
                 citizenship: data.citizenship || "Filipino",
@@ -530,7 +573,7 @@ export default function ResidentProfile() {
                 middle_name: resident.middle_name || "",
                 last_name: resident.last_name || "",
                 suffix: resident.suffix || "",
-                phone_number: resident.phone_number || "",
+                phone_number: getPhone(resident),
                 email: resident.email || "",
                 gender: resident.gender || "Male",
                 citizenship: resident.citizenship || "Filipino",
@@ -729,7 +772,7 @@ export default function ResidentProfile() {
                                 <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-theme-textSecondary">
                                     <span>
                                         {resident.gender} •{" "}
-                                        {resident.age ?? "—"} yrs
+                                        {getAgeLabel(resident)}
                                     </span>
                                     <span>• {resident.civil_status}</span>
                                     {household?.zone && (
@@ -1012,7 +1055,7 @@ function OverviewTab({
                     <div className="space-y-1">
                         <InfoItem
                             label="Phone"
-                            value={resident.phone_number || "N/A"}
+                            value={getPhone(resident) || "N/A"}
                             icon={Phone}
                         />
                         <InfoItem
@@ -1130,7 +1173,7 @@ function HouseholdTab({ household }: { household: any }) {
                                         </p>
                                         <p className="text-xs text-theme-textSecondary">
                                             {m.relationship || "Member"} •{" "}
-                                            {m.gender} • {m.age ?? "—"} yrs
+                                            {m.gender} • {getAgeLabel(m)}
                                         </p>
                                     </div>
                                 </div>

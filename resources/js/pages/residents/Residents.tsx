@@ -21,6 +21,7 @@ import { formatDate, getStatusColor } from "../../utils/format";
 import { api } from "../../api/apiClient";
 import Spinner from "../../components/ui/Spinner";
 import Modal from "../../components/ui/Modal";
+import ZoneIndicator from "../../components/ui/ZoneIndicator";
 import toast from "react-hot-toast";
 import {
     VITAL_STATUS_OPTIONS,
@@ -382,6 +383,9 @@ export default function Residents() {
                                             Contact
                                         </th>
                                         <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                            Zone
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
                                             Gender
                                         </th>
                                         <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
@@ -430,6 +434,9 @@ export default function Residents() {
                                                         {resident.phone_number}
                                                     </p>
                                                 )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <ZoneIndicator resident={resident} />
                                             </td>
                                             <td className="px-4 py-3 text-sm text-theme-textSecondary">
                                                 {resident.gender || "N/A"}

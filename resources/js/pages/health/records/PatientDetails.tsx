@@ -842,6 +842,52 @@ export default function PatientDetails() {
   }
 
   const resident = record.resident || {};
+
+  // Parse "YYYY-MM-DD" (or an ISO string) without timezone shifting.
+  const parseBirthDate = (raw: any): [number, number, number] | null => {
+    if (!raw) return null;
+    const [y, m, d] = String(raw).slice(0, 10).split("-").map(Number);
+    return y && m && d ? [y, m, d] : null;
+  };
+
+  const formatBirthDate = (raw: any): string => {
+    const p = parseBirthDate(raw);
+    if (!p) return "—";
+    return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+
+  // Babies under 1 year show months (days under 1 month); others show years.
+  // 0 is a valid age, so it is never treated as "missing".
+  const formatAge = (): string => {
+    const plural = (n: number, unit: string) =>
+      `${n} ${unit}${n === 1 ? "" : "s"}`;
+    const p = parseBirthDate(resident.birth_date);
+    if (p) {
+      const [by, bm, bd] = p;
+      const now = new Date();
+      const ny = now.getFullYear();
+      const nm = now.getMonth() + 1;
+      const nd = now.getDate();
+      let months = (ny - by) * 12 + (nm - bm);
+      if (nd < bd) months -= 1;
+      if (months >= 12) return plural(Math.floor(months / 12), "year");
+      if (months >= 1) return plural(months, "month");
+      const days = Math.max(
+        0,
+        Math.floor(
+          (Date.UTC(ny, nm - 1, nd) - Date.UTC(by, bm - 1, bd)) / 86400000,
+        ),
+      );
+      return plural(days, "day");
+    }
+    const n = Number(resident.age);
+    if (resident.age === null || resident.age === undefined || resident.age === "" || Number.isNaN(n)) return "—";
+    return n < 1 ? "Under 1 year" : plural(n, "year");
+  };
   const color = getColorClasses(
     PATIENT_TYPE_COLORS[record.patient_type] || "green",
   );
@@ -876,7 +922,10 @@ export default function PatientDetails() {
             </div>
             <p className="text-sm text-theme-textSecondary">
               Patient ID: #{record.id} • {resident.gender} •{" "}
-              {resident.age || "N/A"} years old
+              {formatAge()} old
+              {resident.birth_date && (
+                <> • Born {formatBirthDate(resident.birth_date)}</>
+              )}
             </p>
           </div>
         </div>
@@ -943,7 +992,7 @@ export default function PatientDetails() {
           />
           <InfoRow
             label="Age"
-            value={resident.age ? `${resident.age} years` : "—"}
+            value={formatAge()}
           />
           <InfoRow label="Gender" value={resident.gender || "—"} />
           <InfoRow
@@ -953,11 +1002,7 @@ export default function PatientDetails() {
           />
           <InfoRow
             label="Birth Date"
-            value={
-              resident.birth_date
-                ? new Date(resident.birth_date).toLocaleDateString()
-                : "—"
-            }
+            value={formatBirthDate(resident.birth_date)}
             icon={Calendar}
           />
           <InfoRow

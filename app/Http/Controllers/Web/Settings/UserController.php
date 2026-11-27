@@ -22,7 +22,7 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $query = User::with(['roles', 'resident']);
+        $query = User::with(['roles', 'resident.households.address.barangayZone']);
 
         if ($request->has('search')) {
             $search = $request->search;
@@ -42,7 +42,7 @@ class UserController extends Controller
 
     public function show($id)
     {
-        $user = User::with(['roles', 'resident'])->find($id);
+        $user = User::with(['roles', 'resident.households.address.barangayZone'])->find($id);
 
         if (!$user) {
             return $this->respondNotFound('User not found');

@@ -84,6 +84,43 @@ export default function ChildrenRecords() {
     return "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300";
   };
 
+  /**
+   * Age label from birth_date: days under 1 month, months under 1 year,
+   * years after that. Falls back to the numeric `age` (0 is valid).
+   */
+  const formatAge = (resident: any): string => {
+    const plural = (n: number, unit: string) =>
+      `${n} ${unit}${n === 1 ? "" : "s"}`;
+
+    const [by, bm, bd] = String(resident?.birth_date || "")
+      .slice(0, 10)
+      .split("-")
+      .map(Number);
+    if (by && bm && bd) {
+      const now = new Date();
+      const ny = now.getFullYear();
+      const nm = now.getMonth() + 1;
+      const nd = now.getDate();
+      let months = (ny - by) * 12 + (nm - bm);
+      if (nd < bd) months -= 1;
+      if (months >= 12) return plural(Math.floor(months / 12), "yr");
+      if (months >= 1) return plural(months, "mo");
+      const days = Math.max(
+        0,
+        Math.floor(
+          (Date.UTC(ny, nm - 1, nd) - Date.UTC(by, bm - 1, bd)) / 86400000,
+        ),
+      );
+      return plural(days, "day");
+    }
+
+    const age = resident?.age;
+    if (age === null || age === undefined || age === "") return "N/A";
+    const n = Number(age);
+    if (Number.isNaN(n)) return "N/A";
+    return n < 1 ? "< 1 yr" : plural(n, "yr");
+  };
+
   if (isLoading && records.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -226,7 +263,7 @@ export default function ChildrenRecords() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-theme-text">
-                        {resident.age || "N/A"} yrs
+                        {formatAge(resident)}
                       </td>
                       <td className="px-4 py-3 text-sm text-theme-textSecondary">
                         {resident.gender || "N/A"}
