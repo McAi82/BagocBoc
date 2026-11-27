@@ -58,6 +58,7 @@ class Program extends Model
             'nutrition' => 'Nutrition',
             'drug' => 'Drug Prevention',
             'sexual_health' => 'Sexual Health',
+            'immunization' => 'Immunization',
             'maternal' => 'Maternal Health',
             'other' => 'Other',
         ];
@@ -73,6 +74,7 @@ class Program extends Model
             'nutrition' => 'green',
             'drug' => 'red',
             'sexual_health' => 'pink',
+            'immunization' => 'blue',
             'maternal' => 'purple',
             'other' => 'gray',
         ];

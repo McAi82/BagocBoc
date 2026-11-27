@@ -611,7 +611,7 @@ export interface Program {
   description?: string;
   start_date: string;
   end_date: string;
-  program_type: "nutrition" | "drug" | "sexual_health" | "maternal" | "other";
+  program_type: "nutrition" | "immunization" | "drug" | "sexual_health" | "maternal" | "other";
   status: "planned" | "ongoing" | "completed" | "cancelled";
   budget?: number;
   target_beneficiaries?: number;
