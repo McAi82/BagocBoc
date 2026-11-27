@@ -223,11 +223,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                         icon: BarChart3,
                     },
                     {
-                        name: "Captain Dashboard",
-                        path: "/barangay-bagocboc/captain",
-                        icon: LayoutDashboard,
-                    },
-                    {
                         name: "Secretary Dashboard",
                         path: "/barangay-bagocboc/secretary",
                         icon: LayoutDashboard,
