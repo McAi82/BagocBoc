@@ -38,6 +38,7 @@ class ProgramRequestController extends Controller
 
     private const TYPE_LABELS = [
         'nutrition'     => 'Nutrition',
+        'immunization' => 'Immuniztion',
         'drug'          => 'Drug',
         'sexual_health' => 'Sexual Health',
         'maternal'      => 'Maternal',
