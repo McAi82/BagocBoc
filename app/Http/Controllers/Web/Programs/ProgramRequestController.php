@@ -126,7 +126,7 @@ class ProgramRequestController extends Controller
             'title'                => 'required|string|max:255',
             'description'          => 'nullable|string|max:5000',
             'justification'        => 'nullable|string|max:5000',
-            'program_type'         => 'required|in:nutrition,drug,sexual_health,maternal,other',
+            'program_type'         => 'required|in:nutrition,immunization,drug,sexual_health,maternal,other',
             'start_date'           => 'required|date',
             'end_date'             => 'required|date|after_or_equal:start_date',
             'location'             => 'nullable|string|max:255',

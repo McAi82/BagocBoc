@@ -42,11 +42,12 @@ const REQUESTER_ROLES = [
 const APPROVER_ROLES = ["Super Admin", "Barangay Captain", "Barangay Secretary"];
 
 const PROGRAM_TYPES = [
-  { value: "nutrition", label: "Nutrition" },
-  { value: "maternal", label: "Maternal" },
-  { value: "drug", label: "Drug" },
-  { value: "sexual_health", label: "Sexual Health" },
-  { value: "other", label: "Other" },
+    { value: "nutrition", label: "Nutrition" },
+    { value: "immunization", label: "Immunization" },
+    { value: "maternal", label: "Maternal" },
+    { value: "drug", label: "Drug" },
+    { value: "sexual_health", label: "Sexual Health" },
+    { value: "other", label: "Other" },
 ];
 
 const STATUS_STYLES: Record<string, string> = {
