@@ -18,7 +18,7 @@ class PersonnelController extends Controller
 
     public function index(Request $request)
     {
-        $query = User::with(['roles', 'resident']);
+        $query = User::with(['roles', 'resident.households.address.barangayZone']);
 
         if ($request->has('role')) {
             $query->whereHas('roles', function ($q) use ($request) {
@@ -44,7 +44,7 @@ class PersonnelController extends Controller
 
     public function getByRole($roleName)
     {
-        $users = User::with(['roles', 'resident'])
+        $users = User::with(['roles', 'resident.households.address.barangayZone'])
             ->whereHas('roles', function ($q) use ($roleName) {
                 $q->where('name', $roleName);
             })->get();
@@ -112,7 +112,7 @@ class PersonnelController extends Controller
             $user->roles()->sync($newIds);
 
             return $this->respondSuccess(
-                $user->fresh()->load('roles', 'resident'),
+                $user->fresh()->load('roles', 'resident.households.address.barangayZone'),
                 'Roles updated successfully'
             );
         }
@@ -135,7 +135,7 @@ class PersonnelController extends Controller
         );
 
         return $this->respondSuccess(
-            $user->load('roles', 'resident'),
+            $user->load('roles', 'resident.households.address.barangayZone'),
             'Role assigned successfully'
         );
     }
@@ -182,7 +182,7 @@ class PersonnelController extends Controller
         );
 
         return $this->respondSuccess(
-            $user->load('roles', 'resident'),
+            $user->load('roles', 'resident.households.address.barangayZone'),
             'Role removed successfully'
         );
     }
