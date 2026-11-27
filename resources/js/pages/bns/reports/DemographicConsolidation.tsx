@@ -19,6 +19,8 @@ import {
     ChevronUp,
     AlertCircle,
     Baby,
+    Search,
+    X,
 } from "lucide-react";
 import PeriodPicker, {
     defaultPeriod,
@@ -106,11 +108,18 @@ export default function DemographicConsolidation() {
     const [isDownloading, setIsDownloading] = useState(false);
     const [periodValue, setPeriodValue] =
         useState<PeriodValue>(defaultPeriod());
+    // Filters for the detail table (Children 0-23 months)
+    const [detailSearch, setDetailSearch] = useState("");
+    const [detailFilters, setDetailFilters] = useState<Record<number, string>>(
+        {},
+    );
 
     useEffect(() => {
         if (type) {
             fetchConsolidatedData(type);
         }
+        setDetailSearch("");
+        setDetailFilters({});
     }, [type, periodValue]);
 
     const fetchConsolidatedData = async (demographicType: string) => {
@@ -539,8 +548,121 @@ export default function DemographicConsolidation() {
                 </div>
             )}
 
-            {/* Detailed list of records counted */}
-            <DetailTable details={data.details} />
+            {/* Detailed list of records counted (with filters for child nutrition) */}
+            {(() => {
+                const details = data.details;
+                if (type !== "child-nutrition" || !details?.rows?.length) {
+                    return <DetailTable details={details} />;
+                }
+
+                const cell = (v: unknown) => String(v ?? "").trim();
+                const SKIP = /name|no\.?$|^#|date|birth|address|contact|phone/i;
+
+                // Dropdown filters for columns with a few repeating values
+                const filterCols = details.columns
+                    .map((label, idx) => {
+                        const values = Array.from(
+                            new Set(
+                                details.rows
+                                    .map((r) => cell(r[idx]))
+                                    .filter((v) => v !== "" && v !== "-"),
+                            ),
+                        ).sort((a, b) =>
+                            a.localeCompare(b, undefined, { numeric: true }),
+                        );
+                        return { idx, label, values };
+                    })
+                    .filter(
+                        (c) =>
+                            !SKIP.test(c.label) &&
+                            c.values.length >= 2 &&
+                            c.values.length <= 10 &&
+                            c.values.length < details.rows.length,
+                    )
+                    .slice(0, 4);
+
+                const q = detailSearch.trim().toLowerCase();
+                const activeFilters = Object.entries(detailFilters).filter(
+                    ([, v]) => v,
+                );
+                const hasDetailFilters = Boolean(q) || activeFilters.length > 0;
+
+                const filteredRows = details.rows.filter(
+                    (row) =>
+                        (!q ||
+                            row.some((c) =>
+                                cell(c).toLowerCase().includes(q),
+                            )) &&
+                        activeFilters.every(
+                            ([idx, v]) => cell(row[Number(idx)]) === v,
+                        ),
+                );
+
+                return (
+                    <div className="space-y-3">
+                        <div className="bg-theme-surface border border-theme rounded-xl p-4">
+                            <div className="flex flex-col md:flex-row gap-3">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search children..."
+                                        value={detailSearch}
+                                        onChange={(e) =>
+                                            setDetailSearch(e.target.value)
+                                        }
+                                        className="w-full pl-10 pr-4 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none placeholder:text-theme-textSecondary"
+                                    />
+                                </div>
+
+                                {filterCols.map((c) => (
+                                    <select
+                                        key={c.idx}
+                                        value={detailFilters[c.idx] || ""}
+                                        onChange={(e) =>
+                                            setDetailFilters((prev) => ({
+                                                ...prev,
+                                                [c.idx]: e.target.value,
+                                            }))
+                                        }
+                                        className="px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary outline-none"
+                                    >
+                                        <option value="">All {c.label}</option>
+                                        {c.values.map((v) => (
+                                            <option key={v} value={v}>
+                                                {v}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ))}
+
+                                {hasDetailFilters && (
+                                    <button
+                                        onClick={() => {
+                                            setDetailSearch("");
+                                            setDetailFilters({});
+                                        }}
+                                        className="flex items-center justify-center gap-1 px-3 py-2 text-sm text-theme-textSecondary hover:text-theme-text border border-theme rounded-lg transition-colors"
+                                    >
+                                        <X className="w-4 h-4" />
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            {hasDetailFilters && (
+                                <p className="mt-2 text-xs text-theme-textSecondary">
+                                    Showing {filteredRows.length} of{" "}
+                                    {details.rows.length} children
+                                </p>
+                            )}
+                        </div>
+
+                        <DetailTable
+                            details={{ ...details, rows: filteredRows }}
+                        />
+                    </div>
+                );
+            })()}
 
             {/* Actions */}
             <div className="flex items-center justify-between flex-wrap gap-4 pt-4 border-t border-theme">

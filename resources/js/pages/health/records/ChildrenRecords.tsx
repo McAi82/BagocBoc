@@ -2,322 +2,417 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Baby, Search, Eye, Plus, Loader2, AlertCircle, Inbox } from "lucide-react";
+import {
+    Baby,
+    Search,
+    Eye,
+    Plus,
+    Loader2,
+    AlertCircle,
+    Inbox,
+} from "lucide-react";
+import { X } from "lucide-react";
 import { api } from "../../../api/apiClient";
 import Pagination from "../../../components/ui/Pagination";
 import toast from "react-hot-toast";
 
 export default function ChildrenRecords() {
-  const navigate = useNavigate();
-  const [records, setRecords] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isError, setIsError] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(15);
-  const [totalRecords, setTotalRecords] = useState(0);
+    const navigate = useNavigate();
+    const [records, setRecords] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isError, setIsError] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [nutritionFilter, setNutritionFilter] = useState("");
+    const [genderFilter, setGenderFilter] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(15);
+    const [totalRecords, setTotalRecords] = useState(0);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, itemsPerPage]);
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, nutritionFilter, genderFilter, itemsPerPage]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => fetchRecords(), 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery, currentPage, itemsPerPage]);
+    useEffect(() => {
+        const timer = setTimeout(() => fetchRecords(), 400);
+        return () => clearTimeout(timer);
+    }, [searchQuery, nutritionFilter, genderFilter, currentPage, itemsPerPage]);
 
-  const extractData = (data: any): any[] => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    if (data?.data && Array.isArray(data.data)) return data.data;
-    if (data?.data?.data && Array.isArray(data.data.data)) return data.data.data;
-    const findArray = (obj: any, depth = 0): any[] => {
-      if (!obj || depth > 4) return [];
-      if (Array.isArray(obj)) {
-        if (obj.length > 0 && obj[0]?.patient_type !== undefined) return obj;
-        return [];
-      }
-      if (typeof obj === "object") {
-        for (const key of Object.keys(obj)) {
-          if (["message", "status", "success", "errors", "meta", "links"].includes(key)) continue;
-          const result = findArray(obj[key], depth + 1);
-          if (result.length > 0) return result;
-        }
-      }
-      return [];
+    const extractData = (data: any): any[] => {
+        if (!data) return [];
+        if (Array.isArray(data)) return data;
+        if (data?.data && Array.isArray(data.data)) return data.data;
+        if (data?.data?.data && Array.isArray(data.data.data))
+            return data.data.data;
+        const findArray = (obj: any, depth = 0): any[] => {
+            if (!obj || depth > 4) return [];
+            if (Array.isArray(obj)) {
+                if (obj.length > 0 && obj[0]?.patient_type !== undefined)
+                    return obj;
+                return [];
+            }
+            if (typeof obj === "object") {
+                for (const key of Object.keys(obj)) {
+                    if (
+                        [
+                            "message",
+                            "status",
+                            "success",
+                            "errors",
+                            "meta",
+                            "links",
+                        ].includes(key)
+                    )
+                        continue;
+                    const result = findArray(obj[key], depth + 1);
+                    if (result.length > 0) return result;
+                }
+            }
+            return [];
+        };
+        return findArray(data);
     };
-    return findArray(data);
-  };
 
-  const fetchRecords = async () => {
-    setIsLoading(true);
-    setIsError(false);
-    try {
-      const params: any = { page: currentPage, per_page: itemsPerPage };
-      if (searchQuery) params.search = searchQuery;
+    const fetchRecords = async () => {
+        setIsLoading(true);
+        setIsError(false);
+        try {
+            const params: any = { page: currentPage, per_page: itemsPerPage };
+            if (searchQuery) params.search = searchQuery;
+            if (nutritionFilter) params.nutritional_status = nutritionFilter;
+            if (genderFilter) params.gender = genderFilter;
 
-      const response = await api.get("/web/health/records/children", { params });
-      const meta = response.data?.data;
+            const response = await api.get("/web/health/records/children", {
+                params,
+            });
+            const meta = response.data?.data;
 
-      setRecords(extractData(response.data));
-      setTotalRecords(meta?.total ?? extractData(response.data).length);
-    } catch (error) {
-      console.error("Error fetching children records:", error);
-      setIsError(true);
-      toast.error("Failed to load records");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+            setRecords(extractData(response.data));
+            setTotalRecords(meta?.total ?? extractData(response.data).length);
+        } catch (error) {
+            console.error("Error fetching children records:", error);
+            setIsError(true);
+            toast.error("Failed to load records");
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-  const totalPages = Math.max(1, Math.ceil(totalRecords / itemsPerPage));
+    const totalPages = Math.max(1, Math.ceil(totalRecords / itemsPerPage));
 
-  const getNutritionColor = (status: string) => {
-    if (status === "normal")
-      return "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
-    if (status === "underweight")
-      return "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400";
-    if (status === "overweight")
-      return "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400";
-    if (status === "obese")
-      return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
-    return "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300";
-  };
+    const getNutritionColor = (status: string) => {
+        if (status === "normal")
+            return "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
+        if (status === "underweight")
+            return "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400";
+        if (status === "overweight")
+            return "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400";
+        if (status === "obese")
+            return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+        return "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300";
+    };
 
-  /**
-   * Age label from birth_date: days under 1 month, months under 1 year,
-   * years after that. Falls back to the numeric `age` (0 is valid).
-   */
-  const formatAge = (resident: any): string => {
-    const plural = (n: number, unit: string) =>
-      `${n} ${unit}${n === 1 ? "" : "s"}`;
+    /**
+     * Age label from birth_date: days under 1 month, months under 1 year,
+     * years after that. Falls back to the numeric `age` (0 is valid).
+     */
+    const formatAge = (resident: any): string => {
+        const plural = (n: number, unit: string) =>
+            `${n} ${unit}${n === 1 ? "" : "s"}`;
 
-    const [by, bm, bd] = String(resident?.birth_date || "")
-      .slice(0, 10)
-      .split("-")
-      .map(Number);
-    if (by && bm && bd) {
-      const now = new Date();
-      const ny = now.getFullYear();
-      const nm = now.getMonth() + 1;
-      const nd = now.getDate();
-      let months = (ny - by) * 12 + (nm - bm);
-      if (nd < bd) months -= 1;
-      if (months >= 12) return plural(Math.floor(months / 12), "yr");
-      if (months >= 1) return plural(months, "mo");
-      const days = Math.max(
-        0,
-        Math.floor(
-          (Date.UTC(ny, nm - 1, nd) - Date.UTC(by, bm - 1, bd)) / 86400000,
-        ),
-      );
-      return plural(days, "day");
-    }
+        const [by, bm, bd] = String(resident?.birth_date || "")
+            .slice(0, 10)
+            .split("-")
+            .map(Number);
+        if (by && bm && bd) {
+            const now = new Date();
+            const ny = now.getFullYear();
+            const nm = now.getMonth() + 1;
+            const nd = now.getDate();
+            let months = (ny - by) * 12 + (nm - bm);
+            if (nd < bd) months -= 1;
+            if (months >= 12) return plural(Math.floor(months / 12), "yr");
+            if (months >= 1) return plural(months, "mo");
+            const days = Math.max(
+                0,
+                Math.floor(
+                    (Date.UTC(ny, nm - 1, nd) - Date.UTC(by, bm - 1, bd)) /
+                        86400000,
+                ),
+            );
+            return plural(days, "day");
+        }
 
-    const age = resident?.age;
-    if (age === null || age === undefined || age === "") return "N/A";
-    const n = Number(age);
-    if (Number.isNaN(n)) return "N/A";
-    return n < 1 ? "< 1 yr" : plural(n, "yr");
-  };
+        const age = resident?.age;
+        if (age === null || age === undefined || age === "") return "N/A";
+        const n = Number(age);
+        if (Number.isNaN(n)) return "N/A";
+        return n < 1 ? "< 1 yr" : plural(n, "yr");
+    };
 
-  if (isLoading && records.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-theme-primary" />
-          <p className="text-sm text-theme-textSecondary">Loading records...</p>
-        </div>
-      </div>
+    const hasFilters = Boolean(nutritionFilter || genderFilter);
+
+    // Safety net: if the API ignores a filter param, still filter this page.
+    const visibleRecords = records.filter(
+        (r: any) =>
+            (!nutritionFilter ||
+                (r.child_record?.current_nutritional_status || "unknown") ===
+                    nutritionFilter) &&
+            (!genderFilter || r.resident?.gender === genderFilter),
     );
-  }
 
-  if (isError) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-theme-text">
-            Failed to Load Records
-          </h3>
-          <button
-            onClick={() => fetchRecords()}
-            className="mt-4 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-theme-text">
-            Children Records
-          </h1>
-          <p className="text-sm text-theme-textSecondary">
-            {totalRecords} active child record(s)
-          </p>
-        </div>
-        <button
-          onClick={() => navigate("/barangay-bagocboc/health/patients/new")}
-          className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:opacity-90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Child Record
-        </button>
-      </div>
-
-      <div className="bg-theme-surface border border-theme rounded-xl p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
-          <input
-            type="text"
-            placeholder="Search by name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none placeholder:text-theme-textSecondary"
-          />
-        </div>
-      </div>
-
-      <div className="bg-theme-surface border border-theme rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-theme-background border-b border-theme">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Patient
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Age
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Gender
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Weight
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Height
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Nutrition
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Checkups
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-theme">
-              {records.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <Inbox className="w-12 h-12 mx-auto text-theme-textSecondary/30 mb-3" />
-                    <p className="text-theme-text font-medium">
-                      No children records
-                    </p>
+    if (isLoading && records.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-8 h-8 animate-spin text-theme-primary" />
                     <p className="text-sm text-theme-textSecondary">
-                      {searchQuery
-                        ? "Try adjusting your search"
-                        : "Register a new child record"}
+                        Loading records...
                     </p>
-                  </td>
-                </tr>
-              ) : (
-                records.map((record: any) => {
-                  const resident = record.resident || {};
-                  const child = record.child_record || {};
-                  const nutritionStatus =
-                    child.current_nutritional_status || "unknown";
+                </div>
+            </div>
+        );
+    }
 
-                  return (
-                    <tr
-                      key={record.id}
-                      className="hover:bg-theme-hover transition-colors cursor-pointer"
-                      onClick={() =>
-                        navigate(
-                          `/barangay-bagocboc/health/records/${record.id}`,
-                        )
-                      }
+    if (isError) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-theme-text">
+                        Failed to Load Records
+                    </h3>
+                    <button
+                        onClick={() => fetchRecords()}
+                        className="mt-4 px-4 py-2 bg-theme-primary text-white rounded-lg hover:opacity-90 transition-colors"
                     >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                            <Baby className="w-4 h-4 text-green-500" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium text-theme-text truncate">
-                              {resident.first_name} {resident.last_name}
-                            </p>
-                            <p className="text-xs text-theme-textSecondary">
-                              {resident.phone_number || "No phone"}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-theme-text">
-                        {formatAge(resident)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-theme-textSecondary">
-                        {resident.gender || "N/A"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-theme-text">
-                        {child.current_weight || child.birth_weight || "N/A"} kg
-                      </td>
-                      <td className="px-4 py-3 text-sm text-theme-text">
-                        {child.current_height || child.birth_height || "N/A"} cm
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block px-2.5 py-1 text-xs rounded-full ${getNutritionColor(nutritionStatus)}`}
-                        >
-                          {nutritionStatus}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-theme-background rounded-full text-xs text-theme-textSecondary">
-                          {record.checkups?.length || 0}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(
-                              `/barangay-bagocboc/health/records/${record.id}`,
-                            );
-                          }}
-                          className="p-1.5 text-theme-textSecondary hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        Try Again
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
-        {records.length > 0 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={totalRecords}
-            itemsPerPage={itemsPerPage}
-            onPageChange={setCurrentPage}
-            onItemsPerPageChange={setItemsPerPage}
-          />
-        )}
-      </div>
-    </div>
-  );
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-theme-text">
+                        Children Records
+                    </h1>
+                    <p className="text-sm text-theme-textSecondary">
+                        {totalRecords} active child record(s)
+                    </p>
+                </div>
+                <button
+                    onClick={() =>
+                        navigate("/barangay-bagocboc/health/patients/new")
+                    }
+                    className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:opacity-90 transition-colors"
+                >
+                    <Plus className="w-4 h-4" />
+                    New Child Record
+                </button>
+            </div>
+
+            <div className="bg-theme-surface border border-theme rounded-xl p-4">
+                <div className="flex flex-col md:flex-row gap-3">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-theme-textSecondary" />
+                        <input
+                            type="text"
+                            placeholder="Search by name..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary focus:border-transparent outline-none placeholder:text-theme-textSecondary"
+                        />
+                    </div>
+
+                    <select
+                        value={nutritionFilter}
+                        onChange={(e) => setNutritionFilter(e.target.value)}
+                        className="px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary outline-none"
+                    >
+                        <option value="">All nutrition</option>
+                        <option value="normal">Normal</option>
+                        <option value="underweight">Underweight</option>
+                        <option value="overweight">Overweight</option>
+                        <option value="obese">Obese</option>
+                    </select>
+
+                    <select
+                        value={genderFilter}
+                        onChange={(e) => setGenderFilter(e.target.value)}
+                        className="px-3 py-2 bg-theme-background border border-theme rounded-lg text-theme-text focus:ring-2 focus:ring-theme-primary outline-none"
+                    >
+                        <option value="">All genders</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+
+                    {hasFilters && (
+                        <button
+                            onClick={() => {
+                                setNutritionFilter("");
+                                setGenderFilter("");
+                            }}
+                            className="flex items-center justify-center gap-1 px-3 py-2 text-sm text-theme-textSecondary hover:text-theme-text border border-theme rounded-lg transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                            Clear
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="bg-theme-surface border border-theme rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="bg-theme-background border-b border-theme">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Patient
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Age
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Gender
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Weight
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Height
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Nutrition
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Checkups
+                                </th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-theme-textSecondary uppercase tracking-wider">
+                                    Action
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-theme">
+                            {visibleRecords.length === 0 ? (
+                                <tr>
+                                    <td
+                                        colSpan={8}
+                                        className="px-4 py-12 text-center"
+                                    >
+                                        <Inbox className="w-12 h-12 mx-auto text-theme-textSecondary/30 mb-3" />
+                                        <p className="text-theme-text font-medium">
+                                            No children records
+                                        </p>
+                                        <p className="text-sm text-theme-textSecondary">
+                                            {searchQuery || hasFilters
+                                                ? "Try adjusting your search or filters"
+                                                : "Register a new child record"}
+                                        </p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                visibleRecords.map((record: any) => {
+                                    const resident = record.resident || {};
+                                    const child = record.child_record || {};
+                                    const nutritionStatus =
+                                        child.current_nutritional_status ||
+                                        "unknown";
+
+                                    return (
+                                        <tr
+                                            key={record.id}
+                                            className="hover:bg-theme-hover transition-colors cursor-pointer"
+                                            onClick={() =>
+                                                navigate(
+                                                    `/barangay-bagocboc/health/records/${record.id}`,
+                                                )
+                                            }
+                                        >
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                                                        <Baby className="w-4 h-4 text-green-500" />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-medium text-theme-text truncate">
+                                                            {
+                                                                resident.first_name
+                                                            }{" "}
+                                                            {resident.last_name}
+                                                        </p>
+                                                        <p className="text-xs text-theme-textSecondary">
+                                                            {resident.phone_number ||
+                                                                "No phone"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-theme-text">
+                                                {formatAge(resident)}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-theme-textSecondary">
+                                                {resident.gender || "N/A"}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-theme-text">
+                                                {child.current_weight ||
+                                                    child.birth_weight ||
+                                                    "N/A"}{" "}
+                                                kg
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-theme-text">
+                                                {child.current_height ||
+                                                    child.birth_height ||
+                                                    "N/A"}{" "}
+                                                cm
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span
+                                                    className={`inline-block px-2.5 py-1 text-xs rounded-full ${getNutritionColor(nutritionStatus)}`}
+                                                >
+                                                    {nutritionStatus}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-theme-background rounded-full text-xs text-theme-textSecondary">
+                                                    {record.checkups?.length ||
+                                                        0}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigate(
+                                                            `/barangay-bagocboc/health/records/${record.id}`,
+                                                        );
+                                                    }}
+                                                    className="p-1.5 text-theme-textSecondary hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {records.length > 0 && (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalItems={totalRecords}
+                        itemsPerPage={itemsPerPage}
+                        onPageChange={setCurrentPage}
+                        onItemsPerPageChange={setItemsPerPage}
+                    />
+                )}
+            </div>
+        </div>
+    );
 }
