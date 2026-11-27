@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Web\Records;
 use App\Http\Controllers\Controller;
 use App\Models\RecordActivityLog;
 use App\Traits\SendsNotifications;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
@@ -18,11 +19,16 @@ class RecordsController extends Controller
 
     // ============================================================
     // ACTIVITY LOGS (was RecordActivityLogController)
+    //
+    // NOTE: `record` is a morphTo() and record_type is free text. Never use
+    // with('record') directly: one row pointing at a missing class (e.g.
+    // App\Models\SurveyResponse) crashes the whole request with a 500.
+    // Load `encoder` with with(), then call RecordActivityLog::loadRecordsSafely().
     // ============================================================
 
     public function indexLogs(Request $request)
     {
-        $query = RecordActivityLog::with(['encoder', 'record']);
+        $query = RecordActivityLog::with('encoder');
 
         if ($request->has('type')) {
             $query->where('record_type', $request->type);
@@ -34,6 +40,8 @@ class RecordsController extends Controller
 
         $logs = $query->latest()->paginate(50);
 
+        RecordActivityLog::loadRecordsSafely($logs->getCollection());
+
         return $this->respondSuccess($logs);
     }
 
@@ -42,7 +50,18 @@ class RecordsController extends Controller
         $validator = Validator::make($request->all(), [
             'encoded_by' => 'required|exists:users,id',
             'record_id' => 'required|integer',
-            'record_type' => 'required|string',
+            // Reject types that point at a class that doesn't exist, so no new
+            // "bad" rows are created. Remove this closure if you must keep
+            // storing free-text types.
+            'record_type' => [
+                'required',
+                'string',
+                function ($attribute, $value, $fail) {
+                    if (!RecordActivityLog::recordTypeExists($value)) {
+                        $fail('The selected record type is not a known model.');
+                    }
+                },
+            ],
             'action' => 'required|string',
             'data_status' => 'nullable|string',
             'details' => 'nullable|string',
@@ -59,11 +78,13 @@ class RecordsController extends Controller
 
     public function showLog($id)
     {
-        $log = RecordActivityLog::with(['encoder', 'record'])->find($id);
+        $log = RecordActivityLog::with('encoder')->find($id);
 
         if (!$log) {
             return $this->respondNotFound('Log not found');
         }
+
+        RecordActivityLog::loadRecordsSafely(new Collection([$log]));
 
         return $this->respondSuccess($log);
     }
@@ -81,9 +102,14 @@ class RecordsController extends Controller
         return $this->respondSuccess(null, 'Log deleted successfully');
     }
 
+    /**
+     * Used by the mobile BHW dashboard (GET /activity-logs/encoder/{userId}).
+     * The app does not use the `record` relation, so it is not loaded here.
+     * That also keeps this endpoint fast and crash-proof.
+     */
     public function logsByEncoder($userId)
     {
-        $logs = RecordActivityLog::with(['encoder', 'record'])
+        $logs = RecordActivityLog::with('encoder')
             ->where('encoded_by', $userId)
             ->latest()
             ->get();
@@ -93,7 +119,7 @@ class RecordsController extends Controller
 
     public function logsByRecord($recordId, $recordType)
     {
-        $logs = RecordActivityLog::with(['encoder'])
+        $logs = RecordActivityLog::with('encoder')
             ->where('record_id', $recordId)
             ->where('record_type', $recordType)
             ->latest()
@@ -108,7 +134,7 @@ class RecordsController extends Controller
 
     public function getPendingRecords(Request $request)
     {
-        $query = RecordActivityLog::with(['encoder', 'record'])
+        $query = RecordActivityLog::with('encoder')
             ->where(function ($q) {
                 $q->where('data_status', 'Saved')
                     ->orWhere('data_status', 'Pending');
@@ -120,6 +146,8 @@ class RecordsController extends Controller
         }
 
         $records = $query->paginate(15);
+
+        RecordActivityLog::loadRecordsSafely($records->getCollection());
 
         return $this->respondSuccess($records);
     }
