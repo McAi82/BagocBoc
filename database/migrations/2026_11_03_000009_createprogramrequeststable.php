@@ -16,7 +16,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->text('justification')->nullable();
             // Same values as programs.program_type so an approved request maps 1:1
-            $table->enum('program_type', ['nutrition', 'drug', 'sexual_health', 'maternal', 'other']);
+            $table->enum('program_type', ['nutrition', 'drug', 'sexual_health', 'maternal', 'immunization', 'other']);
             $table->date('start_date');
             $table->date('end_date');
             $table->unsignedInteger('target_beneficiaries')->nullable();
